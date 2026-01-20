@@ -1,0 +1,262 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+
+@dataclass(frozen=True)
+class Batch:
+    obs: np.ndarray
+    actions: np.ndarray
+    rewards: np.ndarray
+    next_obs: np.ndarray
+    dones: np.ndarray
+    demos: np.ndarray
+
+
+@dataclass(frozen=True)
+class PrioritizedBatch:
+    obs: np.ndarray
+    actions: np.ndarray
+    rewards: np.ndarray
+    next_obs: np.ndarray
+    dones: np.ndarray
+    demos: np.ndarray
+    idxs: np.ndarray
+    weights: np.ndarray
+
+
+class ReplayBuffer:
+    def __init__(self, capacity: int, obs_dim: int, *, rng: np.random.Generator):
+        self.capacity = int(capacity)
+        self.obs_dim = int(obs_dim)
+        self._rng = rng
+
+        self._obs = np.zeros((self.capacity, self.obs_dim), dtype=np.float32)
+        self._actions = np.zeros((self.capacity,), dtype=np.int64)
+        self._rewards = np.zeros((self.capacity,), dtype=np.float32)
+        self._next_obs = np.zeros((self.capacity, self.obs_dim), dtype=np.float32)
+        self._dones = np.zeros((self.capacity,), dtype=np.float32)
+        self._demos = np.zeros((self.capacity,), dtype=np.float32)
+
+        self._idx = 0
+        self._size = 0
+
+    def __len__(self) -> int:
+        return self._size
+
+    def add(
+        self,
+        obs: np.ndarray,
+        action: int,
+        reward: float,
+        next_obs: np.ndarray,
+        done: bool,
+        *,
+        demo: bool = False,
+    ) -> None:
+        i = self._idx
+        # DQfD-style safeguard: preserve demonstration transitions so they
+        # remain available for supervised losses throughout long trainings.
+        #
+        # If the buffer is full and we'd overwrite a demo transition with a
+        # non-demo transition, search for the next non-demo slot to overwrite.
+        if self._size >= self.capacity and (not bool(demo)) and float(self._demos[i]) > 0.5:
+            j = int(i)
+            for _ in range(int(self.capacity)):
+                if float(self._demos[j]) <= 0.5:
+                    i = int(j)
+                    break
+                j = (int(j) + 1) % int(self.capacity)
+        self._obs[i] = obs
+        self._actions[i] = int(action)
+        self._rewards[i] = float(reward)
+        self._next_obs[i] = next_obs
+        self._dones[i] = 1.0 if done else 0.0
+        self._demos[i] = 1.0 if demo else 0.0
+
+        self._idx = (int(i) + 1) % int(self.capacity)
+        self._size = min(self.capacity, self._size + 1)
+
+    def sample(self, batch_size: int) -> Batch:
+        if self._size == 0:
+            raise ValueError("Cannot sample from an empty buffer")
+        n = min(int(batch_size), self._size)
+        idxs = self._rng.integers(0, self._size, size=n, dtype=np.int64)
+        return Batch(
+            obs=self._obs[idxs],
+            actions=self._actions[idxs],
+            rewards=self._rewards[idxs],
+            next_obs=self._next_obs[idxs],
+            dones=self._dones[idxs],
+            demos=self._demos[idxs],
+        )
+
+
+class PrioritizedReplayBuffer:
+    """Proportional prioritized experience replay (PER).
+
+    Stores priorities in a binary sum-tree to sample in O(log N) time.
+    """
+
+    def __init__(
+        self,
+        capacity: int,
+        obs_dim: int,
+        *,
+        rng: np.random.Generator,
+        alpha: float = 0.6,
+        eps: float = 1e-3,
+    ) -> None:
+        self.capacity = int(capacity)
+        self.obs_dim = int(obs_dim)
+        self._rng = rng
+        self.alpha = float(alpha)
+        self.eps = float(eps)
+
+        if self.capacity <= 0:
+            raise ValueError("capacity must be > 0")
+        if self.obs_dim <= 0:
+            raise ValueError("obs_dim must be > 0")
+        if not (0.0 <= self.alpha <= 1.0):
+            raise ValueError("alpha must be in [0, 1]")
+        if not (self.eps >= 0.0):
+            raise ValueError("eps must be >= 0")
+
+        self._obs = np.zeros((self.capacity, self.obs_dim), dtype=np.float32)
+        self._actions = np.zeros((self.capacity,), dtype=np.int64)
+        self._rewards = np.zeros((self.capacity,), dtype=np.float32)
+        self._next_obs = np.zeros((self.capacity, self.obs_dim), dtype=np.float32)
+        self._dones = np.zeros((self.capacity,), dtype=np.float32)
+        self._demos = np.zeros((self.capacity,), dtype=np.float32)
+
+        # Binary sum-tree with leaves in [capacity, 2*capacity).
+        self._tree = np.zeros((2 * self.capacity,), dtype=np.float32)
+        self._max_priority = 1.0
+
+        self._idx = 0
+        self._size = 0
+
+    def __len__(self) -> int:
+        return self._size
+
+    def _priority(self, td_error: float) -> float:
+        p = abs(float(td_error)) + float(self.eps)
+        if float(self.alpha) == 0.0:
+            return 1.0
+        return float(p) ** float(self.alpha)
+
+    def _update_tree(self, data_idx: int, priority: float) -> None:
+        leaf = int(data_idx) + self.capacity
+        delta = float(priority) - float(self._tree[leaf])
+        self._tree[leaf] = float(priority)
+        i = leaf // 2
+        while i >= 1:
+            self._tree[i] = float(self._tree[2 * i] + self._tree[2 * i + 1])
+            i //= 2
+
+    def add(
+        self,
+        obs: np.ndarray,
+        action: int,
+        reward: float,
+        next_obs: np.ndarray,
+        done: bool,
+        *,
+        td_error: float | None = None,
+        demo: bool = False,
+    ) -> None:
+        i = self._idx
+        # Preserve demonstrations when possible (see ReplayBuffer.add).
+        if self._size >= self.capacity and (not bool(demo)) and float(self._demos[i]) > 0.5:
+            j = int(i)
+            for _ in range(int(self.capacity)):
+                if float(self._demos[j]) <= 0.5:
+                    i = int(j)
+                    break
+                j = (int(j) + 1) % int(self.capacity)
+        self._obs[i] = obs
+        self._actions[i] = int(action)
+        self._rewards[i] = float(reward)
+        self._next_obs[i] = next_obs
+        self._dones[i] = 1.0 if done else 0.0
+        self._demos[i] = 1.0 if demo else 0.0
+
+        p = self._max_priority if td_error is None else self._priority(float(td_error))
+        self._max_priority = max(float(self._max_priority), float(p))
+        self._update_tree(i, float(p))
+
+        self._idx = (int(i) + 1) % int(self.capacity)
+        self._size = min(self.capacity, self._size + 1)
+
+    def total_priority(self) -> float:
+        return float(self._tree[1])
+
+    def _sample_one(self, mass: float) -> int:
+        i = 1
+        while i < self.capacity:
+            left = 2 * i
+            if float(mass) <= float(self._tree[left]):
+                i = left
+            else:
+                mass -= float(self._tree[left])
+                i = left + 1
+        data_idx = i - self.capacity
+        # Clamp for safety (shouldn't happen when unused leaves have zero priority).
+        return int(min(max(data_idx, 0), max(0, self._size - 1)))
+
+    def sample(self, batch_size: int, *, beta: float) -> PrioritizedBatch:
+        if self._size == 0:
+            raise ValueError("Cannot sample from an empty buffer")
+
+        n = min(int(batch_size), self._size)
+        total = float(self.total_priority())
+        if not (total > 0.0):
+            # Degenerate case: fallback to uniform sampling.
+            idxs = self._rng.integers(0, self._size, size=n, dtype=np.int64)
+            weights = np.ones((n,), dtype=np.float32)
+            return PrioritizedBatch(
+                obs=self._obs[idxs],
+                actions=self._actions[idxs],
+                rewards=self._rewards[idxs],
+                next_obs=self._next_obs[idxs],
+                dones=self._dones[idxs],
+                demos=self._demos[idxs],
+                idxs=idxs,
+                weights=weights,
+            )
+
+        beta_ = float(np.clip(float(beta), 0.0, 1.0))
+
+        # Stratified sampling improves stability vs drawing all masses independently.
+        seg = total / float(n)
+        masses = (np.arange(n, dtype=np.float32) + self._rng.random(n).astype(np.float32, copy=False)) * float(seg)
+        idxs = np.array([self._sample_one(float(m)) for m in masses], dtype=np.int64)
+
+        # Importance-sampling weights.
+        leaf_priorities = self._tree[idxs + self.capacity]
+        probs = leaf_priorities / float(total)
+        weights = (float(self._size) * probs) ** (-beta_)
+        weights = weights / float(np.max(weights) + 1e-8)
+
+        return PrioritizedBatch(
+            obs=self._obs[idxs],
+            actions=self._actions[idxs],
+            rewards=self._rewards[idxs],
+            next_obs=self._next_obs[idxs],
+            dones=self._dones[idxs],
+            demos=self._demos[idxs],
+            idxs=idxs,
+            weights=weights.astype(np.float32, copy=False),
+        )
+
+    def update_priorities(self, idxs: np.ndarray, td_errors: np.ndarray) -> None:
+        idxs = np.asarray(idxs, dtype=np.int64)
+        td_errors = np.asarray(td_errors, dtype=np.float32)
+        if idxs.shape != td_errors.shape:
+            raise ValueError("idxs and td_errors must have the same shape")
+        for i, err in zip(idxs.tolist(), td_errors.tolist()):
+            p = self._priority(float(err))
+            self._max_priority = max(float(self._max_priority), float(p))
+            self._update_tree(int(i), float(p))

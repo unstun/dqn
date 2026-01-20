@@ -1,0 +1,266 @@
+# Run commands + parameter guide
+
+This repo exposes two CLIs:
+
+- `python train.py ...` (wrapper for `amr_dqn/cli/train.py`)
+- `python infer.py ...` (wrapper for `amr_dqn/cli/infer.py`)
+
+Below are example commands, followed by a parameter-by-parameter reference explaining what each flag does and how to tune it.
+
+## 0) Quick self-check (device/CUDA)
+
+Use this to verify CUDA/PyTorch setup before a long run:
+
+```bash
+python train.py --self-check --device auto
+python infer.py --self-check --device auto
+```
+
+## 1) Train (paper env `a b c d`)
+
+Default behavior writes to `runs/<out>/train_<timestamp>/...`:
+
+```bash
+python train.py --envs a b c d --out outputs_repro_1000 --episodes 1000 --device auto
+```
+
+No timestamp (writes directly to `runs/<out>/...`; will overwrite files in that folder):
+
+```bash
+python train.py --envs a b c d --out outputs_repro_1000 --episodes 1000 --device auto --no-timestamp-runs
+```
+
+## 2) Train (forest env: bicycle dynamics + DQfD-style stabilizers)
+
+Notes for `forest_*` envs:
+
+- Forest uses a fixed internal map resolution of **0.1 m/cell** (so `--cell-size` is ignored for forest).
+- Default forest training already enables:
+  - action masking ("shield") for non-expert actions
+  - MPC expert mixing (creates `demo=True` transitions)
+  - DQfD-style demo losses on `demo=True` transitions (large-margin + behavior cloning)
+  - optional start-state curriculum (`--forest-curriculum`, on by default)
+
+Baseline multi-map run (Fig.13-style curves; saves `models/<env>/{dqn.pt,iddqn.pt}`):
+
+```bash
+python train.py --envs forest_a forest_b forest_c forest_d --out outputs_forest --episodes 1000 --max-steps 600 --device auto
+```
+
+Single-map DQfD-style run (fast iteration; similar to `runs/outputs_forest_dqfd{1,2}` configs):
+
+```bash
+python train.py --envs forest_b --out outputs_forest_dqfd2 --episodes 600 --max-steps 600 --device cpu --no-progress --no-timestamp-runs --no-forest-curriculum --forest-expert-prob-start 1.0 --forest-expert-prob-final 0.0 --forest-expert-prob-decay 0.7
+```
+
+Optional: add a short expert replay prefill before learning starts (closer to original "DQfD"):
+
+```bash
+python train.py ... --forest-demo-prefill
+```
+
+## 3) Inference + plots/KPIs
+
+`--models` accepts: experiment name/dir, train run dir, or a `models/` dir.
+
+Important: keep `--sensor-range` and `--n-sectors` consistent with training (or checkpoint loading can fail due to observation-dimension mismatch).
+
+Use an experiment name (auto-picks latest train run under `runs/<name>/...`):
+
+```bash
+python infer.py --envs a b c d --models outputs_repro_1000 --out outputs_repro_1000 --device auto
+python infer.py --envs forest_a forest_b forest_c forest_d --models outputs_forest --out outputs_forest --runs 1 --max-steps 600 --device auto
+```
+
+Forest DQfD-style inference (picks the latest models under `runs/outputs_forest_dqfd2/...`):
+
+```bash
+python infer.py --envs forest_b --models outputs_forest_dqfd2 --out outputs_forest_dqfd2_infer --runs 1 --max-steps 600 --device auto
+```
+
+Or point directly at a specific models dir (useful if you trained with `--no-timestamp-runs`):
+
+```bash
+python infer.py --envs forest_b --models runs/outputs_forest_dqfd2/models --out outputs_forest_dqfd2_infer --runs 1 --max-steps 600 --device cpu --no-timestamp-runs
+```
+
+Include classical baselines (Hybrid A* + RRT*) in the same KPI table + path plots:
+
+```bash
+python infer.py --envs a b c d --models outputs_repro_1000 --out outputs_repro_1000 --baselines all --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000 --device auto
+```
+
+Baseline-only (no checkpoints required):
+
+```bash
+python infer.py --envs forest_b --out outputs_forest_baselines --baselines all --skip-rl --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000 --max-steps 600 --device cpu
+```
+
+---
+
+# Parameter reference
+
+Run `python train.py --help` / `python infer.py --help` to see the same flags from the CLI help output.
+
+## A) Training (`python train.py ...`)
+
+Training always runs **both** algorithms (DQN and IDDQN) for every env in `--envs`, so runtime scales roughly with:
+
+`2 * len(envs) * episodes * max_steps`.
+
+### A.1 Experiment / output paths
+
+- `--out` (default: `outputs`): Experiment name or directory.
+  - If you pass a *bare name* (e.g. `outputs_forest`), it resolves to `runs/<out>/` (see `--runs-root`).
+  - If you pass a path (e.g. `runs/myexp` or `D:\runs\myexp`), it is used as-is.
+- `--runs-root` (default: `runs`): Base directory for bare experiment names in `--out`.
+  - Adjust when you want all results under a different root folder.
+- `--timestamp-runs` / `--no-timestamp-runs` (default: enabled): Controls whether each run gets its own timestamped subfolder.
+  - Enabled: writes to `runs/<out>/train_<timestamp>/...` and updates `runs/<out>/latest.txt`.
+  - Disabled: writes directly into `runs/<out>/...` (risk of overwriting mixed outputs).
+
+### A.2 Environment selection + episode length
+
+- `--envs` (default: `a b c d`): Which maps to train on (space-separated).
+  - Options: `a b c d forest_a forest_b forest_c forest_d`.
+  - Adjust for faster iteration by training on a single env, e.g. `--envs forest_b`.
+- `--episodes` (default: `1000`): Episodes per env per algorithm.
+  - Increase for more learning; decrease for quick smoke tests.
+- `--max-steps` (default: `300`): Max steps per episode before time-limit truncation.
+  - For forest maps, use a larger value (commonly `600`) so the bicycle model has enough horizon to reach the goal.
+
+### A.3 Observation / geometry parameters
+
+These affect the environment observation vector and therefore model checkpoint compatibility.
+
+- `--sensor-range` (default: `6`):
+  - Grid env (`a-d`): ray sensor horizon in **cells**.
+  - Forest env: lidar range in **meters**.
+  - Adjust to change how far obstacles are "seen". If you change it, retrain and keep inference consistent.
+- `--n-sectors` (default: `36`): Forest-only lidar sectors (36=10°, 72=5°). Ignored for non-forest envs.
+  - Larger values increase observation dimension (`obs_dim = 11 + n_sectors`) and compute cost.
+  - Must match between training and inference.
+- `--cell-size` (default: `1.0`): Grid env cell size in meters (affects physical scaling of distance/OD terms). Ignored for forest envs.
+  - Adjust only if you intentionally rescale the grid map physics/reward units.
+
+### A.4 Reproducibility
+
+- `--seed` (default: `0`): Base seed for RNGs (the CLI derives per-episode/per-algorithm seeds from this).
+  - Change it to get a different stochastic run; keep fixed for repeatability.
+
+### A.5 Runtime / device
+
+- `--device` (default: `auto`): Torch device selection.
+  - `auto`: use CUDA if available else CPU
+  - `cuda`: require CUDA (error if not available)
+  - `cpu`: force CPU
+- `--cuda-device` (default: `0`): CUDA device index when using CUDA (`--device=cuda` or `--device=auto` with CUDA available).
+- `--self-check` (default: off): Print torch/CUDA runtime info and exit (use to verify CUDA setup).
+- `--progress` / `--no-progress` (default: auto): Show a training progress bar.
+  - Default is on when running in a TTY (interactive terminal), otherwise off.
+
+### A.6 Training schedule (affects learning speed + stability)
+
+- `--train-freq` (default: `4`): Perform one gradient update every N environment steps (after `--learning-starts`).
+  - Smaller = more updates (slower, often more stable); larger = fewer updates (faster, may under-train).
+- `--learning-starts` (default: `500`): Number of environment steps to collect before starting updates.
+  - If you run very short jobs (few episodes / small `--max-steps`), reduce this too, otherwise training may do zero updates.
+  - Forest `--forest-demo-prefill` uses this value as the demo prefill target size.
+
+### A.7 Plot smoothing (does not affect training)
+
+- `--ma-window` (default: `20`): Moving-average window for reward curve plotting (`1` = raw).
+
+### A.8 Forest-only stabilizers (recommended to keep enabled for forest)
+
+- `--forest-curriculum` / `--no-forest-curriculum` (default: enabled): Start-state curriculum.
+  - Early training starts closer to the goal; later training shifts back toward the canonical start.
+  - Disable if you want all episodes to start from the canonical start state (harder early training).
+- `--curriculum-band-m` (default: `2.0`): Start-state sampling band width (meters) for curriculum starts.
+  - Smaller = narrower difficulty band; larger = more variety (can include easier starts even later).
+- `--curriculum-ramp` (default: `0.35`): Fraction of total episodes needed to ramp the curriculum back to the canonical start.
+  - Smaller = reaches canonical start sooner (harder sooner, less train/test mismatch).
+  - Larger = stays in "easy-start" regime longer (easier early learning, but can create mismatch).
+- `--forest-demo-prefill` / `--no-forest-demo-prefill` (default: disabled): Prefill replay buffer with MPC expert rollouts before learning starts.
+  - Enable when forest training collapses to degenerate behaviors (e.g., stop/jitter) early in training.
+- `--forest-demo-horizon` (default: `15`): MPC horizon steps (constant action) used by the expert (prefill + exploration).
+  - Larger = more lookahead (slower, often safer); smaller = faster but more myopic.
+- `--forest-demo-w-clearance` (default: `0.5`): Clearance weight in the expert MPC score (`-cost_to_go + w_clearance * min_clearance`).
+  - Increase to bias expert toward safer paths; decrease to bias toward shortest cost-to-go.
+- `--forest-expert-exploration` / `--no-forest-expert-exploration` (default: enabled): Mix MPC expert into the behavior policy early in training.
+  - When enabled, non-expert actions also use action masking (safety/progress shield).
+  - Disable only if you want pure epsilon-greedy behavior (usually much less stable in forest).
+- `--forest-expert-prob-start` (default: `0.7`): Probability of taking the expert action at the start of training.
+  - Increase for more expert guidance early; decrease for more on-policy exploration.
+- `--forest-expert-prob-final` (default: `0.0`): Expert probability at the end of training.
+  - Keep near `0.0` if you want the final policy to be purely learned (no expert dependence).
+- `--forest-expert-prob-decay` (default: `0.6`): Fraction of episodes over which expert probability decays from start -> final.
+  - Smaller = decays faster; larger = uses expert longer.
+
+## B) Inference (`python infer.py ...`)
+
+### B.1 Model source + output paths
+
+- `--models` (default: `outputs`): Where to load models from.
+  - Can be: an experiment name (bare), an experiment directory, a specific training run directory, or a `models/` directory.
+  - For a bare experiment name `X`, inference loads from the latest run under `runs/X/.../models/`.
+- `--out` (default: `outputs`): Output experiment name/dir for inference results.
+  - If `--out` points to the same experiment as `--models`, inference outputs are stored under that training run: `<train_run>/infer/<timestamp>/...`.
+- `--runs-root` (default: `runs`): Base directory for bare experiment names in `--models` / `--out`.
+- `--timestamp-runs` / `--no-timestamp-runs` (default: enabled): Timestamp inference outputs to avoid mixing results.
+
+### B.2 Environment / observation parameters (must match training)
+
+- `--envs` (default: `a b c d`): Which envs to evaluate.
+- `--max-steps` (default: `300`): Rollout horizon (use `600` for forest-style evaluations).
+- `--sensor-range` (default: `6`): Same meaning as training. Must match the training setting for the checkpoints you are loading.
+- `--n-sectors` (default: `36`): Forest-only; must match training.
+- `--cell-size` (default: `1.0`): Grid-only; affects KPI unit conversion (meters) for path length and clearance.
+
+### B.3 KPI averaging / randomness
+
+- `--runs` (default: `5`): Number of rollout repeats per env per algorithm for averaging KPIs.
+  - Increase for less variance; decrease for faster evaluation.
+- `--seed` (default: `0`): Base seed for rollouts (the CLI offsets it per algorithm/run internally).
+
+### B.4 Runtime / device
+
+- `--device` (default: `auto`): Same as training.
+- `--cuda-device` (default: `0`): Same as training.
+- `--self-check` (default: off): Same as training.
+- `--kpi-time-mode` (default: `rollout`): How `inference_time_s` is measured for RL rollouts.
+  - `rollout`: full rollout wall-clock time (includes `env.step`)
+  - `policy`: action-selection compute time only (Q forward + admissibility checks)
+
+### B.5 Baselines (Hybrid A* + RRT*)
+
+- `--baselines` (default: none): Add classical planners to the KPI table/plots.
+  - Options: `hybrid_astar`, `rrt_star`, or `all`.
+- `--skip-rl` (default: off): Run baselines without loading DQN/IDDQN checkpoints.
+- `--baseline-timeout` (default: `5.0`): Per-planner time budget (seconds).
+- `--hybrid-max-nodes` (default: `200000`): Hybrid A* node budget.
+- `--rrt-max-iter` (default: `5000`): RRT* iteration budget.
+- `--forest-baseline-rollout` (default: disabled): Forest-only; roll out a discrete tracker on baseline paths and include tracking compute in `inference_time_s`.
+
+---
+
+## C) Code-level hyperparameters (not CLI flags yet)
+
+The DQN/IDDQN hyperparameters are defined in `amr_dqn/agents.py` as `AgentConfig`. To change them:
+
+1) Edit `amr_dqn/agents.py` (`AgentConfig` defaults), then retrain.
+2) Keep training + inference consistent (a checkpoint trained with one config may not load if you later change network sizes).
+
+Key fields (defaults shown):
+
+- `gamma=0.995`: Discount factor (higher = longer-horizon credit assignment; forest needs high gamma).
+- `learning_rate=5e-4`: Adam learning rate (higher = faster/less stable; lower = slower/more stable).
+- `replay_capacity=100_000`: Replay buffer size (larger = more diverse replay, more memory).
+- `batch_size=128`: Minibatch size per update (larger = smoother gradients, more compute).
+- `target_update_steps=1000`: DQN-only hard target update period (in gradient updates).
+- `target_tau=0.005`: IDDQN-only soft target update rate (Polyak averaging; larger = faster target tracking).
+- `grad_clip_norm=10.0`: Gradient clipping threshold (reduce if you see unstable spikes).
+- `eps_start=0.9`, `eps_final=0.01`, `eps_decay=2000`: Exploration schedule (start, end, and decay rate/episodes).
+- `hidden_layers=2`, `hidden_dim=128`: MLP size (bigger = more capacity, slower).
+- `per_alpha=0.6`, `per_beta_start=0.4`, `per_beta_steps=50_000`: IDDQN prioritized replay settings (set `per_alpha=0` to disable PER).
+- `demo_margin=0.8`, `demo_lambda=1.0`, `demo_ce_lambda=1.0`: DQfD-style demo losses (used only on `demo=True` transitions from forest expert mixing/prefill).
