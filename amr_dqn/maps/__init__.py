@@ -223,14 +223,17 @@ def _get_forest_spec(env_name: str) -> ArrayGridMapSpec:
     from amr_dqn.maps.forest import ForestParams, generate_forest_grid
 
     if env_name == "forest_a":
-        # Large map, wide gaps.
+        # Largest forest map (more room; easier to see generalization).
         seed = 101
         params = ForestParams(
-            width_cells=160,
-            height_cells=160,
-            trunk_count=80,
-            trunk_gap_m=1.30,
+            width_cells=360,
+            height_cells=360,
+            trunk_count=85,
+            trunk_gap_m=3.0,
+            trunk_gap_jitter=0.15,
             bush_cluster_count=0,
+            start_frac=0.12,
+            goal_frac=0.88,
         )
     elif env_name == "forest_b":
         # Small map, tighter gaps (must remain bicycle-feasible).

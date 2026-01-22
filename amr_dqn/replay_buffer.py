@@ -11,8 +11,10 @@ class Batch:
     actions: np.ndarray
     rewards: np.ndarray
     next_obs: np.ndarray
+    next_action_masks: np.ndarray
     dones: np.ndarray
     demos: np.ndarray
+    n_steps: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -21,24 +23,29 @@ class PrioritizedBatch:
     actions: np.ndarray
     rewards: np.ndarray
     next_obs: np.ndarray
+    next_action_masks: np.ndarray
     dones: np.ndarray
     demos: np.ndarray
+    n_steps: np.ndarray
     idxs: np.ndarray
     weights: np.ndarray
 
 
 class ReplayBuffer:
-    def __init__(self, capacity: int, obs_dim: int, *, rng: np.random.Generator):
+    def __init__(self, capacity: int, obs_dim: int, n_actions: int, *, rng: np.random.Generator):
         self.capacity = int(capacity)
         self.obs_dim = int(obs_dim)
+        self.n_actions = int(n_actions)
         self._rng = rng
 
         self._obs = np.zeros((self.capacity, self.obs_dim), dtype=np.float32)
         self._actions = np.zeros((self.capacity,), dtype=np.int64)
         self._rewards = np.zeros((self.capacity,), dtype=np.float32)
         self._next_obs = np.zeros((self.capacity, self.obs_dim), dtype=np.float32)
+        self._next_action_masks = np.ones((self.capacity, self.n_actions), dtype=np.bool_)
         self._dones = np.zeros((self.capacity,), dtype=np.float32)
         self._demos = np.zeros((self.capacity,), dtype=np.float32)
+        self._n_steps = np.ones((self.capacity,), dtype=np.int64)
 
         self._idx = 0
         self._size = 0
@@ -54,7 +61,9 @@ class ReplayBuffer:
         next_obs: np.ndarray,
         done: bool,
         *,
+        next_action_mask: np.ndarray | None = None,
         demo: bool = False,
+        n_steps: int = 1,
     ) -> None:
         i = self._idx
         # DQfD-style safeguard: preserve demonstration transitions so they
@@ -73,8 +82,16 @@ class ReplayBuffer:
         self._actions[i] = int(action)
         self._rewards[i] = float(reward)
         self._next_obs[i] = next_obs
+        if next_action_mask is None:
+            self._next_action_masks[i] = True
+        else:
+            m = np.asarray(next_action_mask, dtype=bool).reshape(-1)
+            if m.size != int(self.n_actions):
+                raise ValueError("next_action_mask must have shape (n_actions,)")
+            self._next_action_masks[i] = True if not bool(m.any()) else m
         self._dones[i] = 1.0 if done else 0.0
         self._demos[i] = 1.0 if demo else 0.0
+        self._n_steps[i] = int(max(1, int(n_steps)))
 
         self._idx = (int(i) + 1) % int(self.capacity)
         self._size = min(self.capacity, self._size + 1)
@@ -89,8 +106,10 @@ class ReplayBuffer:
             actions=self._actions[idxs],
             rewards=self._rewards[idxs],
             next_obs=self._next_obs[idxs],
+            next_action_masks=self._next_action_masks[idxs],
             dones=self._dones[idxs],
             demos=self._demos[idxs],
+            n_steps=self._n_steps[idxs],
         )
 
 
@@ -104,6 +123,7 @@ class PrioritizedReplayBuffer:
         self,
         capacity: int,
         obs_dim: int,
+        n_actions: int,
         *,
         rng: np.random.Generator,
         alpha: float = 0.6,
@@ -111,6 +131,7 @@ class PrioritizedReplayBuffer:
     ) -> None:
         self.capacity = int(capacity)
         self.obs_dim = int(obs_dim)
+        self.n_actions = int(n_actions)
         self._rng = rng
         self.alpha = float(alpha)
         self.eps = float(eps)
@@ -128,8 +149,10 @@ class PrioritizedReplayBuffer:
         self._actions = np.zeros((self.capacity,), dtype=np.int64)
         self._rewards = np.zeros((self.capacity,), dtype=np.float32)
         self._next_obs = np.zeros((self.capacity, self.obs_dim), dtype=np.float32)
+        self._next_action_masks = np.ones((self.capacity, self.n_actions), dtype=np.bool_)
         self._dones = np.zeros((self.capacity,), dtype=np.float32)
         self._demos = np.zeros((self.capacity,), dtype=np.float32)
+        self._n_steps = np.ones((self.capacity,), dtype=np.int64)
 
         # Binary sum-tree with leaves in [capacity, 2*capacity).
         self._tree = np.zeros((2 * self.capacity,), dtype=np.float32)
@@ -164,8 +187,10 @@ class PrioritizedReplayBuffer:
         next_obs: np.ndarray,
         done: bool,
         *,
+        next_action_mask: np.ndarray | None = None,
         td_error: float | None = None,
         demo: bool = False,
+        n_steps: int = 1,
     ) -> None:
         i = self._idx
         # Preserve demonstrations when possible (see ReplayBuffer.add).
@@ -180,8 +205,16 @@ class PrioritizedReplayBuffer:
         self._actions[i] = int(action)
         self._rewards[i] = float(reward)
         self._next_obs[i] = next_obs
+        if next_action_mask is None:
+            self._next_action_masks[i] = True
+        else:
+            m = np.asarray(next_action_mask, dtype=bool).reshape(-1)
+            if m.size != int(self.n_actions):
+                raise ValueError("next_action_mask must have shape (n_actions,)")
+            self._next_action_masks[i] = True if not bool(m.any()) else m
         self._dones[i] = 1.0 if done else 0.0
         self._demos[i] = 1.0 if demo else 0.0
+        self._n_steps[i] = int(max(1, int(n_steps)))
 
         p = self._max_priority if td_error is None else self._priority(float(td_error))
         self._max_priority = max(float(self._max_priority), float(p))
@@ -221,8 +254,10 @@ class PrioritizedReplayBuffer:
                 actions=self._actions[idxs],
                 rewards=self._rewards[idxs],
                 next_obs=self._next_obs[idxs],
+                next_action_masks=self._next_action_masks[idxs],
                 dones=self._dones[idxs],
                 demos=self._demos[idxs],
+                n_steps=self._n_steps[idxs],
                 idxs=idxs,
                 weights=weights,
             )
@@ -245,8 +280,10 @@ class PrioritizedReplayBuffer:
             actions=self._actions[idxs],
             rewards=self._rewards[idxs],
             next_obs=self._next_obs[idxs],
+            next_action_masks=self._next_action_masks[idxs],
             dones=self._dones[idxs],
             demos=self._demos[idxs],
+            n_steps=self._n_steps[idxs],
             idxs=idxs,
             weights=weights.astype(np.float32, copy=False),
         )

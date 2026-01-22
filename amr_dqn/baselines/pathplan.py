@@ -14,6 +14,7 @@ from amr_dqn.third_party.pathplan import (
     HybridAStarPlanner,
     OrientedBoxFootprint,
     RRTStarPlanner,
+    TwoCircleFootprint,
 )
 
 
@@ -61,6 +62,13 @@ def forest_oriented_box_footprint() -> OrientedBoxFootprint:
     return OrientedBoxFootprint(length=0.924, width=0.740)
 
 
+def forest_two_circle_footprint() -> TwoCircleFootprint:
+    # Use the same nominal vehicle dimensions as the forest env and convert to a conservative
+    # two-circle approximation (robust for grid collision checks at arbitrary headings).
+    box = forest_oriented_box_footprint()
+    return TwoCircleFootprint.from_box(length=float(box.length), width=float(box.width))
+
+
 def _default_start_theta(start_xy: tuple[int, int], goal_xy: tuple[int, int], *, cell_size_m: float) -> float:
     dx = float(goal_xy[0] - start_xy[0]) * float(cell_size_m)
     dy = float(goal_xy[1] - start_xy[1]) * float(cell_size_m)
@@ -70,7 +78,7 @@ def _default_start_theta(start_xy: tuple[int, int], goal_xy: tuple[int, int], *,
 def plan_hybrid_astar(
     *,
     grid_map: GridMap,
-    footprint: OrientedBoxFootprint,
+    footprint: OrientedBoxFootprint | TwoCircleFootprint,
     params: AckermannParams,
     start_xy: tuple[int, int],
     goal_xy: tuple[int, int],
@@ -113,7 +121,7 @@ def plan_hybrid_astar(
 def plan_rrt_star(
     *,
     grid_map: GridMap,
-    footprint: OrientedBoxFootprint,
+    footprint: OrientedBoxFootprint | TwoCircleFootprint,
     params: AckermannParams,
     start_xy: tuple[int, int],
     goal_xy: tuple[int, int],

@@ -12,8 +12,8 @@ Below are example commands, followed by a parameter-by-parameter reference expla
 Use this to verify CUDA/PyTorch setup before a long run:
 
 ```bash
-python train.py --self-check --device auto
-python infer.py --self-check --device auto
+python train.py --self-check --device cuda
+python infer.py --self-check --device cuda
 ```
 
 ## 1) Train (paper env `a b c d`)
@@ -21,13 +21,13 @@ python infer.py --self-check --device auto
 Default behavior writes to `runs/<out>/train_<timestamp>/...`:
 
 ```bash
-python train.py --envs a b c d --out outputs_repro_1000 --episodes 1000 --device auto
+python train.py --envs a b c d --out outputs_repro_1000 --episodes 1000 --device cuda
 ```
 
 No timestamp (writes directly to `runs/<out>/...`; will overwrite files in that folder):
 
 ```bash
-python train.py --envs a b c d --out outputs_repro_1000 --episodes 1000 --device auto --no-timestamp-runs
+python train.py --envs a b c d --out outputs_repro_1000 --episodes 1000 --device cuda --no-timestamp-runs
 ```
 
 ## 2) Train (forest env: bicycle dynamics + DQfD-style stabilizers)
@@ -37,20 +37,20 @@ Notes for `forest_*` envs:
 - Forest uses a fixed internal map resolution of **0.1 m/cell** (so `--cell-size` is ignored for forest).
 - Default forest training already enables:
   - action masking ("shield") for non-expert actions
-  - MPC expert mixing (creates `demo=True` transitions)
+  - Hybrid A* expert mixing (creates `demo=True` transitions)
   - DQfD-style demo losses on `demo=True` transitions (large-margin + behavior cloning)
   - optional start-state curriculum (`--forest-curriculum`, on by default)
 
 Baseline multi-map run (Fig.13-style curves; saves `models/<env>/{dqn.pt,iddqn.pt}`):
 
 ```bash
-python train.py --envs forest_a forest_b forest_c forest_d --out outputs_forest --episodes 1000 --max-steps 600 --device auto
+python train.py --envs forest_a forest_b forest_c forest_d --out outputs_forest --episodes 1000 --max-steps 600 --device cuda
 ```
 
 Single-map DQfD-style run (fast iteration; similar to `runs/outputs_forest_dqfd{1,2}` configs):
 
 ```bash
-python train.py --envs forest_b --out outputs_forest_dqfd2 --episodes 600 --max-steps 600 --device cpu --no-progress --no-timestamp-runs --no-forest-curriculum --forest-expert-prob-start 1.0 --forest-expert-prob-final 0.0 --forest-expert-prob-decay 0.7
+python train.py --envs forest_b --out outputs_forest_dqfd2 --episodes 600 --max-steps 600 --device cuda --no-progress --no-timestamp-runs --no-forest-curriculum --forest-expert-prob-start 1.0 --forest-expert-prob-final 0.0 --forest-expert-prob-decay 0.7
 ```
 
 Optional: add a short expert replay prefill before learning starts (closer to original "DQfD"):
@@ -68,14 +68,14 @@ Important: keep `--sensor-range` and `--n-sectors` consistent with training (or 
 Use an experiment name (auto-picks latest train run under `runs/<name>/...`):
 
 ```bash
-python infer.py --envs a b c d --models outputs_repro_1000 --out outputs_repro_1000 --device auto
-python infer.py --envs forest_a forest_b forest_c forest_d --models outputs_forest --out outputs_forest --runs 1 --max-steps 600 --device auto
+python infer.py --envs a b c d --models outputs_repro_1000 --out outputs_repro_1000 --device cuda
+python infer.py --envs forest_a forest_b forest_c forest_d --models outputs_forest --out outputs_forest --runs 1 --max-steps 600 --device cuda
 ```
 
 Forest DQfD-style inference (picks the latest models under `runs/outputs_forest_dqfd2/...`):
 
 ```bash
-python infer.py --envs forest_b --models outputs_forest_dqfd2 --out outputs_forest_dqfd2_infer --runs 1 --max-steps 600 --device auto
+python infer.py --envs forest_b --models outputs_forest_dqfd2 --out outputs_forest_dqfd2_infer --runs 1 --max-steps 600 --device cuda
 ```
 
 Or point directly at a specific models dir (useful if you trained with `--no-timestamp-runs`):
@@ -87,7 +87,7 @@ python infer.py --envs forest_b --models runs/outputs_forest_dqfd2/models --out 
 Include classical baselines (Hybrid A* + RRT*) in the same KPI table + path plots:
 
 ```bash
-python infer.py --envs a b c d --models outputs_repro_1000 --out outputs_repro_1000 --baselines all --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000 --device auto
+python infer.py --envs a b c d --models outputs_repro_1000 --out outputs_repro_1000 --baselines all --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000 --device cuda
 ```
 
 Baseline-only (no checkpoints required):
@@ -181,13 +181,13 @@ These affect the environment observation vector and therefore model checkpoint c
 - `--curriculum-ramp` (default: `0.35`): Fraction of total episodes needed to ramp the curriculum back to the canonical start.
   - Smaller = reaches canonical start sooner (harder sooner, less train/test mismatch).
   - Larger = stays in "easy-start" regime longer (easier early learning, but can create mismatch).
-- `--forest-demo-prefill` / `--no-forest-demo-prefill` (default: disabled): Prefill replay buffer with MPC expert rollouts before learning starts.
+- `--forest-demo-prefill` / `--no-forest-demo-prefill` (default: enabled): Prefill replay buffer with Hybrid A* expert rollouts before learning starts.
   - Enable when forest training collapses to degenerate behaviors (e.g., stop/jitter) early in training.
-- `--forest-demo-horizon` (default: `15`): MPC horizon steps (constant action) used by the expert (prefill + exploration).
+- `--forest-demo-horizon` (default: `15`): Expert horizon steps (constant action) used by the Hybrid A* guided expert (prefill + exploration).
   - Larger = more lookahead (slower, often safer); smaller = faster but more myopic.
-- `--forest-demo-w-clearance` (default: `0.5`): Clearance weight in the expert MPC score (`-cost_to_go + w_clearance * min_clearance`).
+- `--forest-demo-w-clearance` (default: `0.8`): Clearance weight in the expert score (`-cost_to_go + w_clearance * min_clearance`).
   - Increase to bias expert toward safer paths; decrease to bias toward shortest cost-to-go.
-- `--forest-expert-exploration` / `--no-forest-expert-exploration` (default: enabled): Mix MPC expert into the behavior policy early in training.
+- `--forest-expert-exploration` / `--no-forest-expert-exploration` (default: enabled): Mix Hybrid A* expert into the behavior policy early in training.
   - When enabled, non-expert actions also use action masking (safety/progress shield).
   - Disable only if you want pure epsilon-greedy behavior (usually much less stable in forest).
 - `--forest-expert-prob-start` (default: `0.7`): Probability of taking the expert action at the start of training.
@@ -264,3 +264,47 @@ Key fields (defaults shown):
 - `hidden_layers=2`, `hidden_dim=128`: MLP size (bigger = more capacity, slower).
 - `per_alpha=0.6`, `per_beta_start=0.4`, `per_beta_steps=50_000`: IDDQN prioritized replay settings (set `per_alpha=0` to disable PER).
 - `demo_margin=0.8`, `demo_lambda=1.0`, `demo_ce_lambda=1.0`: DQfD-style demo losses (used only on `demo=True` transitions from forest expert mixing/prefill).
+
+
+
+
+forest_a
+
+Train: python train.py --envs forest_a --out forest_a_rand --episodes 1000 --max-steps 600 --forest-random-start-goal --forest-rand-fixed-prob 0 --forest-expert auto --device cuda
+Infer: python infer.py --envs forest_a --models forest_a_rand --out forest_a_rand_eval --baselines all --random-start-goal --runs 20 --rand-fixed-prob 0 --kpi-time-mode policy --max-steps 600 --device cuda
+forest_b
+
+Train: python train.py --envs forest_b --out forest_b_rand --episodes 1000 --max-steps 600 --forest-random-start-goal --forest-rand-fixed-prob 0 --forest-expert auto --device cuda
+Infer: python infer.py --envs forest_b --models forest_b_rand --out forest_b_rand_eval --baselines all --random-start-goal --runs 20 --rand-fixed-prob 0 --kpi-time-mode policy --max-steps 600 --device cuda
+forest_c
+
+Train: python train.py --envs forest_c --out forest_c_rand --episodes 1000 --max-steps 600 --forest-random-start-goal --forest-rand-fixed-prob 0 --forest-expert auto --device cuda
+Infer: python infer.py --envs forest_c --models forest_c_rand --out forest_c_rand_eval --baselines all --random-start-goal --runs 20 --rand-fixed-prob 0 --kpi-time-mode policy --max-steps 600 --device cuda
+forest_d
+
+Train: python train.py --envs forest_d --out forest_d_rand --episodes 1000 --max-steps 600 --forest-random-start-goal --forest-rand-fixed-prob 0 --forest-expert auto --device cuda
+Infer: python infer.py --envs forest_d --models forest_d_rand --out forest_d_rand_eval --baselines all --random-start-goal --runs 20 --rand-fixed-prob 0 --kpi-time-mode policy --max-steps 600 --device cuda
+
+
+
+python train.py --envs forest_a --out forest_a_gap_rand --episodes 1000 --max-steps 1000 --forest-random-start-goal --forest-rand-fixed-prob 0 --forest-expert cost_to_go --device cuda
+
+
+python infer.py --envs forest_a --models runs/forest_a_gap_rand/train_20260121_071731 --out forest_a_gap_rand --baselines all --random-start-goal --runs 4 --rand-fixed-prob 0 --kpi-time-mode policy --max-steps 1000 --device cuda
+python infer.py --envs forest_a --models runs\forest_a_gap_rand\train_20260121_075305 --out forest_a_gap_rand --baselines all --random-start-goal --runs 4 --rand-fixed-prob 0 --kpi-time-mode policy --max-steps 1000 --device cuda
+runs\forest_a_gap_rand\train_20260121_075305
+runs\forest_a_gap25_rev\train_20260121_095505
+
+python infer.py --envs forest_a --models runs\forest_a_gap25_rev\train_20260121_095505 --out forest_a_gap_rand --baselines all --random-start-goal --runs 4 --rand-fixed-prob 0 --kpi-time-mode policy --max-steps 1000 --device cuda --seed 30
+
+python train.py --envs forest_a --out forest_a_gap375_masked --episodes 2000 --max-steps 1000 --obs-map-size 24 --forest-random-start-goal --forest-rand-fixed-prob 0 --forest-expert cost_to_go --forest-demo-pretrain-steps 80000 --device cuda
+
+python infer.py --envs forest_a --models runs/forest_a_gap375_masked/train_20260121_105536 --out forest_a_gap375_masked_eval --baselines all --random-start-goal --runs 4 --rand-fixed-prob 0 --kpi-time-mode policy --max-steps 1000 --obs-map-size 24 --device cuda --seed 30
+
+
+cd d:\BaiduSyncdisk\study\phdprojec\dqn
+python train.py --envs forest_a --out forest_a_gap30_rev_12_23am --episodes 300 --max-steps 1000 --forest-random-start-goal --forest-rand-min-cost-m 6 --forest-rand-max-cost-m 0 --forest-rand-fixed-prob 0 --forest-rand-tries 200 --forest-expert cost_to_go --no-forest-expert-exploration --forest-demo-pretrain-steps 80000 --learning-starts 5000 --device cuda --cuda-device 0 --seed 0
+runs\forest_a_gap30_rev_12_23am\train_20260122_002417
+conda run -n ros2py310 python infer.py --envs forest_a --models runs\forest_a_gap30_rev_12_23am\train_20260122_002417 --out runs\forest_a_gap30_rev_12_23am\train_20260122_002417--random-start-goal --runs 4 --rand-min-cost-m 6 --rand-max-cost-m 0 --rand-fixed-prob 0 --rand-tries 200 --rand-reject-unreachable --kpi-time-mode policy --max-steps 1000 --device cuda --cuda-device 0 --seed 21
+
+python infer.py --envs forest_a --models "runs\forest_a_gap30_rev_12_23am\train_20260122_002417" --out "runs\forest_a_gap30_rev_12_23am\train_20260122_002417" --random-start-goal --runs 4 --rand-min-cost-m 6 --rand-max-cost-m 0 --rand-fixed-prob 0 --rand-tries 200 --rand-reject-unreachable --kpi-time-mode policy --max-steps 1000 --device cuda --cuda-device 0 --seed 23

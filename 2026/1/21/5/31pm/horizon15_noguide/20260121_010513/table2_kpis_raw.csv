@@ -1,0 +1,9 @@
+Environment,Algorithm,success_rate,avg_path_length,num_corners,min_collision_dist,inference_time_s,max_corner_deg,planning_cost
+Env. (forest_a),IDDQN,0.0,,,,0.17995,,inf
+Env. (forest_a),DQN,0.0,,,,0.22623,,inf
+Env. (forest_b),IDDQN,0.0,,,,0.1575,,inf
+Env. (forest_b),DQN,0.0,,,,0.18288,,inf
+Env. (forest_c),IDDQN,0.0,,,,0.43243,,inf
+Env. (forest_c),DQN,0.0,,,,0.39137,,inf
+Env. (forest_d),IDDQN,0.0,,,,0.08167,,inf
+Env. (forest_d),DQN,1.0,5.2214,0,0.4007,0.03341,1,5.238

@@ -1,0 +1,10 @@
+| Environment     | Algorithm name   |   Success rate |   Average path length (m) | Number of path corners   |   Mini collision to obstacle (m) |   Inference time (s) | Max corner degree (°)   |   Planning cost (m) |
+|:----------------|:-----------------|---------------:|--------------------------:|:-------------------------|---------------------------------:|---------------------:|:------------------------|--------------------:|
+| Env. (forest_a) | IDDQN            |              0 |                  nan      | <NA>                     |                         nan      |              0.17995 | <NA>                    |             inf     |
+| Env. (forest_a) | DQN              |              0 |                  nan      | <NA>                     |                         nan      |              0.22623 | <NA>                    |             inf     |
+| Env. (forest_b) | IDDQN            |              0 |                  nan      | <NA>                     |                         nan      |              0.1575  | <NA>                    |             inf     |
+| Env. (forest_b) | DQN              |              0 |                  nan      | <NA>                     |                         nan      |              0.18288 | <NA>                    |             inf     |
+| Env. (forest_c) | IDDQN            |              0 |                  nan      | <NA>                     |                         nan      |              0.43243 | <NA>                    |             inf     |
+| Env. (forest_c) | DQN              |              0 |                  nan      | <NA>                     |                         nan      |              0.39137 | <NA>                    |             inf     |
+| Env. (forest_d) | IDDQN            |              0 |                  nan      | <NA>                     |                         nan      |              0.08167 | <NA>                    |             inf     |
+| Env. (forest_d) | DQN              |              1 |                    5.2214 | 0                        |                           0.4007 |              0.03341 | 1                       |               5.238 |

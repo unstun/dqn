@@ -25,7 +25,8 @@ import torch
 from amr_dqn.agents import AgentConfig, DQNFamilyAgent
 from amr_dqn.baselines.pathplan import (
     default_ackermann_params,
-    forest_oriented_box_footprint,
+    PlannerResult,
+    forest_two_circle_footprint,
     grid_map_from_obstacles,
     plan_hybrid_astar,
     plan_rrt_star,
@@ -49,6 +50,7 @@ def rollout_agent(
     *,
     max_steps: int,
     seed: int,
+    reset_options: dict[str, object] | None = None,
     time_mode: str = "rollout",
     obs_transform: Callable[[np.ndarray], np.ndarray] | None = None,
     forest_adm_horizon: int = 15,
@@ -56,7 +58,7 @@ def rollout_agent(
     forest_min_od_m: float = 0.0,
     forest_min_progress_m: float = 1e-4,
 ) -> tuple[list[tuple[float, float]], float, bool]:
-    obs, _ = env.reset(seed=seed)
+    obs, _ = env.reset(seed=seed, options=reset_options)
     if obs_transform is not None:
         obs = obs_transform(obs)
     path: list[tuple[float, float]] = [(float(env.start_xy[0]), float(env.start_xy[1]))]
@@ -80,38 +82,52 @@ def rollout_agent(
     topk_k = max(1, int(forest_topk))
     min_od = float(forest_min_od_m)
     min_prog = float(forest_min_progress_m)
+
     while not (done or truncated) and steps < max_steps:
         steps += 1
         if time_mode == "policy":
             sync_cuda()
             t0 = time.perf_counter()
         if isinstance(env, AMRBicycleEnv):
-            # Forest policy rollout: evaluate the greedy policy, but only compute the expensive
-            # admissible-action mask when needed. For performance, reuse a single Q forward-pass
-            # for greedy selection, top-k fallback, and masked selection.
+            # Forest policy rollout: greedy Q policy with admissible-action safety gating.
+            # Optionally, tie-break top-k actions using a lightweight Hybrid A* reference tracker
+            # (precomputed path; no online planning during inference).
             with torch.no_grad():
                 x = torch.from_numpy(obs.astype(np.float32, copy=False)).to(agent.device)
                 q = agent.q(x.unsqueeze(0)).squeeze(0)
-                a = int(torch.argmax(q).item())
 
-            if not bool(env.is_action_admissible(int(a), horizon_steps=adm_h, min_od_m=min_od, min_progress_m=min_prog)):
+            a0 = int(torch.argmax(q).item())
+            a = int(a0)
+
+            a0_adm = bool(env.is_action_admissible(int(a0), horizon_steps=adm_h, min_od_m=min_od, min_progress_m=min_prog))
+            if not a0_adm:
                 chosen: int | None = None
                 kk = int(min(int(topk_k), int(q.numel())))
                 topk = torch.topk(q, k=kk, dim=0).indices.detach().cpu().numpy()
                 for cand in topk.tolist():
                     cand_i = int(cand)
-                    if cand_i == int(a):
+                    if cand_i == int(a0):
                         continue
                     if bool(env.is_action_admissible(cand_i, horizon_steps=adm_h, min_od_m=min_od, min_progress_m=min_prog)):
-                        chosen = cand_i
+                        chosen = int(cand_i)
                         break
 
                 if chosen is None:
-                    mask = env.admissible_action_mask(horizon_steps=adm_h, min_od_m=min_od, min_progress_m=min_prog)
-                    if bool(mask.any()):
+                    # If there are no safe actions that make short-horizon cost-to-go progress,
+                    # fall back to a lightweight heuristic rollout instead of picking an arbitrary
+                    # "safe but stalled" action by Q-value (which often collapses to stopping).
+                    prog_mask = env.admissible_action_mask(
+                        horizon_steps=adm_h,
+                        min_od_m=min_od,
+                        min_progress_m=min_prog,
+                        fallback_to_safe=False,
+                    )
+                    if bool(prog_mask.any()):
                         q_masked = q.clone()
-                        q_masked[torch.from_numpy(~mask).to(q.device)] = torch.finfo(q_masked.dtype).min
+                        q_masked[torch.from_numpy(~prog_mask).to(q.device)] = torch.finfo(q_masked.dtype).min
                         chosen = int(torch.argmax(q_masked).item())
+                    else:
+                        chosen = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=min_od))
 
                 if chosen is not None:
                     a = int(chosen)
@@ -128,6 +144,10 @@ def rollout_agent(
         if info.get("reached"):
             reached = True
             break
+
+    if time_mode == "rollout":
+        sync_cuda()
+        inference_time_s = float(time.perf_counter() - t_rollout0)
     return path, float(inference_time_s), bool(reached)
 
 
@@ -137,6 +157,8 @@ def rollout_tracked_path(
     *,
     max_steps: int,
     seed: int,
+    reset_options: dict[str, object] | None = None,
+    time_mode: str = "rollout",
     lookahead_points: int = 5,
     horizon_steps: int = 15,
     w_target: float = 0.2,
@@ -144,15 +166,16 @@ def rollout_tracked_path(
     w_clearance: float = 0.8,
     w_speed: float = 0.0,
 ) -> tuple[list[tuple[float, float]], float, bool]:
-    obs, _ = env.reset(seed=seed)
+    time_mode = str(time_mode).lower().strip()
+    if time_mode not in {"rollout", "policy"}:
+        raise ValueError("time_mode must be one of: rollout, policy")
+
+    obs, _ = env.reset(seed=seed, options=reset_options)
     path: list[tuple[float, float]] = [(float(env.start_xy[0]), float(env.start_xy[1]))]
+    if len(ref_path_xy_cells) < 2:
+        return path, 0.0, False
 
     def choose_action(progress_idx: int) -> tuple[int, int]:
-        if len(ref_path_xy_cells) < 2:
-            return int(env.expert_action_mpc(horizon_steps=int(horizon_steps), w_clearance=float(w_clearance), w_speed=float(w_speed))), int(
-                progress_idx
-            )
-
         x_cells = float(env._x_m) / float(env.cell_size_m)
         y_cells = float(env._y_m) / float(env.cell_size_m)
 
@@ -230,13 +253,12 @@ def rollout_tracked_path(
                 best_action = int(a_id)
 
         if best_action is None or not math.isfinite(best_score):
-            return int(env.expert_action_mpc(horizon_steps=int(horizon_steps), w_clearance=float(w_clearance), w_speed=float(w_speed))), int(
-                progress_idx
-            )
+            return int(env._fallback_action_short_rollout(horizon_steps=int(horizon_steps), min_od_m=0.0)), int(progress_idx)
 
         return int(best_action), int(progress_idx)
 
     inference_time_s = 0.0
+    t_rollout0 = time.perf_counter()
     done = False
     truncated = False
     steps = 0
@@ -244,17 +266,18 @@ def rollout_tracked_path(
     progress_idx = 0
     while not (done or truncated) and steps < max_steps:
         steps += 1
-        t0 = time.perf_counter()
+        t0 = time.perf_counter() if time_mode == "policy" else None
         a, progress_idx = choose_action(progress_idx)
-        inference_time_s += float(time.perf_counter() - t0)
+        if t0 is not None:
+            inference_time_s += float(time.perf_counter() - t0)
         obs, _, done, truncated, info = env.step(int(a))
         x, y = info["agent_xy"]
         path.append((float(x), float(y)))
         if info.get("reached"):
             reached = True
             break
+
     if time_mode == "rollout":
-        sync_cuda()
         inference_time_s = float(time.perf_counter() - t_rollout0)
 
     return path, float(inference_time_s), bool(reached)
@@ -430,6 +453,15 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--runs", type=int, default=5, help="Averaging runs for stochastic methods.")
     ap.add_argument(
+        "--plot-run-idx",
+        type=int,
+        default=0,
+        help=(
+            "When --random-start-goal is enabled, plot this sample index in fig12_paths.png so all algorithms share "
+            "the same (start,goal) pair (default: 0)."
+        ),
+    )
+    ap.add_argument(
         "--baselines",
         nargs="*",
         default=[],
@@ -477,7 +509,7 @@ def main() -> int:
     ap.add_argument(
         "--kpi-time-mode",
         choices=("rollout", "policy"),
-        default="rollout",
+        default="policy",
         help=(
             "How to measure inference_time_s for RL rollouts. "
             "'rollout' includes the full rollout wall-clock time (including env.step); "
@@ -518,11 +550,61 @@ def main() -> int:
         ),
     )
     ap.add_argument(
+        "--random-start-goal",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Forest-only: evaluate on random start/goal pairs (uses --runs samples per environment).",
+    )
+    ap.add_argument(
+        "--rand-min-cost-m",
+        type=float,
+        default=6.0,
+        help="Forest-only: minimum start→goal cost-to-go (meters) when sampling random pairs.",
+    )
+    ap.add_argument(
+        "--rand-max-cost-m",
+        type=float,
+        default=0.0,
+        help="Forest-only: maximum start→goal cost-to-go (meters) when sampling random pairs (<=0 disables).",
+    )
+    ap.add_argument(
+        "--rand-fixed-prob",
+        type=float,
+        default=0.0,
+        help="Forest-only: probability of using the canonical fixed start/goal instead of a random pair.",
+    )
+    ap.add_argument(
+        "--rand-tries",
+        type=int,
+        default=200,
+        help="Forest-only: rejection-sampling tries per sample when sampling random start/goal pairs.",
+    )
+    ap.add_argument(
+        "--rand-reject-unreachable",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Forest-only: when --random-start-goal is enabled, resample until Hybrid A* succeeds "
+            "(avoids unreachable start/goal pairs in narrow forests and keeps comparisons meaningful)."
+        ),
+    )
+    ap.add_argument(
+        "--rand-reject-max-attempts",
+        type=int,
+        default=5000,
+        help="Forest-only: maximum sampling attempts to find reachable random (start,goal) pairs.",
+    )
+    ap.add_argument(
         "--self-check",
         action="store_true",
         help="Print CUDA/runtime info and exit (use to verify CUDA setup).",
     )
     args = ap.parse_args()
+    if int(getattr(args, "plot_run_idx", 0)) < 0:
+        raise SystemExit("--plot-run-idx must be >= 0")
+    forest_envs = set(FOREST_ENV_ORDER)
+    if int(args.max_steps) == 300 and args.envs and all(str(e) in forest_envs for e in args.envs):
+        args.max_steps = 600
 
     baseline_aliases = {
         "hybrid_astar": "hybrid_astar",
@@ -628,8 +710,9 @@ def main() -> int:
     )
 
     rows: list[dict[str, object]] = []
-    paths_for_plot: dict[str, dict[str, PathTrace]] = {}
-    plot_meta: dict[str, dict[str, float]] = {}
+    rows_runs: list[dict[str, object]] = []
+    paths_for_plot: dict[tuple[str, int], dict[str, PathTrace]] = {}
+    plot_meta: dict[tuple[str, int], dict[str, float]] = {}
 
     for env_name in args.envs:
         spec = get_map_spec(env_name)
@@ -657,18 +740,128 @@ def main() -> int:
             cell_size_m = float(args.cell_size)
         grid = spec.obstacle_grid()
 
-        env_paths: dict[str, PathTrace] = {}
-        meta: dict[str, float] = {"cell_size_m": float(cell_size_m)}
+        env_paths_by_run: dict[int, dict[str, PathTrace]] = {}
+        base_meta: dict[str, float] = {"cell_size_m": float(cell_size_m)}
         if isinstance(env, AMRBicycleEnv):
-            meta["goal_tol_cells"] = float(env.goal_tolerance_m) / float(cell_size_m)
-            fp = forest_oriented_box_footprint()
-            meta["veh_length_cells"] = float(fp.length) / float(cell_size_m)
-            meta["veh_width_cells"] = float(fp.width) / float(cell_size_m)
+            base_meta["goal_tol_cells"] = float(env.goal_tolerance_m) / float(cell_size_m)
+            fp = forest_two_circle_footprint()
+            base_meta["veh_length_cells"] = float(fp.length) / float(cell_size_m)
+            base_meta["veh_width_cells"] = float(fp.width) / float(cell_size_m)
         else:
-            meta["goal_tol_cells"] = 0.5
-            meta["veh_length_cells"] = 0.0
-            meta["veh_width_cells"] = 0.0
-        plot_meta[env_name] = meta
+            base_meta["goal_tol_cells"] = 0.5
+            base_meta["veh_length_cells"] = 0.0
+            base_meta["veh_width_cells"] = 0.0
+
+        plot_run_idx = int(getattr(args, "plot_run_idx", 0))
+        plot_run_indices: list[int] = [int(plot_run_idx)]
+        multi_pair_plot = (
+            bool(getattr(args, "random_start_goal", False))
+            and isinstance(env, AMRBicycleEnv)
+            and int(args.runs) >= 4
+            and int(len(args.envs)) == 1
+        )
+        if multi_pair_plot:
+            plot_run_indices = [(int(plot_run_idx) + k) % int(args.runs) for k in range(4)]
+        for idx in plot_run_indices:
+            env_paths_by_run.setdefault(int(idx), {})
+
+        # Optional: sample a fixed set of (start, goal) pairs for fair random-start/goal evaluation.
+        reset_options_list: list[dict[str, object] | None] = [None] * int(max(0, int(args.runs)))
+        precomputed_hybrid_paths: list[PlannerResult] | None = None
+        plot_start_xy = tuple(spec.start_xy)
+        plot_goal_xy = tuple(spec.goal_xy)
+        if bool(getattr(args, "random_start_goal", False)) and isinstance(env, AMRBicycleEnv) and int(args.runs) > 0:
+            rand_max = None if float(args.rand_max_cost_m) <= 0.0 else float(args.rand_max_cost_m)
+            if plot_run_idx >= int(args.runs):
+                raise SystemExit(
+                    f"--plot-run-idx={plot_run_idx} must be < --runs={int(args.runs)} when --random-start-goal is enabled."
+                )
+            reset_options_list = []
+            reject_unreachable = bool(getattr(args, "rand_reject_unreachable", False))
+            max_attempts = max(1, int(getattr(args, "rand_reject_max_attempts", 5000)))
+            if reject_unreachable:
+                precomputed_hybrid_paths = []
+                grid_map = grid_map_from_obstacles(grid_y0_bottom=grid, cell_size_m=float(cell_size_m))
+                params = default_ackermann_params(
+                    wheelbase_m=float(env.model.wheelbase_m),
+                    delta_max_rad=float(env.model.delta_max_rad),
+                    v_max_m_s=float(env.model.v_max_m_s),
+                )
+                footprint = forest_two_circle_footprint()
+                goal_xy_tol_m = float(env.goal_tolerance_m)
+                goal_theta_tol_rad = float(env.goal_angle_tolerance_rad)
+
+            attempts = 0
+            while len(reset_options_list) < int(args.runs) and attempts < max_attempts:
+                env.reset(
+                    seed=int(args.seed) + 90_000 + int(attempts),
+                    options={
+                        "random_start_goal": True,
+                        "rand_min_cost_m": float(args.rand_min_cost_m),
+                        "rand_max_cost_m": rand_max,
+                        "rand_fixed_prob": float(args.rand_fixed_prob),
+                        "rand_tries": int(args.rand_tries),
+                    },
+                )
+
+                start_xy = (int(env.start_xy[0]), int(env.start_xy[1]))
+                goal_xy = (int(env.goal_xy[0]), int(env.goal_xy[1]))
+
+                if reject_unreachable:
+                    res = plan_hybrid_astar(
+                        grid_map=grid_map,
+                        footprint=footprint,
+                        params=params,
+                        start_xy=start_xy,
+                        goal_xy=goal_xy,
+                        goal_theta_rad=0.0,
+                        start_theta_rad=None,
+                        goal_xy_tol_m=goal_xy_tol_m,
+                        goal_theta_tol_rad=goal_theta_tol_rad,
+                        timeout_s=float(args.baseline_timeout),
+                        max_nodes=int(args.hybrid_max_nodes),
+                    )
+                    if not bool(res.success):
+                        attempts += 1
+                        continue
+                    precomputed_hybrid_paths.append(res)
+
+                opts: dict[str, object] = {"start_xy": start_xy, "goal_xy": goal_xy}
+                reset_options_list.append(opts)
+                attempts += 1
+
+            if len(reset_options_list) < int(args.runs):
+                raise RuntimeError(
+                    f"Could not sample {int(args.runs)} reachable random (start,goal) pairs for {env_name!r} "
+                    f"after {attempts} attempts. Try increasing --rand-tries, relaxing --rand-min-cost-m / --rand-max-cost-m, "
+                    "or disabling screening via --no-rand-reject-unreachable."
+                )
+            if reset_options_list:
+                plot_start_xy = tuple(reset_options_list[plot_run_idx]["start_xy"])  # type: ignore[arg-type]
+                plot_goal_xy = tuple(reset_options_list[plot_run_idx]["goal_xy"])  # type: ignore[arg-type]
+
+        if not reset_options_list or reset_options_list[0] is None:
+            panel_start_goal: dict[int, tuple[tuple[int, int], tuple[int, int]]] = {
+                int(idx): ((int(spec.start_xy[0]), int(spec.start_xy[1])), (int(spec.goal_xy[0]), int(spec.goal_xy[1])))
+                for idx in plot_run_indices
+            }
+        else:
+            panel_start_goal = {
+                int(idx): (
+                    tuple(reset_options_list[int(idx)]["start_xy"]),  # type: ignore[arg-type]
+                    tuple(reset_options_list[int(idx)]["goal_xy"]),  # type: ignore[arg-type]
+                )
+                for idx in plot_run_indices
+            }
+
+        for idx, (sp_xy, gp_xy) in panel_start_goal.items():
+            meta = dict(base_meta)
+            meta["plot_start_x"] = float(sp_xy[0])
+            meta["plot_start_y"] = float(sp_xy[1])
+            meta["plot_goal_x"] = float(gp_xy[0])
+            meta["plot_goal_y"] = float(gp_xy[1])
+            meta["plot_run_idx"] = float(idx)
+            plot_meta[(env_name, int(idx))] = meta
 
         if not bool(args.skip_rl):
             # Load trained models
@@ -705,13 +898,13 @@ def main() -> int:
             id_kpis: list[KPI] = []
             id_times: list[float] = []
             id_success = 0
-            id_trace: PathTrace | None = None
             for i in range(args.runs):
                 path, dt, reached = rollout_agent(
                     env,
                     iddqn_agent,
                     max_steps=args.max_steps,
                     seed=args.seed + 10_000 + i,
+                    reset_options=reset_options_list[i] if i < len(reset_options_list) else None,
                     time_mode=str(getattr(args, "kpi_time_mode", "rollout")),
                     obs_transform=obs_transform,
                     forest_adm_horizon=int(args.forest_adm_horizon),
@@ -720,23 +913,43 @@ def main() -> int:
                     forest_min_progress_m=float(args.forest_min_progress_m),
                 )
                 id_times.append(float(dt))
+                if int(i) in env_paths_by_run:
+                    env_paths_by_run[int(i)]["IDDQN"] = PathTrace(path_xy_cells=path, success=bool(reached))
+
+                start_xy = (int(spec.start_xy[0]), int(spec.start_xy[1]))
+                goal_xy = (int(spec.goal_xy[0]), int(spec.goal_xy[1]))
+                opts = reset_options_list[i] if i < len(reset_options_list) else None
+                if isinstance(opts, dict) and "start_xy" in opts and "goal_xy" in opts:
+                    sx, sy = opts["start_xy"]  # type: ignore[misc]
+                    gx, gy = opts["goal_xy"]  # type: ignore[misc]
+                    start_xy = (int(sx), int(sy))
+                    goal_xy = (int(gx), int(gy))
+
+                raw_corners = float(num_path_corners(path, angle_threshold_deg=13.0))
+                smoothed = smooth_path(path, iterations=2)
+                run_kpi = KPI(
+                    avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
+                    num_corners=raw_corners,
+                    min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
+                    inference_time_s=float(dt),
+                    max_corner_deg=float(max_corner_degree(smoothed)),
+                )
+                rows_runs.append(
+                    {
+                        "Environment": f"Env. ({env_name})",
+                        "Algorithm": "IDDQN",
+                        "run_idx": int(i),
+                        "start_x": int(start_xy[0]),
+                        "start_y": int(start_xy[1]),
+                        "goal_x": int(goal_xy[0]),
+                        "goal_y": int(goal_xy[1]),
+                        "success_rate": 1.0 if bool(reached) else 0.0,
+                        **dict(run_kpi.__dict__),
+                    }
+                )
                 if bool(reached):
                     id_success += 1
-                    raw_corners = float(num_path_corners(path, angle_threshold_deg=13.0))
-                    smoothed = smooth_path(path, iterations=2)
-                    id_kpis.append(
-                        KPI(
-                            avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
-                            num_corners=raw_corners,
-                            min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
-                            inference_time_s=float(dt),
-                            max_corner_deg=float(max_corner_degree(smoothed)),
-                        )
-                    )
-                    if id_trace is None or not bool(id_trace.success):
-                        id_trace = PathTrace(path_xy_cells=path, success=True)
-                elif id_trace is None:
-                    id_trace = PathTrace(path_xy_cells=path, success=False)
+                    id_kpis.append(run_kpi)
 
             k = mean_kpi(id_kpis)
             k_dict = dict(k.__dict__)
@@ -750,20 +963,18 @@ def main() -> int:
                     **k_dict,
                 }
             )
-            if id_trace is not None:
-                env_paths["IDDQN"] = id_trace
 
             # DQN
             dq_kpis: list[KPI] = []
             dq_times: list[float] = []
             dq_success = 0
-            dq_trace: PathTrace | None = None
             for i in range(args.runs):
                 path, dt, reached = rollout_agent(
                     env,
                     dqn_agent,
                     max_steps=args.max_steps,
                     seed=args.seed + 20_000 + i,
+                    reset_options=reset_options_list[i] if i < len(reset_options_list) else None,
                     time_mode=str(getattr(args, "kpi_time_mode", "rollout")),
                     obs_transform=obs_transform,
                     forest_adm_horizon=int(args.forest_adm_horizon),
@@ -772,23 +983,43 @@ def main() -> int:
                     forest_min_progress_m=float(args.forest_min_progress_m),
                 )
                 dq_times.append(float(dt))
+                if int(i) in env_paths_by_run:
+                    env_paths_by_run[int(i)]["DQN"] = PathTrace(path_xy_cells=path, success=bool(reached))
+
+                start_xy = (int(spec.start_xy[0]), int(spec.start_xy[1]))
+                goal_xy = (int(spec.goal_xy[0]), int(spec.goal_xy[1]))
+                opts = reset_options_list[i] if i < len(reset_options_list) else None
+                if isinstance(opts, dict) and "start_xy" in opts and "goal_xy" in opts:
+                    sx, sy = opts["start_xy"]  # type: ignore[misc]
+                    gx, gy = opts["goal_xy"]  # type: ignore[misc]
+                    start_xy = (int(sx), int(sy))
+                    goal_xy = (int(gx), int(gy))
+
+                raw_corners = float(num_path_corners(path, angle_threshold_deg=13.0))
+                smoothed = smooth_path(path, iterations=2)
+                run_kpi = KPI(
+                    avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
+                    num_corners=raw_corners,
+                    min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
+                    inference_time_s=float(dt),
+                    max_corner_deg=float(max_corner_degree(smoothed)),
+                )
+                rows_runs.append(
+                    {
+                        "Environment": f"Env. ({env_name})",
+                        "Algorithm": "DQN",
+                        "run_idx": int(i),
+                        "start_x": int(start_xy[0]),
+                        "start_y": int(start_xy[1]),
+                        "goal_x": int(goal_xy[0]),
+                        "goal_y": int(goal_xy[1]),
+                        "success_rate": 1.0 if bool(reached) else 0.0,
+                        **dict(run_kpi.__dict__),
+                    }
+                )
                 if bool(reached):
                     dq_success += 1
-                    raw_corners = float(num_path_corners(path, angle_threshold_deg=13.0))
-                    smoothed = smooth_path(path, iterations=2)
-                    dq_kpis.append(
-                        KPI(
-                            avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
-                            num_corners=raw_corners,
-                            min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
-                            inference_time_s=float(dt),
-                            max_corner_deg=float(max_corner_degree(smoothed)),
-                        )
-                    )
-                    if dq_trace is None or not bool(dq_trace.success):
-                        dq_trace = PathTrace(path_xy_cells=path, success=True)
-                elif dq_trace is None:
-                    dq_trace = PathTrace(path_xy_cells=path, success=False)
+                    dq_kpis.append(run_kpi)
 
             k = mean_kpi(dq_kpis)
             k_dict = dict(k.__dict__)
@@ -802,14 +1033,12 @@ def main() -> int:
                     **k_dict,
                 }
             )
-            if dq_trace is not None:
-                env_paths["DQN"] = dq_trace
 
         if baselines:
             grid_map = grid_map_from_obstacles(grid_y0_bottom=grid, cell_size_m=float(cell_size_m))
             params = default_ackermann_params()
             if env_name in FOREST_ENV_ORDER and isinstance(env, AMRBicycleEnv):
-                footprint = forest_oriented_box_footprint()
+                footprint = forest_two_circle_footprint()
                 goal_xy_tol_m = float(env.goal_tolerance_m)
                 goal_theta_tol_rad = float(env.goal_angle_tolerance_rad)
                 start_theta_rad = None
@@ -819,69 +1048,108 @@ def main() -> int:
                 goal_theta_tol_rad = float(math.pi)
                 start_theta_rad = 0.0
 
-            if "hybrid_astar" in baselines:
-                res = plan_hybrid_astar(
-                    grid_map=grid_map,
-                    footprint=footprint,
-                    params=params,
-                    start_xy=spec.start_xy,
-                    goal_xy=spec.goal_xy,
-                    goal_theta_rad=0.0,
-                    start_theta_rad=start_theta_rad,
-                    goal_xy_tol_m=goal_xy_tol_m,
-                    goal_theta_tol_rad=goal_theta_tol_rad,
-                    timeout_s=float(args.baseline_timeout),
-                    max_nodes=int(args.hybrid_max_nodes),
-                )
-                ha_plan_ok = bool(res.success)
-                ha_exec_path = list(res.path_xy_cells)
-                ha_exec_time_s = 0.0
-                ha_reached = ha_plan_ok
-                if ha_plan_ok and isinstance(env, AMRBicycleEnv) and bool(getattr(args, "forest_baseline_rollout", False)):
-                    ha_exec_path, ha_exec_time_s, ha_reached = rollout_tracked_path(
-                        env,
-                        ha_exec_path,
-                        max_steps=args.max_steps,
-                        seed=args.seed + 30_000,
-                    )
+            use_random_pairs = bool(getattr(args, "random_start_goal", False)) and bool(reset_options_list) and reset_options_list[0] is not None
 
-                if bool(ha_reached) and ha_exec_path:
+            def pair_for_run(i: int) -> tuple[tuple[int, int], tuple[int, int], dict[str, object] | None]:
+                if use_random_pairs and i < len(reset_options_list) and reset_options_list[i] is not None:
+                    opts = reset_options_list[i] or {}
+                    sx, sy = opts["start_xy"]  # type: ignore[misc]
+                    gx, gy = opts["goal_xy"]  # type: ignore[misc]
+                    return (int(sx), int(sy)), (int(gx), int(gy)), opts
+                return (int(spec.start_xy[0]), int(spec.start_xy[1])), (int(spec.goal_xy[0]), int(spec.goal_xy[1])), None
+
+            if "hybrid_astar" in baselines:
+                ha_kpis: list[KPI] = []
+                ha_times: list[float] = []
+                ha_success = 0
+
+                n_runs = int(args.runs) if use_random_pairs else 1
+                for i in range(n_runs):
+                    start_xy, goal_xy, r_opts = pair_for_run(int(i))
+                    if precomputed_hybrid_paths is not None and use_random_pairs and int(i) < len(precomputed_hybrid_paths):
+                        res = precomputed_hybrid_paths[int(i)]
+                    else:
+                        res = plan_hybrid_astar(
+                            grid_map=grid_map,
+                            footprint=footprint,
+                            params=params,
+                            start_xy=start_xy,
+                            goal_xy=goal_xy,
+                            goal_theta_rad=0.0,
+                            start_theta_rad=start_theta_rad,
+                            goal_xy_tol_m=goal_xy_tol_m,
+                            goal_theta_tol_rad=goal_theta_tol_rad,
+                            timeout_s=float(args.baseline_timeout),
+                            max_nodes=int(args.hybrid_max_nodes),
+                        )
+                    ha_exec_path = list(res.path_xy_cells)
+                    ha_exec_time_s = 0.0
+                    ha_reached = bool(res.success)
+                    if bool(res.success) and isinstance(env, AMRBicycleEnv) and bool(getattr(args, "forest_baseline_rollout", False)):
+                        ha_exec_path, ha_exec_time_s, ha_reached = rollout_tracked_path(
+                            env,
+                            ha_exec_path,
+                            max_steps=args.max_steps,
+                            seed=args.seed + 30_000 + i,
+                            reset_options=r_opts,
+                            time_mode=str(getattr(args, "kpi_time_mode", "policy")),
+                        )
+
+                    ha_times.append(float(res.time_s) + float(ha_exec_time_s))
+                    if int(i) in env_paths_by_run:
+                        env_paths_by_run[int(i)]["Hybrid A*"] = PathTrace(path_xy_cells=ha_exec_path, success=bool(ha_reached))
+
                     raw_corners = float(num_path_corners(ha_exec_path, angle_threshold_deg=13.0))
                     smoothed = smooth_path(ha_exec_path, iterations=2)
-                    kpi = KPI(
+                    run_kpi = KPI(
                         avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
                         num_corners=raw_corners,
                         min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
                         inference_time_s=float(res.time_s) + float(ha_exec_time_s),
                         max_corner_deg=float(max_corner_degree(smoothed)),
                     )
-                else:
-                    kpi = mean_kpi([])
+                    rows_runs.append(
+                        {
+                            "Environment": f"Env. ({env_name})",
+                            "Algorithm": "Hybrid A*",
+                            "run_idx": int(i),
+                            "start_x": int(start_xy[0]),
+                            "start_y": int(start_xy[1]),
+                            "goal_x": int(goal_xy[0]),
+                            "goal_y": int(goal_xy[1]),
+                            "success_rate": 1.0 if bool(ha_reached) else 0.0,
+                            **dict(run_kpi.__dict__),
+                        }
+                    )
+                    if bool(ha_reached) and ha_exec_path:
+                        ha_success += 1
+                        ha_kpis.append(run_kpi)
 
-                k_dict = dict(kpi.__dict__)
-                k_dict["inference_time_s"] = float(res.time_s) + float(ha_exec_time_s)
+                k = mean_kpi(ha_kpis)
+                k_dict = dict(k.__dict__)
+                if ha_times:
+                    k_dict["inference_time_s"] = float(np.mean(ha_times))
                 rows.append(
                     {
                         "Environment": f"Env. ({env_name})",
                         "Algorithm": "Hybrid A*",
-                        "success_rate": 1.0 if bool(ha_reached) else 0.0,
+                        "success_rate": float(ha_success) / float(max(1, int(n_runs))),
                         **k_dict,
                     }
                 )
-                env_paths["Hybrid A*"] = PathTrace(path_xy_cells=ha_exec_path, success=bool(ha_reached))
 
             if "rrt_star" in baselines:
                 rrt_kpis: list[KPI] = []
                 rrt_times: list[float] = []
                 rrt_success = 0
-                rrt_trace: PathTrace | None = None
                 for i in range(args.runs):
+                    start_xy, goal_xy, r_opts = pair_for_run(int(i))
                     res = plan_rrt_star(
                         grid_map=grid_map,
                         footprint=footprint,
                         params=params,
-                        start_xy=spec.start_xy,
-                        goal_xy=spec.goal_xy,
+                        start_xy=start_xy,
+                        goal_xy=goal_xy,
                         goal_theta_rad=0.0,
                         start_theta_rad=start_theta_rad,
                         goal_xy_tol_m=goal_xy_tol_m,
@@ -899,26 +1167,39 @@ def main() -> int:
                             exec_path,
                             max_steps=args.max_steps,
                             seed=args.seed + 40_000 + i,
+                            reset_options=r_opts,
+                            time_mode=str(getattr(args, "kpi_time_mode", "policy")),
                         )
 
                     rrt_times.append(float(res.time_s) + float(exec_time_s))
+                    if int(i) in env_paths_by_run:
+                        env_paths_by_run[int(i)]["RRT*"] = PathTrace(path_xy_cells=exec_path, success=bool(reached))
+
+                    raw_corners = float(num_path_corners(exec_path, angle_threshold_deg=13.0))
+                    smoothed = smooth_path(exec_path, iterations=2)
+                    run_kpi = KPI(
+                        avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
+                        num_corners=raw_corners,
+                        min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
+                        inference_time_s=float(res.time_s) + float(exec_time_s),
+                        max_corner_deg=float(max_corner_degree(smoothed)),
+                    )
+                    rows_runs.append(
+                        {
+                            "Environment": f"Env. ({env_name})",
+                            "Algorithm": "RRT*",
+                            "run_idx": int(i),
+                            "start_x": int(start_xy[0]),
+                            "start_y": int(start_xy[1]),
+                            "goal_x": int(goal_xy[0]),
+                            "goal_y": int(goal_xy[1]),
+                            "success_rate": 1.0 if bool(reached) else 0.0,
+                            **dict(run_kpi.__dict__),
+                        }
+                    )
                     if bool(reached) and exec_path:
                         rrt_success += 1
-                        raw_corners = float(num_path_corners(exec_path, angle_threshold_deg=13.0))
-                        smoothed = smooth_path(exec_path, iterations=2)
-                        rrt_kpis.append(
-                            KPI(
-                                avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
-                                num_corners=raw_corners,
-                                min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
-                                inference_time_s=float(res.time_s) + float(exec_time_s),
-                                max_corner_deg=float(max_corner_degree(smoothed)),
-                            )
-                        )
-                        if rrt_trace is None or not bool(rrt_trace.success):
-                            rrt_trace = PathTrace(path_xy_cells=exec_path, success=True)
-                    elif rrt_trace is None:
-                        rrt_trace = PathTrace(path_xy_cells=exec_path, success=False)
+                        rrt_kpis.append(run_kpi)
 
                 k = mean_kpi(rrt_kpis)
                 k_dict = dict(k.__dict__)
@@ -932,17 +1213,20 @@ def main() -> int:
                         **k_dict,
                     }
                 )
-                if rrt_trace is not None:
-                    env_paths["RRT*"] = rrt_trace
+        for run_idx, run_paths in env_paths_by_run.items():
+            paths_for_plot[(env_name, int(run_idx))] = dict(run_paths)
 
-        paths_for_plot[env_name] = env_paths
-
-    table = pd.DataFrame(rows)
+    table = pd.DataFrame(rows_runs)
     # Pretty column order
     table = table[
         [
             "Environment",
             "Algorithm",
+            "run_idx",
+            "start_x",
+            "start_y",
+            "goal_x",
+            "goal_y",
             "success_rate",
             "avg_path_length",
             "num_corners",
@@ -966,7 +1250,7 @@ def main() -> int:
     table["planning_cost"] = planning_cost
 
     table["success_rate"] = pd.to_numeric(table["success_rate"], errors="coerce").astype(float).round(3)
-    table["avg_path_length"] = table["avg_path_length"].astype(float).round(3)
+    table["avg_path_length"] = table["avg_path_length"].astype(float).round(4)
     table["num_corners"] = pd.to_numeric(table["num_corners"], errors="coerce").round(0).astype("Int64")
     table["min_collision_dist"] = table["min_collision_dist"].astype(float).round(4)
     table["inference_time_s"] = table["inference_time_s"].astype(float).round(5)
@@ -977,6 +1261,11 @@ def main() -> int:
     table_pretty = table.rename(
         columns={
             "Algorithm": "Algorithm name",
+            "run_idx": "Run index",
+            "start_x": "Start x",
+            "start_y": "Start y",
+            "goal_x": "Goal x",
+            "goal_y": "Goal y",
             "success_rate": "Success rate",
             "avg_path_length": "Average path length (m)",
             "num_corners": "Number of path corners",
@@ -989,11 +1278,78 @@ def main() -> int:
     table_pretty.to_csv(out_dir / "table2_kpis.csv", index=False)
     table_pretty.to_markdown(out_dir / "table2_kpis.md", index=False)
 
+    # Also write the mean KPI table (previous default behavior).
+    table_mean = pd.DataFrame(rows)
+    table_mean = table_mean[
+        [
+            "Environment",
+            "Algorithm",
+            "success_rate",
+            "avg_path_length",
+            "num_corners",
+            "min_collision_dist",
+            "inference_time_s",
+            "max_corner_deg",
+        ]
+    ]
+    table_mean = table_mean.copy()
+
+    w_t = float(args.score_time_weight)
+    sr_raw = pd.to_numeric(table_mean["success_rate"], errors="coerce").astype(float)
+    denom = sr_raw.clip(lower=1e-6)
+    base = pd.to_numeric(table_mean["avg_path_length"], errors="coerce").astype(float) + w_t * pd.to_numeric(
+        table_mean["inference_time_s"], errors="coerce"
+    ).astype(float)
+    planning_cost = (base / denom).astype(float)
+    planning_cost = planning_cost.where((sr_raw > 0.0) & np.isfinite(base.to_numpy()), other=float("inf"))
+    table_mean["planning_cost"] = planning_cost
+
+    table_mean["success_rate"] = pd.to_numeric(table_mean["success_rate"], errors="coerce").astype(float).round(3)
+    table_mean["avg_path_length"] = table_mean["avg_path_length"].astype(float).round(4)
+    table_mean["num_corners"] = pd.to_numeric(table_mean["num_corners"], errors="coerce").round(0).astype("Int64")
+    table_mean["min_collision_dist"] = table_mean["min_collision_dist"].astype(float).round(4)
+    table_mean["inference_time_s"] = table_mean["inference_time_s"].astype(float).round(5)
+    table_mean["max_corner_deg"] = pd.to_numeric(table_mean["max_corner_deg"], errors="coerce").round(0).astype("Int64")
+    table_mean["planning_cost"] = pd.to_numeric(table_mean["planning_cost"], errors="coerce").astype(float).round(3)
+    table_mean.to_csv(out_dir / "table2_kpis_mean_raw.csv", index=False)
+
+    table_mean_pretty = table_mean.rename(
+        columns={
+            "Algorithm": "Algorithm name",
+            "success_rate": "Success rate",
+            "avg_path_length": "Average path length (m)",
+            "num_corners": "Number of path corners",
+            "min_collision_dist": "Mini collision to obstacle (m)",
+            "inference_time_s": "Inference time (s)",
+            "max_corner_deg": "Max corner degree (掳)",
+            "planning_cost": "Planning cost (m)",
+        }
+    )
+    table_mean_pretty.to_csv(out_dir / "table2_kpis_mean.csv", index=False)
+    table_mean_pretty.to_markdown(out_dir / "table2_kpis_mean.md", index=False)
+
     # Plot Fig. 12-style paths
     envs_to_plot = list(args.envs)[:4]
-    n_env = int(len(envs_to_plot))
-    cols = 1 if n_env <= 1 else 2
-    rows_n = int(math.ceil(float(n_env) / float(cols))) if n_env else 1
+    panels: list[tuple[str, int]] = []
+    multi_pair_fig = (
+        bool(getattr(args, "random_start_goal", False))
+        and int(len(args.envs)) == 1
+        and int(args.runs) >= 4
+        and str(envs_to_plot[0]) in set(FOREST_ENV_ORDER)
+    )
+    if envs_to_plot and multi_pair_fig:
+        base = int(getattr(args, "plot_run_idx", 0))
+        panels = [(str(envs_to_plot[0]), (base + k) % int(args.runs)) for k in range(4)]
+    else:
+        for env_name in envs_to_plot:
+            run_idx = 0
+            if bool(getattr(args, "random_start_goal", False)) and str(env_name) in set(FOREST_ENV_ORDER):
+                run_idx = int(getattr(args, "plot_run_idx", 0))
+            panels.append((str(env_name), int(run_idx)))
+
+    n_panels = int(len(panels))
+    cols = 1 if n_panels <= 1 else 2
+    rows_n = int(math.ceil(float(n_panels) / float(cols))) if n_panels else 1
     fig, axes = plt.subplots(rows_n, cols, figsize=(5.2 * cols, 5.2 * rows_n))
     axes = np.atleast_1d(axes).ravel()
     styles = {
@@ -1003,48 +1359,57 @@ def main() -> int:
         "RRT*": dict(color="seagreen", linestyle="-.", linewidth=2.0),
     }
 
-    for i, env_name in enumerate(envs_to_plot):
+    for i, (env_name, run_idx) in enumerate(panels):
         ax = axes[i]
         spec = get_map_spec(env_name)
         grid = spec.obstacle_grid()
-        plot_env(ax, grid, title=f"Env. ({env_name})")
+        title = f"Env. ({env_name})"
+        if multi_pair_fig:
+            title = f"Env. ({env_name}) #{int(run_idx)}"
+        plot_env(ax, grid, title=title)
 
-        meta = plot_meta.get(env_name, {})
+        meta = plot_meta.get((env_name, int(run_idx))) or plot_meta.get((env_name, 0), {})
+
+        spx = float(meta.get("plot_start_x", float(spec.start_xy[0])))
+        spy = float(meta.get("plot_start_y", float(spec.start_xy[1])))
+        gpx = float(meta.get("plot_goal_x", float(spec.goal_xy[0])))
+        gpy = float(meta.get("plot_goal_y", float(spec.goal_xy[1])))
 
         ax.scatter(
-            [spec.start_xy[0]],
-            [spec.start_xy[1]],
+            [spx],
+            [spy],
             marker="^",
             s=80,
             color="blue",
             label="_nolegend_",
         )
-        ax.text(spec.start_xy[0] - 1.0, spec.start_xy[1] - 1.0, "SP", fontsize=9, color="black")
+        ax.text(spx - 1.0, spy - 1.0, "SP", fontsize=9, color="black")
         ax.scatter(
-            [spec.goal_xy[0]],
-            [spec.goal_xy[1]],
+            [gpx],
+            [gpy],
             marker="*",
             s=140,
             color="red",
             label="_nolegend_",
         )
-        ax.text(spec.goal_xy[0] - 1.0, spec.goal_xy[1] - 1.0, "TP", fontsize=9, color="black")
+        ax.text(gpx - 1.0, gpy - 1.0, "TP", fontsize=9, color="black")
 
         tol = float(meta.get("goal_tol_cells", 0.0))
         if tol > 0.0:
             ax.add_patch(
                 mpatches.Circle(
-                    (float(spec.goal_xy[0]), float(spec.goal_xy[1])),
+                    (float(gpx), float(gpy)),
                     radius=float(tol),
                     fill=False,
-                    edgecolor="red",
+                    edgecolor="crimson",
                     linestyle="--",
-                    linewidth=1.0,
-                    alpha=0.7,
+                    linewidth=1.8,
+                    alpha=0.95,
+                    zorder=6,
                 )
             )
 
-        env_paths = paths_for_plot.get(env_name, {})
+        env_paths = paths_for_plot.get((env_name, int(run_idx)), {})
         for algo_name, trace in env_paths.items():
             path = trace.path_xy_cells
             if not path:
@@ -1069,7 +1434,7 @@ def main() -> int:
 
         ax.legend(fontsize=8, loc="lower right")
 
-    for ax in axes[n_env:]:
+    for ax in axes[n_panels:]:
         ax.axis("off")
 
     fig.suptitle("Simulation results of different path-planning methods")
@@ -1081,6 +1446,9 @@ def main() -> int:
     print(f"Wrote: {out_dir / 'table2_kpis.csv'}")
     print(f"Wrote: {out_dir / 'table2_kpis_raw.csv'}")
     print(f"Wrote: {out_dir / 'table2_kpis.md'}")
+    print(f"Wrote: {out_dir / 'table2_kpis_mean.csv'}")
+    print(f"Wrote: {out_dir / 'table2_kpis_mean_raw.csv'}")
+    print(f"Wrote: {out_dir / 'table2_kpis_mean.md'}")
     print(f"Run dir: {out_dir}")
     return 0
 

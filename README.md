@@ -9,10 +9,26 @@
 - `runs/`: all generated results (experiments + timestamped runs)
 - `docs/`: paper + extracted figures/assets
 
+## Conda (CUDA)
+
+GPU training/inference requires a CUDA-enabled PyTorch build. In this repo, the recommended environment is:
+
+```powershell
+D:/anaconda/Scripts/activate
+conda activate ros2py310
+python train.py --self-check --device cuda
+```
+
+Non-interactive alternative (no manual activation):
+
+```powershell
+conda run -n ros2py310 python train.py --self-check --device cuda
+```
+
 ## Training
 
 ```
-python train.py --out outputs_repro_1000 --episodes 1000 --device auto
+python train.py --out outputs_repro_1000 --episodes 1000 --device cuda
 ```
 
 Outputs go to `runs/outputs_repro_1000/train_<timestamp>/...` (models, curves, configs).
@@ -22,7 +38,7 @@ Outputs go to `runs/outputs_repro_1000/train_<timestamp>/...` (models, curves, c
 Train on generated forest maps (Ackermann/bicycle dynamics, 35 discrete `(δ̇, a)` actions):
 
 ```
-python train.py --envs forest_a forest_b forest_c forest_d --out outputs_forest --episodes 1000 --device auto
+python train.py --envs forest_a forest_b forest_c forest_d --out outputs_forest --episodes 1000 --device cuda
 ```
 
 ## Inference / KPIs
@@ -30,13 +46,13 @@ python train.py --envs forest_a forest_b forest_c forest_d --out outputs_forest 
 Use the latest training run for an experiment name:
 
 ```
-python infer.py --models outputs_repro_1000 --out outputs_repro_1000 --device auto
+python infer.py --models outputs_repro_1000 --out outputs_repro_1000 --device cuda
 ```
 
 Include classical baselines (Hybrid A* + RRT*):
 
 ```
-python infer.py --models outputs_repro_1000 --out outputs_repro_1000 --baselines all --device auto
+python infer.py --models outputs_repro_1000 --out outputs_repro_1000 --baselines all --device cuda
 ```
 
 Baseline-only (no checkpoints required):
@@ -52,7 +68,7 @@ Inference outputs are stored under the selected training run:
 Or write inference outputs to a separate experiment directory:
 
 ```
-python infer.py --models outputs_repro_1000 --out outputs_repro_1000_kpi2 --cuda-device 0
+python infer.py --models outputs_repro_1000 --out outputs_repro_1000_kpi2 --device cuda --cuda-device 0
 ```
 
 Or point directly at a specific training run directory/models directory:

@@ -1,0 +1,17 @@
+Environment,Algorithm name,Success rate,Average path length (m),Number of path corners,Mini collision to obstacle (m),Inference time (s),Max corner degree (°),Planning cost (m)
+Env. (forest_a),IDDQN,0.0,,,,0.35172,,inf
+Env. (forest_a),DQN,1.0,9.6217,0,0.4403,0.1464,1,9.695
+Env. (forest_a),Hybrid A*,1.0,9.2829,5,0.458,1.64733,4,10.107
+Env. (forest_a),RRT*,1.0,22.4234,0,0.4824,3.90743,1,24.377
+Env. (forest_b),IDDQN,0.0,,,,0.28219,,inf
+Env. (forest_b),DQN,0.0,,,,0.22437,,inf
+Env. (forest_b),Hybrid A*,1.0,7.1779,6,0.4437,1.60512,4,7.98
+Env. (forest_b),RRT*,1.0,9.2335,0,0.4453,0.69645,1,9.582
+Env. (forest_c),IDDQN,0.0,,,,0.20426,,inf
+Env. (forest_c),DQN,0.0,,,,0.20844,,inf
+Env. (forest_c),Hybrid A*,1.0,7.4827,3,0.4347,0.8268,4,7.896
+Env. (forest_c),RRT*,1.0,22.7487,0,0.4467,4.5561,1,25.027
+Env. (forest_d),IDDQN,1.0,5.304,0,0.4355,0.10224,1,5.355
+Env. (forest_d),DQN,1.0,5.6677,0,0.4707,0.11789,1,5.727
+Env. (forest_d),Hybrid A*,1.0,5.679,6,0.4387,2.55546,4,6.957
+Env. (forest_d),RRT*,1.0,9.2046,0,0.5002,0.12894,1,9.269

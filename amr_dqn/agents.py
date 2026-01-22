@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -19,6 +20,7 @@ class AgentConfig:
     # Forest (dt=0.05s, long horizon) needs a higher discount factor; gamma=0.9 makes
     # the terminal reward effectively vanish after a few dozen steps.
     gamma: float = 0.995
+    n_step: int = 1
     learning_rate: float = 5e-4
     replay_capacity: int = 100_000
     batch_size: int = 128
@@ -82,15 +84,19 @@ class DQNFamilyAgent:
             self.replay = PrioritizedReplayBuffer(
                 config.replay_capacity,
                 obs_dim,
+                n_actions,
                 rng=self._rng,
                 alpha=float(config.per_alpha),
             )
         else:
-            self.replay = ReplayBuffer(config.replay_capacity, obs_dim, rng=self._rng)
+            self.replay = ReplayBuffer(config.replay_capacity, obs_dim, n_actions, rng=self._rng)
 
         self._train_steps = 0
         self._n_actions = int(n_actions)
         self._obs_dim = int(obs_dim)
+        self._n_step = int(max(1, int(getattr(config, "n_step", 1))))
+        # (obs, action, reward, next_obs, done, demo, next_action_mask)
+        self._nstep_buffer: deque[tuple[np.ndarray, int, float, np.ndarray, bool, bool, np.ndarray | None]] = deque()
 
     def _rebuild_networks(
         self,
@@ -175,11 +181,130 @@ class DQNFamilyAgent:
             kk = int(min(int(kk), int(q.numel())))
             return torch.topk(q, k=kk, dim=0).indices.detach().cpu().numpy()
 
-    def observe(self, obs: np.ndarray, action: int, reward: float, next_obs: np.ndarray, done: bool, *, demo: bool = False) -> None:
+    def _add_to_replay(
+        self,
+        obs: np.ndarray,
+        action: int,
+        reward: float,
+        next_obs: np.ndarray,
+        done: bool,
+        *,
+        next_action_mask: np.ndarray | None,
+        demo: bool,
+        n_steps: int,
+    ) -> None:
         if self._use_per:
-            self.replay.add(obs, action, reward, next_obs, done, demo=bool(demo))
+            self.replay.add(
+                obs,
+                int(action),
+                float(reward),
+                next_obs,
+                bool(done),
+                next_action_mask=next_action_mask,
+                demo=bool(demo),
+                n_steps=int(n_steps),
+            )
         else:
-            self.replay.add(obs, action, reward, next_obs, done, demo=bool(demo))
+            self.replay.add(
+                obs,
+                int(action),
+                float(reward),
+                next_obs,
+                bool(done),
+                next_action_mask=next_action_mask,
+                demo=bool(demo),
+                n_steps=int(n_steps),
+            )
+
+    def observe(
+        self,
+        obs: np.ndarray,
+        action: int,
+        reward: float,
+        next_obs: np.ndarray,
+        done: bool,
+        *,
+        demo: bool = False,
+        truncated: bool = False,
+        next_action_mask: np.ndarray | None = None,
+    ) -> None:
+        """Record a transition (supports n-step returns).
+
+        `done` should reflect *true* terminal states (collision/reached). Use `truncated=True`
+        for time-limit episode ends so the n-step buffer does not leak across episodes while
+        still allowing bootstrapping from the final state.
+        """
+
+        if int(self._n_step) <= 1:
+            self._add_to_replay(
+                obs,
+                int(action),
+                float(reward),
+                next_obs,
+                bool(done),
+                next_action_mask=next_action_mask,
+                demo=bool(demo),
+                n_steps=1,
+            )
+            if bool(done) or bool(truncated):
+                self.end_episode()
+            return
+
+        self._nstep_buffer.append((obs, int(action), float(reward), next_obs, bool(done), bool(demo), next_action_mask))
+
+        episode_end = bool(done) or bool(truncated)
+        if (len(self._nstep_buffer) < int(self._n_step)) and not episode_end:
+            return
+
+        self._flush_nstep_buffer(force=episode_end)
+
+    def _flush_nstep_buffer(self, *, force: bool) -> None:
+        if int(self._n_step) <= 1:
+            return
+
+        gamma = float(self.config.gamma)
+        n_target = int(self._n_step)
+
+        # When `force` is True (episode boundary), flush everything with truncated n-step horizons.
+        while self._nstep_buffer:
+            horizon = min(int(n_target), int(len(self._nstep_buffer)))
+            ret = 0.0
+            n_used = 0
+            next_obs_n = self._nstep_buffer[0][3]
+            next_mask_n = self._nstep_buffer[0][6]
+            done_n = False
+            for i in range(horizon):
+                _o, _a, r, no, d, _demo, nm = self._nstep_buffer[i]
+                ret += (gamma**i) * float(r)
+                n_used = i + 1
+                next_obs_n = no
+                next_mask_n = nm
+                done_n = bool(d)
+                if done_n:
+                    break
+
+            obs0, a0, _r0, _no0, _d0, demo0, _nm0 = self._nstep_buffer[0]
+            self._add_to_replay(
+                obs0,
+                int(a0),
+                float(ret),
+                next_obs_n,
+                bool(done_n),
+                next_action_mask=next_mask_n,
+                demo=bool(demo0),
+                n_steps=int(n_used),
+            )
+            self._nstep_buffer.popleft()
+
+            # If we're not at an episode boundary, only emit one transition per step.
+            if not bool(force):
+                break
+
+    def end_episode(self) -> None:
+        """Flush any pending n-step transitions at an episode boundary."""
+        if int(self._n_step) <= 1:
+            return
+        self._flush_nstep_buffer(force=True)
 
     def pretrain_on_demos(self, *, steps: int) -> int:
         """Supervised warm-start on demonstration transitions (DQfD-style stabilizer)."""
@@ -255,7 +380,9 @@ class DQNFamilyAgent:
             actions = torch.from_numpy(batch.actions).to(self.device)
             rewards = torch.from_numpy(batch.rewards).to(self.device)
             next_obs = torch.from_numpy(batch.next_obs).to(self.device)
+            next_action_masks = torch.from_numpy(batch.next_action_masks).to(self.device)
             dones = torch.from_numpy(batch.dones).to(self.device)
+            n_steps = torch.from_numpy(batch.n_steps).to(self.device)
             weights = torch.from_numpy(batch.weights).to(self.device)
             demos = torch.from_numpy(batch.demos).to(self.device)
         else:
@@ -264,7 +391,9 @@ class DQNFamilyAgent:
             actions = torch.from_numpy(batch.actions).to(self.device)
             rewards = torch.from_numpy(batch.rewards).to(self.device)
             next_obs = torch.from_numpy(batch.next_obs).to(self.device)
+            next_action_masks = torch.from_numpy(batch.next_action_masks).to(self.device)
             dones = torch.from_numpy(batch.dones).to(self.device)
+            n_steps = torch.from_numpy(batch.n_steps).to(self.device)
             weights = None
             demos = torch.from_numpy(batch.demos).to(self.device)
 
@@ -272,14 +401,27 @@ class DQNFamilyAgent:
         q_values = q_all.gather(1, actions.view(-1, 1)).squeeze(1)
 
         with torch.no_grad():
+            mask = next_action_masks.to(torch.bool)
             if self.algo == "iddqn":
                 # Double DQN target: action selection with online network, evaluation with target network.
-                next_actions = torch.argmax(self.q(next_obs), dim=1, keepdim=True)
-                next_q = self.q_target(next_obs).gather(1, next_actions).squeeze(1)
+                q_next_online = self.q(next_obs)
+                q_next_online = q_next_online.masked_fill(~mask, torch.finfo(q_next_online.dtype).min)
+                next_actions = torch.argmax(q_next_online, dim=1, keepdim=True)
+
+                q_next_target = self.q_target(next_obs)
+                q_next_target = q_next_target.masked_fill(~mask, torch.finfo(q_next_target.dtype).min)
+                next_q = q_next_target.gather(1, next_actions).squeeze(1)
             else:
                 # Vanilla DQN target: max over target network.
-                next_q = self.q_target(next_obs).max(dim=1).values
-            target = rewards + (1.0 - dones) * (self.config.gamma * next_q)
+                q_next_target = self.q_target(next_obs)
+                q_next_target = q_next_target.masked_fill(~mask, torch.finfo(q_next_target.dtype).min)
+                next_q = q_next_target.max(dim=1).values
+
+            # Safety: avoid propagating NaNs/-inf when a mask is malformed.
+            next_q = torch.where(torch.isfinite(next_q), next_q, torch.zeros_like(next_q))
+            gamma = float(self.config.gamma)
+            gamma_n = torch.pow(torch.tensor(gamma, device=self.device, dtype=torch.float32), n_steps.to(torch.float32))
+            target = rewards + (1.0 - dones) * (gamma_n * next_q)
 
         td_error = target - q_values
         losses = self.loss_fn(q_values, target)
@@ -377,10 +519,20 @@ class DQNFamilyAgent:
 
         if not isinstance(self.q, net_cls):
             self._rebuild_networks(net_cls, hidden_dim=hidden_dim, hidden_layers=hidden_layers)
-
-        self.q.load_state_dict(q_sd)
-        if q_target_sd:
-            self.q_target.load_state_dict(q_target_sd)
         else:
-            self.q_target.load_state_dict(self.q.state_dict())
+            # Architecture can change across experiments (hidden_dim/layers). Rebuild when shapes mismatch.
+            try:
+                self.q.load_state_dict(q_sd, strict=True)
+            except RuntimeError:
+                self._rebuild_networks(net_cls, hidden_dim=hidden_dim, hidden_layers=hidden_layers)
+
+        self.q.load_state_dict(q_sd, strict=True)
+        if q_target_sd:
+            try:
+                self.q_target.load_state_dict(q_target_sd, strict=True)
+            except RuntimeError:
+                # Fall back to syncing the target net if the checkpoint predates saving it (or shapes mismatch).
+                self.q_target.load_state_dict(self.q.state_dict(), strict=True)
+        else:
+            self.q_target.load_state_dict(self.q.state_dict(), strict=True)
         self._train_steps = int(payload.get("train_steps", 0))

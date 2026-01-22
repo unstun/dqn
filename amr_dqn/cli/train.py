@@ -48,7 +48,11 @@ def forest_expert_action(
     w_clearance: float,
 ) -> int:
     h = max(1, int(horizon_steps))
-    if str(forest_expert).lower() == "hybrid_astar":
+    expert = str(forest_expert).lower().strip()
+    if expert == "auto":
+        expert = "hybrid_astar"
+
+    if expert == "hybrid_astar":
         # Safer Hybrid A* tracking for demonstrations / guided exploration.
         # The shorter-horizon aggressive tracker can collide on harder maps (notably forest_a).
         return env.expert_action_hybrid_astar(
@@ -59,10 +63,11 @@ def forest_expert_action(
             w_clearance=float(w_clearance),
             w_speed=0.0,
         )
-    return env.expert_action_mpc(
-        horizon_steps=max(15, h),
-        w_clearance=float(w_clearance),
-    )
+
+    if expert in {"cost_to_go", "ctg"}:
+        return env.expert_action_cost_to_go(horizon_steps=max(15, h), min_od_m=0.0)
+
+    raise ValueError("forest_expert must be one of: auto, hybrid_astar, cost_to_go")
 
 
 def collect_forest_demos(
@@ -72,44 +77,86 @@ def collect_forest_demos(
     seed: int,
     forest_curriculum: bool,
     curriculum_band_m: float,
+    forest_random_start_goal: bool,
+    forest_rand_min_cost_m: float,
+    forest_rand_max_cost_m: float | None,
+    forest_rand_fixed_prob: float,
+    forest_rand_tries: int,
     forest_expert: str,
     forest_demo_horizon: int,
     forest_demo_w_clearance: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    expert = str(forest_expert).lower().strip()
+    if expert == "auto":
+        expert = "cost_to_go" if bool(forest_random_start_goal) else "hybrid_astar"
+
     obs_dim = int(env.observation_space.shape[0])
     n = max(0, int(target))
     obs_buf = np.zeros((n, obs_dim), dtype=np.float32)
     next_obs_buf = np.zeros((n, obs_dim), dtype=np.float32)
     act_buf = np.zeros((n,), dtype=np.int64)
     rew_buf = np.zeros((n,), dtype=np.float32)
+    next_mask_buf = np.ones((n, int(env.action_space.n)), dtype=np.bool_)
     done_buf = np.zeros((n,), dtype=np.float32)
+    trunc_buf = np.zeros((n,), dtype=np.float32)
 
     added = 0
     demo_ep = 0
     demo_prog = np.linspace(0.0, 1.0, num=5, dtype=np.float32)
-    while added < n and demo_ep < 200:
+    # Only keep demonstrations from successful (goal-reaching) episodes.
+    # Otherwise, failed expert rollouts can dominate DQfD losses + the demo-preserving replay buffer
+    # and lock the policy into the degenerate "stop until stuck" behavior.
+    max_demo_eps = 2000
+    while added < n and demo_ep < int(max_demo_eps):
         opts = None
-        if forest_curriculum:
+        if forest_random_start_goal:
+            opts = {
+                "random_start_goal": True,
+                "rand_min_cost_m": float(forest_rand_min_cost_m),
+                "rand_max_cost_m": forest_rand_max_cost_m,
+                "rand_fixed_prob": float(forest_rand_fixed_prob),
+                "rand_tries": int(forest_rand_tries),
+            }
+        elif forest_curriculum:
             p = float(demo_prog[demo_ep % int(demo_prog.size)])
             opts = {"curriculum_progress": p, "curriculum_band_m": float(curriculum_band_m)}
         obs, _ = env.reset(seed=int(seed) + 50_000 + int(demo_ep), options=opts)
         done = False
         truncated = False
-        while not (done or truncated) and added < n:
+        reached = False
+        ep: list[tuple[np.ndarray, int, float, np.ndarray, bool, bool, np.ndarray]] = []
+        while not (done or truncated):
             a = forest_expert_action(
                 env,
-                forest_expert=str(forest_expert),
+                forest_expert=str(expert),
                 horizon_steps=int(forest_demo_horizon),
                 w_clearance=float(forest_demo_w_clearance),
             )
-            next_obs, reward, done, truncated, _info = env.step(int(a))
-            obs_buf[added] = obs
-            next_obs_buf[added] = next_obs
-            act_buf[added] = int(a)
-            rew_buf[added] = float(reward)
-            done_buf[added] = 1.0 if bool(done) else 0.0
+            next_obs, reward, done, truncated, info = env.step(int(a))
+            next_mask = env.admissible_action_mask(
+                horizon_steps=6,
+                min_od_m=0.0,
+                min_progress_m=1e-4,
+                fallback_to_safe=True,
+            )
+            reached = bool(reached or bool(info.get("reached", False)))
+            ep.append((obs, int(a), float(reward), next_obs, bool(done), bool(truncated), next_mask))
             obs = next_obs
-            added += 1
+
+        if bool(reached):
+            if int(added + len(ep)) > int(n):
+                break
+            for o, a, r, no, d, tr, nm in ep:
+                obs_buf[added] = o
+                next_obs_buf[added] = no
+                act_buf[added] = int(a)
+                rew_buf[added] = float(r)
+                next_mask_buf[added] = nm
+                done_buf[added] = 1.0 if bool(d) else 0.0
+                trunc_buf[added] = 1.0 if bool(tr) else 0.0
+                added += 1
+                if added >= n:
+                    break
         demo_ep += 1
 
     return (
@@ -117,7 +164,9 @@ def collect_forest_demos(
         act_buf[:added],
         rew_buf[:added],
         next_obs_buf[:added],
+        next_mask_buf[:added],
         done_buf[:added],
+        trunc_buf[:added],
     )
 
 
@@ -138,12 +187,17 @@ def train_one(
     forest_demo_pretrain_steps: int,
     forest_demo_horizon: int,
     forest_demo_w_clearance: float,
-    forest_demo_data: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None,
+    forest_demo_data: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None,
     forest_expert: str,
     forest_expert_exploration: bool,
     forest_expert_prob_start: float,
     forest_expert_prob_final: float,
     forest_expert_prob_decay: float,
+    forest_random_start_goal: bool,
+    forest_rand_min_cost_m: float,
+    forest_rand_max_cost_m: float | None,
+    forest_rand_fixed_prob: float,
+    forest_rand_tries: int,
     progress: bool,
     device: torch.device,
 ) -> tuple[DQNFamilyAgent, np.ndarray]:
@@ -179,9 +233,12 @@ def train_one(
     def forest_expert_action_local() -> int:
         if not isinstance(env, AMRBicycleEnv):
             raise RuntimeError("forest_expert_action called for non-forest env")
+        expert = str(forest_expert).lower().strip()
+        if expert == "auto":
+            expert = "cost_to_go" if bool(forest_random_start_goal) else "hybrid_astar"
         return forest_expert_action(
             env,
-            forest_expert=str(forest_expert),
+            forest_expert=str(expert),
             horizon_steps=int(forest_demo_horizon),
             w_clearance=float(forest_demo_w_clearance),
         )
@@ -192,7 +249,7 @@ def train_one(
     if forest_demo_prefill and isinstance(env, AMRBicycleEnv) and learning_starts > 0:
         demo_target = forest_demo_target(learning_starts=int(learning_starts), batch_size=int(agent_cfg.batch_size))
         if forest_demo_data is not None:
-            obs_buf, act_buf, rew_buf, next_obs_buf, done_buf = forest_demo_data
+            obs_buf, act_buf, rew_buf, next_obs_buf, next_mask_buf, done_buf, trunc_buf = forest_demo_data
             n = int(min(int(demo_target), int(obs_buf.shape[0])))
             for i in range(n):
                 agent.observe(
@@ -202,6 +259,8 @@ def train_one(
                     next_obs_buf[i],
                     bool(done_buf[i] > 0.5),
                     demo=True,
+                    truncated=bool(trunc_buf[i] > 0.5),
+                    next_action_mask=next_mask_buf[i],
                 )
             global_step += int(n)
         else:
@@ -211,9 +270,18 @@ def train_one(
             demo_added = 0
             demo_ep = 0
             demo_prog = np.linspace(0.0, 1.0, num=5, dtype=np.float32)
-            while demo_added < demo_target and demo_ep < 200:
+            max_demo_eps = 2000
+            while demo_added < demo_target and demo_ep < int(max_demo_eps):
                 opts = None
-                if forest_curriculum:
+                if bool(forest_random_start_goal):
+                    opts = {
+                        "random_start_goal": True,
+                        "rand_min_cost_m": float(forest_rand_min_cost_m),
+                        "rand_max_cost_m": forest_rand_max_cost_m,
+                        "rand_fixed_prob": float(forest_rand_fixed_prob),
+                        "rand_tries": int(forest_rand_tries),
+                    }
+                elif forest_curriculum:
                     # When curriculum is enabled, diversify demonstration starts to match the
                     # training start-state distribution.
                     p = float(demo_prog[demo_ep % int(demo_prog.size)])
@@ -221,13 +289,36 @@ def train_one(
                 obs, _ = env.reset(seed=seed + 50_000 + demo_ep, options=opts)
                 done = False
                 truncated = False
-                while not (done or truncated) and demo_added < demo_target:
+                reached = False
+                ep: list[tuple[np.ndarray, int, float, np.ndarray, bool, bool, np.ndarray]] = []
+                while not (done or truncated):
                     a = forest_expert_action_local()
-                    next_obs, reward, done, truncated, _info = env.step(a)
-                    agent.observe(obs, a, reward, next_obs, done, demo=True)
+                    next_obs, reward, done, truncated, info = env.step(a)
+                    next_mask = env.admissible_action_mask(
+                        horizon_steps=6,
+                        min_od_m=0.0,
+                        min_progress_m=1e-4,
+                        fallback_to_safe=True,
+                    )
+                    reached = bool(reached or bool(info.get("reached", False)))
+                    ep.append((obs, int(a), float(reward), next_obs, bool(done), bool(truncated), next_mask))
                     obs = next_obs
-                    demo_added += 1
-                    global_step += 1
+                if bool(reached):
+                    for o, a, r, no, d, tr, nm in ep:
+                        agent.observe(
+                            o,
+                            int(a),
+                            float(r),
+                            no,
+                            bool(d),
+                            demo=True,
+                            truncated=bool(tr),
+                            next_action_mask=nm,
+                        )
+                        demo_added += 1
+                        global_step += 1
+                    if demo_added >= demo_target:
+                        break
                 demo_ep += 1
 
         # Supervised warm-start on demos before TD learning.
@@ -249,9 +340,16 @@ def train_one(
                 while not (done_eval or trunc_eval):
                     a_eval = agent.act(obs_eval, episode=0, explore=False)
                     if not bool(env.is_action_admissible(int(a_eval), horizon_steps=15, min_od_m=0.0, min_progress_m=1e-4)):
-                        mask = env.admissible_action_mask(horizon_steps=15, min_od_m=0.0, min_progress_m=1e-4)
-                        if bool(mask.any()):
-                            a_eval = agent.act_masked(obs_eval, episode=0, explore=False, action_mask=mask)
+                        prog_mask = env.admissible_action_mask(
+                            horizon_steps=15,
+                            min_od_m=0.0,
+                            min_progress_m=1e-4,
+                            fallback_to_safe=False,
+                        )
+                        if bool(prog_mask.any()):
+                            a_eval = agent.act_masked(obs_eval, episode=0, explore=False, action_mask=prog_mask)
+                        else:
+                            a_eval = int(env._fallback_action_short_rollout(horizon_steps=15, min_od_m=0.0))
                     obs_eval, _r, done_eval, trunc_eval, info_eval = env.step(int(a_eval))
                     if bool(info_eval.get("reached", False)):
                         reached_eval = True
@@ -289,7 +387,15 @@ def train_one(
     ep_iter = pbar if pbar is not None else range(episodes)
     for ep in ep_iter:
         reset_options = None
-        if forest_curriculum and isinstance(env, AMRBicycleEnv):
+        if bool(forest_random_start_goal) and isinstance(env, AMRBicycleEnv):
+            reset_options = {
+                "random_start_goal": True,
+                "rand_min_cost_m": float(forest_rand_min_cost_m),
+                "rand_max_cost_m": forest_rand_max_cost_m,
+                "rand_fixed_prob": float(forest_rand_fixed_prob),
+                "rand_tries": int(forest_rand_tries),
+            }
+        elif forest_curriculum and isinstance(env, AMRBicycleEnv):
             p_raw = float(ep) / float(max(1, episodes - 1))
             ramp = max(1e-6, float(curriculum_ramp))
             p = float(np.clip(p_raw / ramp, 0.0, 1.0))
@@ -300,6 +406,8 @@ def train_one(
         truncated = False
         ep_steps = 0
         last_info: dict[str, object] = {}
+        ep_buffer: list[tuple[np.ndarray, int, float, np.ndarray, bool, bool, bool, np.ndarray | None]] = []
+        pending_updates = 0
 
         while not (done or truncated):
             ep_steps += 1
@@ -319,20 +427,64 @@ def train_one(
                 else:
                     action = agent.act(obs, episode=ep, explore=True)
                     if not bool(env.is_action_admissible(int(action), horizon_steps=6, min_od_m=0.0, min_progress_m=1e-4)):
-                        mask = env.admissible_action_mask(horizon_steps=6, min_od_m=0.0, min_progress_m=1e-4)
-                        action = agent.act_masked(obs, episode=ep, explore=True, action_mask=mask)
+                        prog_mask = env.admissible_action_mask(
+                            horizon_steps=6,
+                            min_od_m=0.0,
+                            min_progress_m=1e-4,
+                            fallback_to_safe=False,
+                        )
+                        if bool(prog_mask.any()):
+                            action = agent.act_masked(obs, episode=ep, explore=True, action_mask=prog_mask)
+                        else:
+                            action = int(env._fallback_action_short_rollout(horizon_steps=6, min_od_m=0.0))
             else:
                 action = agent.act(obs, episode=ep, explore=True)
             next_obs, reward, done, truncated, info = env.step(action)
             last_info = dict(info)
+            next_mask = None
+            if isinstance(env, AMRBicycleEnv):
+                next_mask = env.admissible_action_mask(
+                    horizon_steps=6,
+                    min_od_m=0.0,
+                    min_progress_m=1e-4,
+                    fallback_to_safe=True,
+                )
             # Time-limit truncation should not be treated as terminal for bootstrapping.
-            agent.observe(obs, action, reward, next_obs, done, demo=used_expert)
+            # Only mark expert transitions as demos when the *episode* reaches the goal.
+            # Failed expert steps are still useful off-policy data, but should not be imitated/preserved.
+            ep_buffer.append(
+                (
+                    obs,
+                    int(action),
+                    float(reward),
+                    next_obs,
+                    bool(done),
+                    bool(truncated),
+                    bool(used_expert),
+                    next_mask,
+                )
+            )
             ep_return += float(reward)
 
             if global_step >= learning_starts and (global_step % max(1, train_freq) == 0):
-                agent.update()
+                pending_updates += 1
 
             obs = next_obs
+
+        reached_ep = bool(last_info.get("reached", False))
+        for o, a, r, no, d, tr, ue, nm in ep_buffer:
+            agent.observe(
+                o,
+                int(a),
+                float(r),
+                no,
+                bool(d),
+                demo=bool(ue and reached_ep),
+                truncated=bool(tr),
+                next_action_mask=nm,
+            )
+        for _ in range(int(pending_updates)):
+            agent.update()
 
         returns[ep] = float(ep_return)
 
@@ -360,33 +512,104 @@ def train_one(
     final_q_target = clone_state_dict(agent.q_target.state_dict())
     final_train_steps = int(agent._train_steps)
 
+    # Match checkpoint selection to the evaluation distribution:
+    # - fixed-start training => evaluate on canonical start/goal
+    # - random-start/goal training => evaluate on a small fixed batch of sampled (start,goal) pairs
+    eval_reset_options_list: list[dict[str, object] | None] = [None]
+    if bool(forest_random_start_goal) and isinstance(env, AMRBicycleEnv):
+        eval_reset_options_list = []
+        for i in range(5):
+            env.reset(
+                seed=int(seed) + 90_000 + int(i),
+                options={
+                    "random_start_goal": True,
+                    "rand_min_cost_m": float(forest_rand_min_cost_m),
+                    "rand_max_cost_m": forest_rand_max_cost_m,
+                    "rand_fixed_prob": float(forest_rand_fixed_prob),
+                    "rand_tries": int(forest_rand_tries),
+                },
+            )
+            eval_reset_options_list.append(
+                {
+                    "start_xy": (int(env.start_xy[0]), int(env.start_xy[1])),
+                    "goal_xy": (int(env.goal_xy[0]), int(env.goal_xy[1])),
+                }
+            )
+
     def eval_greedy(q_sd: dict[str, torch.Tensor], q_target_sd: dict[str, torch.Tensor]) -> tuple[int, int, int]:
         agent.q.load_state_dict(q_sd)
         agent.q_target.load_state_dict(q_target_sd)
 
-        obs, _ = env.reset(seed=seed + 9999)
-        done = False
-        truncated = False
-        steps = 0
-        ret = 0.0
-        last_info: dict[str, object] = {}
-        while not (done or truncated):
-            steps += 1
-            if isinstance(env, AMRBicycleEnv):
+        # Canonical (single) evaluation.
+        if not (bool(forest_random_start_goal) and isinstance(env, AMRBicycleEnv)):
+            obs, _ = env.reset(seed=seed + 9999)
+            done = False
+            truncated = False
+            steps = 0
+            ret = 0.0
+            last_info: dict[str, object] = {}
+            while not (done or truncated):
+                steps += 1
+                if isinstance(env, AMRBicycleEnv):
+                    a = agent.act(obs, episode=0, explore=False)
+                    if not bool(env.is_action_admissible(int(a), horizon_steps=15, min_od_m=0.0, min_progress_m=1e-4)):
+                        prog_mask = env.admissible_action_mask(
+                            horizon_steps=15,
+                            min_od_m=0.0,
+                            min_progress_m=1e-4,
+                            fallback_to_safe=False,
+                        )
+                        if bool(prog_mask.any()):
+                            a = agent.act_masked(obs, episode=0, explore=False, action_mask=prog_mask)
+                        else:
+                            a = int(env._fallback_action_short_rollout(horizon_steps=15, min_od_m=0.0))
+                else:
+                    a = agent.act(obs, episode=0, explore=False)
+                obs, r, done, truncated, info = env.step(a)
+                last_info = dict(info)
+                ret += float(r)
+
+            reached = bool(last_info.get("reached", False))
+            collision = bool(last_info.get("collision", False) or last_info.get("stuck", False))
+            return episode_score(reached=reached, collision=collision, steps=steps, ret=ret)
+
+        # Random-start/goal evaluation: use a fixed batch of sampled (start,goal) pairs.
+        successes = 0
+        total_ret = 0.0
+        total_steps = 0
+        for i, r_opts in enumerate(eval_reset_options_list):
+            obs, _ = env.reset(seed=seed + 9999 + int(i), options=r_opts)
+            done = False
+            truncated = False
+            steps = 0
+            ret = 0.0
+            last_info: dict[str, object] = {}
+            while not (done or truncated):
+                steps += 1
                 a = agent.act(obs, episode=0, explore=False)
                 if not bool(env.is_action_admissible(int(a), horizon_steps=15, min_od_m=0.0, min_progress_m=1e-4)):
-                    mask = env.admissible_action_mask(horizon_steps=15, min_od_m=0.0, min_progress_m=1e-4)
-                    if bool(mask.any()):
-                        a = agent.act_masked(obs, episode=0, explore=False, action_mask=mask)
-            else:
-                a = agent.act(obs, episode=0, explore=False)
-            obs, r, done, truncated, info = env.step(a)
-            last_info = dict(info)
-            ret += float(r)
+                    prog_mask = env.admissible_action_mask(
+                        horizon_steps=15,
+                        min_od_m=0.0,
+                        min_progress_m=1e-4,
+                        fallback_to_safe=False,
+                    )
+                    if bool(prog_mask.any()):
+                        a = agent.act_masked(obs, episode=0, explore=False, action_mask=prog_mask)
+                    else:
+                        a = int(env._fallback_action_short_rollout(horizon_steps=15, min_od_m=0.0))
+                obs, r, done, truncated, info = env.step(a)
+                last_info = dict(info)
+                ret += float(r)
+            if bool(last_info.get("reached", False)):
+                successes += 1
+            total_ret += float(ret)
+            total_steps += int(steps)
 
-        reached = bool(last_info.get("reached", False))
-        collision = bool(last_info.get("collision", False) or last_info.get("stuck", False))
-        return episode_score(reached=reached, collision=collision, steps=steps, ret=ret)
+        n = max(1, int(len(eval_reset_options_list)))
+        avg_ret = float(total_ret) / float(n)
+        avg_steps = float(total_steps) / float(n)
+        return (int(successes), int(1_000_000 * float(avg_ret)), -int(avg_steps))
 
     # Choose between the final policy and the best (exploratory) episode checkpoint based on greedy performance.
     best_greedy_score = eval_greedy(final_q, final_q_target)
@@ -453,8 +676,8 @@ def main() -> int:
     ap.add_argument(
         "--device",
         choices=("auto", "cpu", "cuda"),
-        default="auto",
-        help="Torch device selection (default: auto).",
+        default="cuda",
+        help="Torch device selection (default: cuda).",
     )
     ap.add_argument("--cuda-device", type=int, default=0, help="CUDA device index (when using --device=cuda).")
     ap.add_argument(
@@ -463,7 +686,13 @@ def main() -> int:
         help="Print CUDA/runtime info and exit (use to verify CUDA setup).",
     )
     ap.add_argument("--train-freq", type=int, default=4)
-    ap.add_argument("--learning-starts", type=int, default=500)
+    ap.add_argument("--learning-starts", type=int, default=2000)
+    ap.add_argument(
+        "--iddqn-n-step",
+        type=int,
+        default=3,
+        help="IDDQN-only: n-step return horizon (1 disables n-step).",
+    )
     ap.add_argument("--ma-window", type=int, default=20, help="Moving average window for plotting (1=raw).")
     ap.add_argument(
         "--obs-map-size",
@@ -524,9 +753,39 @@ def main() -> int:
     )
     ap.add_argument(
         "--forest-expert",
-        choices=("hybrid_astar", "mpc"),
-        default="hybrid_astar",
-        help="Forest-only: expert source used for demos / guided exploration (default: hybrid_astar).",
+        choices=("auto", "hybrid_astar", "cost_to_go"),
+        default="auto",
+        help="Forest-only: expert source used for demos / guided exploration.",
+    )
+    ap.add_argument(
+        "--forest-random-start-goal",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Forest-only: randomize start/goal at each reset (goal-conditioned training).",
+    )
+    ap.add_argument(
+        "--forest-rand-min-cost-m",
+        type=float,
+        default=6.0,
+        help="Forest-only: minimum start→goal cost-to-go (meters) when sampling random pairs.",
+    )
+    ap.add_argument(
+        "--forest-rand-max-cost-m",
+        type=float,
+        default=0.0,
+        help="Forest-only: maximum start→goal cost-to-go (meters) when sampling random pairs (<=0 disables).",
+    )
+    ap.add_argument(
+        "--forest-rand-fixed-prob",
+        type=float,
+        default=0.2,
+        help="Forest-only: probability of using the canonical fixed start/goal instead of a random pair.",
+    )
+    ap.add_argument(
+        "--forest-rand-tries",
+        type=int,
+        default=200,
+        help="Forest-only: rejection-sampling tries per episode when sampling random start/goal pairs.",
     )
     ap.add_argument(
         "--forest-expert-prob-start",
@@ -553,6 +812,9 @@ def main() -> int:
         help="Show a training progress bar (default: on when running in a TTY).",
     )
     args = ap.parse_args()
+    forest_envs = set(FOREST_ENV_ORDER)
+    if int(args.max_steps) == 300 and args.envs and all(str(e) in forest_envs for e in args.envs):
+        args.max_steps = 600
 
     if args.self_check:
         info = torch_runtime_info()
@@ -583,8 +845,8 @@ def main() -> int:
     out_dir = run_paths.run_dir
 
     agent_cfg = AgentConfig()
-    dqn_cfg = replace(agent_cfg, eps_start=0.6)
-    iddqn_cfg = replace(agent_cfg, eps_start=0.6, per_alpha=0.2, target_tau=0.005)
+    dqn_cfg = replace(agent_cfg, eps_start=0.6, n_step=3)
+    iddqn_cfg = replace(agent_cfg, eps_start=0.6, per_alpha=0.0, target_tau=0.005, n_step=int(args.iddqn_n_step))
     (out_dir / "configs").mkdir(parents=True, exist_ok=True)
     args_payload: dict[str, object] = {}
     for k, v in vars(args).items():
@@ -629,12 +891,18 @@ def main() -> int:
             forest_demo_data = None
             if bool(args.forest_demo_prefill) and int(args.learning_starts) > 0:
                 demo_target = forest_demo_target(learning_starts=int(args.learning_starts), batch_size=int(agent_cfg.batch_size))
+                rand_max = None if float(args.forest_rand_max_cost_m) <= 0.0 else float(args.forest_rand_max_cost_m)
                 forest_demo_data = collect_forest_demos(
                     env,
                     target=int(demo_target),
                     seed=int(args.seed + 1000),
                     forest_curriculum=bool(args.forest_curriculum),
                     curriculum_band_m=float(args.curriculum_band_m),
+                    forest_random_start_goal=bool(args.forest_random_start_goal),
+                    forest_rand_min_cost_m=float(args.forest_rand_min_cost_m),
+                    forest_rand_max_cost_m=rand_max,
+                    forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
+                    forest_rand_tries=int(args.forest_rand_tries),
                     forest_expert=str(args.forest_expert),
                     forest_demo_horizon=int(args.forest_demo_horizon),
                     forest_demo_w_clearance=float(args.forest_demo_w_clearance),
@@ -651,6 +919,8 @@ def main() -> int:
                 terminate_on_collision=False,
             )
             forest_demo_data = None
+
+        rand_max = None if float(args.forest_rand_max_cost_m) <= 0.0 else float(args.forest_rand_max_cost_m)
 
         _, dqn_returns = train_one(
             env,
@@ -674,6 +944,11 @@ def main() -> int:
             forest_expert_prob_start=float(args.forest_expert_prob_start),
             forest_expert_prob_final=float(args.forest_expert_prob_final),
             forest_expert_prob_decay=float(args.forest_expert_prob_decay),
+            forest_random_start_goal=bool(args.forest_random_start_goal),
+            forest_rand_min_cost_m=float(args.forest_rand_min_cost_m),
+            forest_rand_max_cost_m=rand_max,
+            forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
+            forest_rand_tries=int(args.forest_rand_tries),
             progress=progress,
             device=device,
         )
@@ -702,6 +977,11 @@ def main() -> int:
             forest_expert_prob_start=float(args.forest_expert_prob_start),
             forest_expert_prob_final=float(args.forest_expert_prob_final),
             forest_expert_prob_decay=float(args.forest_expert_prob_decay),
+            forest_random_start_goal=bool(args.forest_random_start_goal),
+            forest_rand_min_cost_m=float(args.forest_rand_min_cost_m),
+            forest_rand_max_cost_m=rand_max,
+            forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
+            forest_rand_tries=int(args.forest_rand_tries),
             progress=progress,
             device=device,
         )

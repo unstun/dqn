@@ -61,8 +61,10 @@ OD(x,ψ) = min_i ( D(c_i(x,ψ)) - r )
 - `OD > 0`: collision-free clearance
 - `OD ≤ 0`: penetration (collision)
 
-In plotting and Hybrid A*, an oriented box footprint consistent with the same dimensions is used:
-`length=0.924 m`, `width=0.740 m` (`forest_oriented_box_footprint()`).
+In plotting we draw an oriented box footprint consistent with the same dimensions:
+`length=0.924 m`, `width=0.740 m` (`forest_oriented_box_footprint()`). For collision checking in
+Hybrid A* / RRT* we use the same **two-circle** footprint (derived from the same box dimensions)
+for robust grid collision tests at arbitrary headings.
 
 ## 4) Observation (global planning, map-known)
 
@@ -148,7 +150,8 @@ The DQfD-style expert is Hybrid A* based:
 
 Important detail (robustness): tracking parameters matter. A too-short horizon with overly aggressive waypoint/heading chasing can collide on harder maps (notably `forest_a`). The training CLI uses a safer Hybrid A* expert configuration (longer horizon, larger lookahead, higher clearance emphasis) for both demo prefill and guided exploration.
 
-If Hybrid A* is unavailable for a given start (e.g., planning fails), the expert falls back to a simple MPC-style one-step search (`expert_action_mpc`).
+If Hybrid A* reference retrieval fails for a given start, the expert falls back to a short-horizon
+rollout-based safe/progress action chooser (instead of MPC).
 
 ## 10) Stabilizers used to prevent “never reach goal”
 
@@ -163,7 +166,7 @@ Forest long-horizon training is prone to degenerate policies (stop/jitter). The 
 - IDDQN: uses prioritized replay + soft target updates by default (vs. DQN), improving stability on long-horizon forests.
 - Safety/admissible action masks during training and inference:
   - `safe_action_mask(...)`: collision-safe short-horizon actions
-  - `admissible_action_mask(...)`: collision-safe + cost-to-go progress
+  - `admissible_action_mask(...)`: collision-safe + cost-to-go progress (also allows safe reversing)
 
 Inference does **not** “gate” actions with the teacher; it evaluates the learned greedy policy under an admissible-action mask for safety/robustness.
 
@@ -173,7 +176,8 @@ For performance, inference avoids computing the full admissible-action mask on e
 
 `infer.py` reports per-environment KPIs and writes:
 
-- `table2_kpis_raw.csv`, `table2_kpis.csv`, `table2_kpis.md`
+- Per-run KPIs (one row per run per algorithm): `table2_kpis_raw.csv`, `table2_kpis.csv`, `table2_kpis.md`
+- Mean KPIs (averaged over runs): `table2_kpis_mean_raw.csv`, `table2_kpis_mean.csv`, `table2_kpis_mean.md`
 - `fig12_paths.png`: overlays DQN, IDDQN, Hybrid A*, RRT* paths
 
 Plot improvements implemented:
@@ -203,11 +207,11 @@ Notes on `inference_time_s`:
 Train a single forest map (fixed start; DQfD-style stabilizers on):
 
 ```
-python train.py --envs forest_b --out outputs_forest_dqfd3 --episodes 600 --max-steps 600 --device auto --no-timestamp-runs --no-forest-curriculum --forest-expert-prob-start 1.0 --forest-expert-prob-final 0.0 --forest-expert-prob-decay 0.7
+python train.py --envs forest_b --out outputs_forest_dqfd3 --episodes 600 --max-steps 600 --device cuda --no-timestamp-runs --no-forest-curriculum --forest-expert-prob-start 1.0 --forest-expert-prob-final 0.0 --forest-expert-prob-decay 0.7
 ```
 
 Inference with baselines:
 
 ```
-python infer.py --envs forest_b --models outputs_forest_dqfd3 --out outputs_forest_dqfd3_infer --baselines all --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000 --kpi-time-mode policy --device auto
+python infer.py --envs forest_b --models outputs_forest_dqfd3 --out outputs_forest_dqfd3_infer --baselines all --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000 --kpi-time-mode policy --device cuda
 ```
