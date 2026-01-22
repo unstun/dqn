@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
+import time
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -30,6 +32,70 @@ def moving_average(x: np.ndarray, window: int) -> np.ndarray:
         return x
     kernel = np.ones((w,), dtype=np.float32) / float(w)
     return np.convolve(x, kernel, mode="same")
+
+
+def plot_training_eval_metrics(df_eval: pd.DataFrame, *, out_path: Path) -> None:
+    if df_eval.empty:
+        return
+
+    metrics: list[tuple[str, str]] = [
+        ("success_rate", "Success rate"),
+        ("avg_steps", "Avg steps"),
+        ("avg_return", "Avg return"),
+        ("planning_cost", "Planning cost (m)"),
+    ]
+
+    df_eval = df_eval.copy()
+    if "episode" in df_eval.columns:
+        df_eval["episode"] = pd.to_numeric(df_eval["episode"], errors="coerce")
+
+    envs = [str(x) for x in df_eval["env"].drop_duplicates().tolist()]
+    if not envs:
+        return
+
+    rows_n = int(len(envs))
+    cols_n = int(len(metrics))
+    fig, axes = plt.subplots(
+        rows_n,
+        cols_n,
+        figsize=(4.3 * cols_n, 2.8 * rows_n),
+        sharex=False,
+        sharey=False,
+    )
+    axes_arr = np.atleast_2d(axes)
+
+    algo_defs: list[tuple[str, str]] = [("iddqn", "IDDQN"), ("dqn", "DQN")]
+    for i, env_name in enumerate(envs):
+        for j, (col, title) in enumerate(metrics):
+            ax = axes_arr[i, j]
+            for algo, label in algo_defs:
+                sub = df_eval[(df_eval["env"] == env_name) & (df_eval["algo"] == algo)].copy()
+                if sub.empty:
+                    continue
+                sub = sub.sort_values("episode")
+                x = sub["episode"].to_numpy()
+                y = pd.to_numeric(sub[col], errors="coerce").astype(float).to_numpy()
+                if col == "planning_cost":
+                    y = np.where(np.isfinite(y), y, np.nan)
+                ax.plot(x, y, label=label, linewidth=1.0)
+
+            if i == 0:
+                ax.set_title(title)
+            if j == 0:
+                ax.set_ylabel(str(env_name))
+            if i == rows_n - 1:
+                ax.set_xlabel("Episodes")
+            if col == "success_rate":
+                ax.set_ylim(-0.05, 1.05)
+            ax.grid(True, alpha=0.25)
+
+    handles, labels = axes_arr[0, 0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, labels, loc="upper center", ncol=2, fontsize=9, frameon=False)
+    fig.suptitle("Training greedy-eval metrics", y=0.98)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.savefig(out_path, dpi=200)
+    plt.close(fig)
 
 
 def forest_demo_target(*, learning_starts: int, batch_size: int) -> int:
@@ -198,15 +264,19 @@ def train_one(
     forest_rand_max_cost_m: float | None,
     forest_rand_fixed_prob: float,
     forest_rand_tries: int,
+    eval_every: int,
+    eval_runs: int,
+    eval_score_time_weight: float,
     progress: bool,
     device: torch.device,
-) -> tuple[DQNFamilyAgent, np.ndarray]:
+) -> tuple[DQNFamilyAgent, np.ndarray, list[dict[str, float | int]]]:
     obs_dim = int(env.observation_space.shape[0])
     n_actions = int(env.action_space.n)
     agent = DQNFamilyAgent(algo, obs_dim, n_actions, config=agent_cfg, seed=seed, device=device)
 
     returns = np.zeros((episodes,), dtype=np.float32)
     global_step = 0
+    eval_history: list[dict[str, float | int]] = []
 
     best_score: tuple[int, int, int] = (-1, -10**18, 0)
     best_q: dict[str, torch.Tensor] | None = None
@@ -229,6 +299,35 @@ def train_one(
 
     def clone_state_dict(sd: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         return {k: v.detach().cpu().clone() for k, v in sd.items()}
+
+    # Match checkpoint selection and metric logging to the evaluation distribution:
+    # - fixed-start training => evaluate on canonical start/goal
+    # - random-start/goal training => evaluate on a small fixed batch of sampled (start,goal) pairs
+    eval_reset_options_list: list[dict[str, object] | None] = [None]
+    if bool(forest_random_start_goal) and isinstance(env, AMRBicycleEnv):
+        eval_reset_options_list = []
+        n_eval = max(1, int(eval_runs))
+        for i in range(n_eval):
+            env.reset(
+                seed=int(seed) + 90_000 + int(i),
+                options={
+                    "random_start_goal": True,
+                    "rand_min_cost_m": float(forest_rand_min_cost_m),
+                    "rand_max_cost_m": forest_rand_max_cost_m,
+                    "rand_fixed_prob": float(forest_rand_fixed_prob),
+                    "rand_tries": int(forest_rand_tries),
+                },
+            )
+            eval_reset_options_list.append(
+                {
+                    "start_xy": (int(env.start_xy[0]), int(env.start_xy[1])),
+                    "goal_xy": (int(env.goal_xy[0]), int(env.goal_xy[1])),
+                }
+            )
+
+    def sync_cuda() -> None:
+        if agent.device.type == "cuda" and torch.cuda.is_available():
+            torch.cuda.synchronize()
 
     def forest_expert_action_local() -> int:
         if not isinstance(env, AMRBicycleEnv):
@@ -369,6 +468,108 @@ def train_one(
         # Start learning immediately once the buffer has useful transitions.
         global_step = max(int(global_step), int(learning_starts))
 
+    def eval_action(obs_eval: np.ndarray) -> int:
+        if isinstance(env, AMRBicycleEnv):
+            a_eval = agent.act(obs_eval, episode=0, explore=False)
+            if not bool(env.is_action_admissible(int(a_eval), horizon_steps=15, min_od_m=0.0, min_progress_m=1e-4)):
+                prog_mask = env.admissible_action_mask(
+                    horizon_steps=15,
+                    min_od_m=0.0,
+                    min_progress_m=1e-4,
+                    fallback_to_safe=False,
+                )
+                if bool(prog_mask.any()):
+                    a_eval = agent.act_masked(obs_eval, episode=0, explore=False, action_mask=prog_mask)
+                else:
+                    a_eval = int(env._fallback_action_short_rollout(horizon_steps=15, min_od_m=0.0))
+            return int(a_eval)
+
+        return int(agent.act(obs_eval, episode=0, explore=False))
+
+    def eval_greedy_metrics() -> dict[str, float]:
+        successes = 0
+        collisions = 0
+        total_ret = 0.0
+        total_steps = 0
+        times_s: list[float] = []
+        succ_path_lens_m: list[float] = []
+
+        def extract_xy_m(info: dict[str, object]) -> tuple[float, float] | None:
+            if "pose_m" in info:
+                try:
+                    x_m, y_m, _ = info["pose_m"]  # type: ignore[misc]
+                    return (float(x_m), float(y_m))
+                except Exception:
+                    return None
+            if "agent_xy" in info:
+                try:
+                    ax, ay = info["agent_xy"]  # type: ignore[misc]
+                    if isinstance(env, AMRBicycleEnv):
+                        return (float(ax) * float(env.cell_size_m), float(ay) * float(env.cell_size_m))
+                    if isinstance(env, AMRGridEnv):
+                        return (float(ax) * float(env.cell_size), float(ay) * float(env.cell_size))
+                except Exception:
+                    return None
+            return None
+
+        for i, r_opts in enumerate(eval_reset_options_list):
+            obs_eval, info0 = env.reset(seed=int(seed) + 99_999 + int(i), options=r_opts)
+            done_eval = False
+            trunc_eval = False
+            steps_eval = 0
+            ret_eval = 0.0
+            t_eval = 0.0
+            path_len_m = 0.0
+            last_xy_m = extract_xy_m(dict(info0))
+            last_info_eval: dict[str, object] = {}
+            while not (done_eval or trunc_eval):
+                steps_eval += 1
+                sync_cuda()
+                t0 = time.perf_counter()
+                a_eval = eval_action(obs_eval)
+                sync_cuda()
+                t_eval += float(time.perf_counter() - t0)
+                obs_eval, r, done_eval, trunc_eval, info_eval = env.step(int(a_eval))
+                last_info_eval = dict(info_eval)
+                ret_eval += float(r)
+                xy_m = extract_xy_m(last_info_eval)
+                if last_xy_m is not None and xy_m is not None:
+                    path_len_m += float(math.hypot(float(xy_m[0]) - float(last_xy_m[0]), float(xy_m[1]) - float(last_xy_m[1])))
+                last_xy_m = xy_m
+
+            reached_eval = bool(last_info_eval.get("reached", False))
+            collision_eval = bool(last_info_eval.get("collision", False) or last_info_eval.get("stuck", False))
+            if reached_eval:
+                successes += 1
+                succ_path_lens_m.append(float(path_len_m))
+            if collision_eval:
+                collisions += 1
+            total_ret += float(ret_eval)
+            total_steps += int(steps_eval)
+            times_s.append(float(t_eval))
+
+        n = max(1, int(len(eval_reset_options_list)))
+        sr = float(successes) / float(n)
+        avg_path_length = float(np.mean(succ_path_lens_m)) if succ_path_lens_m else float("nan")
+        inference_time_s = float(np.mean(times_s)) if times_s else 0.0
+
+        w_t = float(eval_score_time_weight)
+        base = float(avg_path_length) + float(w_t) * float(inference_time_s)
+        denom = max(float(sr), 1e-6)
+        planning_cost = float(base) / float(denom)
+        if not (sr > 0.0 and math.isfinite(base)):
+            planning_cost = float("inf")
+
+        return {
+            "success_rate": float(successes) / float(n),
+            "collision_rate": float(collisions) / float(n),
+            "avg_return": float(total_ret) / float(n),
+            "avg_steps": float(total_steps) / float(n),
+            "avg_path_length": float(avg_path_length),
+            "inference_time_s": float(inference_time_s),
+            "planning_cost": float(planning_cost),
+        }
+
     pbar = None
     if progress:
         try:
@@ -488,6 +689,22 @@ def train_one(
 
         returns[ep] = float(ep_return)
 
+        every = int(max(0, int(eval_every)))
+        if every > 0 and ((ep + 1) % every == 0 or ep == 0 or ep == int(episodes - 1)):
+            m = eval_greedy_metrics()
+            eval_history.append(
+                {
+                    "episode": int(ep + 1),
+                    "success_rate": float(m["success_rate"]),
+                    "collision_rate": float(m["collision_rate"]),
+                    "avg_return": float(m["avg_return"]),
+                    "avg_steps": float(m["avg_steps"]),
+                    "avg_path_length": float(m["avg_path_length"]),
+                    "inference_time_s": float(m["inference_time_s"]),
+                    "planning_cost": float(m["planning_cost"]),
+                }
+            )
+
         if pbar is not None:
             pbar.set_postfix(
                 {
@@ -511,30 +728,6 @@ def train_one(
     final_q = clone_state_dict(agent.q.state_dict())
     final_q_target = clone_state_dict(agent.q_target.state_dict())
     final_train_steps = int(agent._train_steps)
-
-    # Match checkpoint selection to the evaluation distribution:
-    # - fixed-start training => evaluate on canonical start/goal
-    # - random-start/goal training => evaluate on a small fixed batch of sampled (start,goal) pairs
-    eval_reset_options_list: list[dict[str, object] | None] = [None]
-    if bool(forest_random_start_goal) and isinstance(env, AMRBicycleEnv):
-        eval_reset_options_list = []
-        for i in range(5):
-            env.reset(
-                seed=int(seed) + 90_000 + int(i),
-                options={
-                    "random_start_goal": True,
-                    "rand_min_cost_m": float(forest_rand_min_cost_m),
-                    "rand_max_cost_m": forest_rand_max_cost_m,
-                    "rand_fixed_prob": float(forest_rand_fixed_prob),
-                    "rand_tries": int(forest_rand_tries),
-                },
-            )
-            eval_reset_options_list.append(
-                {
-                    "start_xy": (int(env.start_xy[0]), int(env.start_xy[1])),
-                    "goal_xy": (int(env.goal_xy[0]), int(env.goal_xy[1])),
-                }
-            )
 
     def eval_greedy(q_sd: dict[str, torch.Tensor], q_target_sd: dict[str, torch.Tensor]) -> tuple[int, int, int]:
         agent.q.load_state_dict(q_sd)
@@ -633,7 +826,7 @@ def train_one(
 
     model_path = out_dir / "models" / env.map_spec.name / f"{algo}.pt"
     agent.save(model_path)
-    return agent, returns
+    return agent, returns, eval_history
 
 
 def main() -> int:
@@ -694,6 +887,30 @@ def main() -> int:
         help="IDDQN-only: n-step return horizon (1 disables n-step).",
     )
     ap.add_argument("--ma-window", type=int, default=20, help="Moving average window for plotting (1=raw).")
+    ap.add_argument(
+        "--eval-every",
+        type=int,
+        default=0,
+        help="Run a greedy evaluation rollout every N episodes (0 disables; recommended for smoother learning curves).",
+    )
+    ap.add_argument(
+        "--eval-runs",
+        type=int,
+        default=5,
+        help=(
+            "Number of evaluation rollouts per eval point. For --forest-random-start-goal this is the fixed (start,goal) "
+            "batch size used throughout training."
+        ),
+    )
+    ap.add_argument(
+        "--eval-score-time-weight",
+        type=float,
+        default=0.5,
+        help=(
+            "Time weight (m/s) for the planning_cost metric written to training_eval.csv/.xlsx: "
+            "planning_cost = (avg_path_length + w * inference_time_s) / max(success_rate, eps)."
+        ),
+    )
     ap.add_argument(
         "--obs-map-size",
         type=int,
@@ -875,6 +1092,7 @@ def main() -> int:
     (out_dir / "configs" / "agent_config_iddqn.json").write_text(json.dumps(asdict(iddqn_cfg), indent=2, sort_keys=True), encoding="utf-8")
 
     all_rows: list[dict[str, float | int | str]] = []
+    all_eval_rows: list[dict[str, float | int | str]] = []
     curves: dict[str, dict[str, np.ndarray]] = {}
 
     for env_name in args.envs:
@@ -922,7 +1140,7 @@ def main() -> int:
 
         rand_max = None if float(args.forest_rand_max_cost_m) <= 0.0 else float(args.forest_rand_max_cost_m)
 
-        _, dqn_returns = train_one(
+        _, dqn_returns, dqn_eval = train_one(
             env,
             "dqn",
             episodes=args.episodes,
@@ -949,10 +1167,13 @@ def main() -> int:
             forest_rand_max_cost_m=rand_max,
             forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
             forest_rand_tries=int(args.forest_rand_tries),
+            eval_every=int(args.eval_every),
+            eval_runs=int(args.eval_runs),
+            eval_score_time_weight=float(args.eval_score_time_weight),
             progress=progress,
             device=device,
         )
-        _, iddqn_returns = train_one(
+        _, iddqn_returns, iddqn_eval = train_one(
             env,
             "iddqn",
             episodes=args.episodes,
@@ -982,6 +1203,9 @@ def main() -> int:
             forest_rand_max_cost_m=rand_max,
             forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
             forest_rand_tries=int(args.forest_rand_tries),
+            eval_every=int(args.eval_every),
+            eval_runs=int(args.eval_runs),
+            eval_score_time_weight=float(args.eval_score_time_weight),
             progress=progress,
             device=device,
         )
@@ -997,8 +1221,24 @@ def main() -> int:
                 }
             )
 
+        for row in dqn_eval:
+            all_eval_rows.append({"env": env_name, "algo": "dqn", **row})
+        for row in iddqn_eval:
+            all_eval_rows.append({"env": env_name, "algo": "iddqn", **row})
+
     df = pd.DataFrame(all_rows)
     df.to_csv(out_dir / "training_returns.csv", index=False)
+    if all_eval_rows:
+        df_eval = pd.DataFrame(all_eval_rows)
+        df_eval.to_csv(out_dir / "training_eval.csv", index=False)
+        try:
+            df_eval.to_excel(out_dir / "training_eval.xlsx", index=False)
+        except Exception as exc:
+            print(f"Warning: failed to write training_eval.xlsx: {exc}", file=sys.stderr)
+        try:
+            plot_training_eval_metrics(df_eval, out_path=out_dir / "training_eval_metrics.png")
+        except Exception as exc:
+            print(f"Warning: failed to write training_eval_metrics.png: {exc}", file=sys.stderr)
 
     # Plot Fig. 13-style reward curves
     envs_to_plot = list(args.envs)[:4]
@@ -1034,6 +1274,12 @@ def main() -> int:
 
     print(f"Wrote: {out_dir / 'fig13_rewards.png'}")
     print(f"Wrote: {out_dir / 'training_returns.csv'}")
+    if all_eval_rows:
+        print(f"Wrote: {out_dir / 'training_eval.csv'}")
+        if (out_dir / "training_eval.xlsx").exists():
+            print(f"Wrote: {out_dir / 'training_eval.xlsx'}")
+        if (out_dir / "training_eval_metrics.png").exists():
+            print(f"Wrote: {out_dir / 'training_eval_metrics.png'}")
     print(f"Wrote models under: {out_dir / 'models'}")
     print(f"Run dir: {out_dir}")
     return 0

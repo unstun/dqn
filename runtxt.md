@@ -170,6 +170,14 @@ These affect the environment observation vector and therefore model checkpoint c
 ### A.7 Plot smoothing (does not affect training)
 
 - `--ma-window` (default: `20`): Moving-average window for reward curve plotting (`1` = raw).
+- `--eval-every` (default: `0`): Run a **greedy** evaluation rollout every N episodes and write `training_eval.csv` (useful for smoother “policy gets stronger” curves).
+  - `0` disables evaluation logging (fastest).
+  - Evaluation uses `explore=False` and the same forest admissible-action logic as inference (mask + fallback).
+- `--eval-runs` (default: `5`): Number of evaluation rollouts per eval point.
+  - For `--forest-random-start-goal`, this is the fixed `(start, goal)` batch size sampled once and reused across training.
+- `--eval-score-time-weight` (default: `0.5`): Time weight (m/s) for `planning_cost` in `training_eval.{csv,xlsx}`:
+  - `planning_cost = (avg_path_length + w * inference_time_s) / max(success_rate, eps)`
+  - When `--eval-every > 0`, training also writes `training_eval_metrics.png` (success_rate/avg_steps/avg_return/planning_cost vs episode).
 
 ### A.8 Forest-only stabilizers (recommended to keep enabled for forest)
 
@@ -303,8 +311,11 @@ python infer.py --envs forest_a --models runs/forest_a_gap375_masked/train_20260
 
 
 cd d:\BaiduSyncdisk\study\phdprojec\dqn
-python train.py --envs forest_a --out forest_a_gap30_rev_12_23am --episodes 300 --max-steps 1000 --forest-random-start-goal --forest-rand-min-cost-m 6 --forest-rand-max-cost-m 0 --forest-rand-fixed-prob 0 --forest-rand-tries 200 --forest-expert cost_to_go --no-forest-expert-exploration --forest-demo-pretrain-steps 80000 --learning-starts 5000 --device cuda --cuda-device 0 --seed 0
+python train.py --envs forest_a --out forest_a_gap30_rev_12_23am --episodes 300 --max-steps 1000 --forest-random-start-goal --forest-rand-min-cost-m 6 --forest-rand-max-cost-m 0 --forest-rand-fixed-prob 0 --forest-rand-tries 200 --forest-expert cost_to_go --no-forest-expert-exploration --forest-demo-pretrain-steps 80000 --learning-starts 5000 --device cuda --cuda-device 0 --seed 0 --eval-every 10 --eval-runs 5 --eval-score-time-weight 0.5
 runs\forest_a_gap30_rev_12_23am\train_20260122_002417
 conda run -n ros2py310 python infer.py --envs forest_a --models runs\forest_a_gap30_rev_12_23am\train_20260122_002417 --out runs\forest_a_gap30_rev_12_23am\train_20260122_002417--random-start-goal --runs 4 --rand-min-cost-m 6 --rand-max-cost-m 0 --rand-fixed-prob 0 --rand-tries 200 --rand-reject-unreachable --kpi-time-mode policy --max-steps 1000 --device cuda --cuda-device 0 --seed 21
 
 python infer.py --envs forest_a --models "runs\forest_a_gap30_rev_12_23am\train_20260122_002417" --out "runs\forest_a_gap30_rev_12_23am\train_20260122_002417" --random-start-goal --runs 4 --rand-min-cost-m 6 --rand-max-cost-m 0 --rand-fixed-prob 0 --rand-tries 200 --rand-reject-unreachable --kpi-time-mode policy --max-steps 1000 --device cuda --cuda-device 0 --seed 23
+runs\forest_a_gap30_rev_4_03am\train_20260122_040328
+python infer.py --envs forest_a --models "runs\forest_a_gap30_rev_4_03am\train_20260122_040328" --out "runs\forest_a_gap30_rev_4_03am\train_20260122_040328" --random-start-goal --runs 4 --rand-min-cost-m 6 --rand-max-cost-m 0 --rand-fixed-prob 0 --rand-tries 200 --rand-reject-unreachable --kpi-time-mode policy --max-steps 1000 --device cuda --cuda-device 0 --seed 23
+python train.py --envs forest_a --out forest_a_gap30_rev_4_03am --episodes 10000 --max-steps 1000 --forest-random-start-goal --forest-rand-min-cost-m 6 --forest-rand-max-cost-m 0 --forest-rand-fixed-prob 0 --forest-rand-tries 200 --forest-expert cost_to_go --no-forest-expert-exploration --forest-demo-pretrain-steps 80000 --learning-starts 5000 --device cuda --cuda-device 0 --seed 0 --eval-every 10 --eval-runs 5 --eval-score-time-weight 0.5

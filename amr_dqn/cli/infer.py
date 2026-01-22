@@ -1354,9 +1354,9 @@ def main() -> int:
     axes = np.atleast_1d(axes).ravel()
     styles = {
         "IDDQN": dict(color="red", linestyle="-", linewidth=2.0),
-        "DQN": dict(color="orangered", linestyle=":", linewidth=2.0),
-        "Hybrid A*": dict(color="royalblue", linestyle="--", linewidth=2.0),
-        "RRT*": dict(color="seagreen", linestyle="-.", linewidth=2.0),
+        "DQN": dict(color="orangered", linestyle="-", linewidth=2.0),
+        "Hybrid A*": dict(color="royalblue", linestyle="-", linewidth=2.0),
+        "RRT*": dict(color="seagreen", linestyle="-", linewidth=2.0),
     }
 
     for i, (env_name, run_idx) in enumerate(panels):
@@ -1378,10 +1378,10 @@ def main() -> int:
         ax.scatter(
             [spx],
             [spy],
-            marker="^",
-            s=80,
+            marker="*",
+            s=140,
             color="blue",
-            label="_nolegend_",
+            label="Start",
         )
         ax.text(spx - 1.0, spy - 1.0, "SP", fontsize=9, color="black")
         ax.scatter(
@@ -1390,7 +1390,7 @@ def main() -> int:
             marker="*",
             s=140,
             color="red",
-            label="_nolegend_",
+            label="Goal",
         )
         ax.text(gpx - 1.0, gpy - 1.0, "TP", fontsize=9, color="black")
 

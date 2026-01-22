@@ -41,7 +41,7 @@ def main() -> int:
     fig, ax = plt.subplots(1, 1, figsize=(7.5, 7.5))
 
     ax.imshow(grid, origin="lower", cmap="gray_r", interpolation="nearest")
-    ax.scatter([float(spec.start_xy[0])], [float(spec.start_xy[1])], marker="^", s=90, color="dodgerblue", label="Start")
+    ax.scatter([float(spec.start_xy[0])], [float(spec.start_xy[1])], marker="*", s=140, color="dodgerblue", label="Start")
     ax.scatter([float(spec.goal_xy[0])], [float(spec.goal_xy[1])], marker="*", s=140, color="crimson", label="Goal")
     ax.set_title(f"{env_name} (H={h}, W={w})")
     ax.set_xlabel("x (cells)")
