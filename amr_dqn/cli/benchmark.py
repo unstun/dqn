@@ -24,49 +24,27 @@ def _load_kpis(path: Path) -> pd.DataFrame:
     return df
 
 
-def _check_best(df: pd.DataFrame) -> tuple[bool, list[str]]:
+def _check_required(df: pd.DataFrame, *, required_algos: list[str]) -> tuple[bool, list[str]]:
     msgs: list[str] = []
     ok = True
     for env_name, g in df.groupby("Environment", sort=False):
-        g2 = g.copy()
-        g2["avg_path_length"] = pd.to_numeric(g2["avg_path_length"], errors="coerce")
-        g2["inference_time_s"] = pd.to_numeric(g2["inference_time_s"], errors="coerce")
-        g2["success_rate"] = pd.to_numeric(g2["success_rate"], errors="coerce")
-
-        row_id = g2[g2["Algorithm"] == "IDDQN"]
-        if row_id.empty:
-            ok = False
-            msgs.append(f"{env_name}: missing IDDQN row")
-            continue
-        id_succ = float(row_id["success_rate"].iloc[0])
-        if not (id_succ >= 0.999):
-            ok = False
-            msgs.append(f"{env_name}: IDDQN success_rate={id_succ:.3f} (<1.0)")
-
-        # Only compare against algorithms that succeeded (avoid NaNs from failures).
-        succ = g2[g2["success_rate"] >= 0.999].copy()
-        if succ.empty:
-            ok = False
-            msgs.append(f"{env_name}: no successful algorithms")
-            continue
-
-        best_len = float(succ["avg_path_length"].min())
-        best_time = float(succ["inference_time_s"].min())
-        id_len = float(row_id["avg_path_length"].iloc[0])
-        id_time = float(row_id["inference_time_s"].iloc[0])
-
-        if not (abs(id_len - best_len) <= 1e-6):
-            ok = False
-            msgs.append(f"{env_name}: IDDQN avg_path_length={id_len:.4f} best={best_len:.4f}")
-        if not (abs(id_time - best_time) <= 1e-6):
-            ok = False
-            msgs.append(f"{env_name}: IDDQN inference_time_s={id_time:.6f} best={best_time:.6f}")
+        for algo in required_algos:
+            row = g[g["Algorithm"] == str(algo)]
+            if row.empty:
+                ok = False
+                msgs.append(f"{env_name}: missing {algo} row")
     return ok, msgs
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Train → infer benchmark loop (fixed + random start/goal).")
     ap.add_argument("--envs", nargs="*", default=["forest_a", "forest_b", "forest_c", "forest_d"])
+    ap.add_argument(
+        "--rl-algos",
+        nargs="+",
+        default=["dqn"],
+        help="RL algorithms to run: dqn ddqn iddqn (or 'all'). Default: dqn.",
+    )
     ap.add_argument("--episodes", type=int, default=300)
     ap.add_argument("--max-steps", type=int, default=600)
     ap.add_argument("--device", choices=("auto", "cpu", "cuda"), default="cuda")
@@ -84,6 +62,17 @@ def main() -> int:
     ap.add_argument("--rand-fixed-prob", type=float, default=0.2)
     ap.add_argument("--rand-tries", type=int, default=200)
     args = ap.parse_args()
+    algo_label = {"dqn": "DQN", "ddqn": "DDQN", "iddqn": "IDDQN"}
+    valid_algos = ("dqn", "ddqn", "iddqn")
+    raw_algos = [str(a).lower().strip() for a in (args.rl_algos or [])]
+    if any(a == "all" for a in raw_algos):
+        raw_algos = list(valid_algos)
+    rl_algos: list[str] = []
+    for a in raw_algos:
+        if a in valid_algos and a not in rl_algos:
+            rl_algos.append(a)
+    if not rl_algos:
+        raise SystemExit("No RL algorithms selected (choose from: dqn ddqn iddqn).")
 
     exp_dir = resolve_experiment_dir(args.out, runs_root=args.runs_root)
 
@@ -107,6 +96,8 @@ def main() -> int:
         str(args.out),
         "--runs-root",
         str(args.runs_root),
+        "--rl-algos",
+        *rl_algos,
     ]
     if bool(args.random_train):
         train_cmd += [
@@ -152,6 +143,8 @@ def main() -> int:
         str(args.seed),
         "--kpi-time-mode",
         "policy",
+        "--rl-algos",
+        *rl_algos,
     ]
     if args.baselines:
         infer_fixed_cmd += ["--baselines", *list(args.baselines)]
@@ -161,7 +154,8 @@ def main() -> int:
     if fixed_dir is None:
         raise SystemExit("Missing fixed inference outputs")
     fixed_kpis = _load_kpis(fixed_dir / "table2_kpis_raw.csv")
-    ok_fixed, msgs_fixed = _check_best(fixed_kpis)
+    required_pretty = [algo_label.get(a, a.upper()) for a in rl_algos]
+    ok_fixed, msgs_fixed = _check_required(fixed_kpis, required_algos=required_pretty)
 
     ok_rand = True
     msgs_rand: list[str] = []
@@ -197,6 +191,8 @@ def main() -> int:
             str(0.0),
             "--rand-tries",
             str(args.rand_tries),
+            "--rl-algos",
+            *rl_algos,
         ]
         if args.baselines:
             infer_rand_cmd += ["--baselines", *list(args.baselines)]
@@ -206,7 +202,7 @@ def main() -> int:
         if rand_dir is None:
             raise SystemExit("Missing random inference outputs")
         rand_kpis = _load_kpis(rand_dir / "table2_kpis_raw.csv")
-        ok_rand, msgs_rand = _check_best(rand_kpis)
+        ok_rand, msgs_rand = _check_required(rand_kpis, required_algos=required_pretty)
 
     if not ok_fixed:
         print("FAILED fixed-start/goal check:")
@@ -218,7 +214,7 @@ def main() -> int:
             print(" - " + m)
 
     if ok_fixed and (ok_rand if bool(args.random_eval) else True):
-        print("PASS: IDDQN is best (path length + inference time).")
+        print("PASS: benchmark completed (required algorithms present).")
         return 0
     return 1
 

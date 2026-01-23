@@ -1,0 +1,54 @@
+{
+  "_comment": "Profile: forest_a_best (forest_a 单地图强化训练 + 评估). 用法: python train.py --profile forest_a_best ; python infer.py --profile forest_a_best",
+  "_comment_2": "说明: 这里的 key 是 argparse 的 dest(下划线形式), 等价于命令行的 --xxx-yyy. 任何以下划线 '_' 开头的 key 会被 CLI 忽略, 可当作注释。",
+  "train": {
+    "_comment": "等价于: python train.py --envs forest_a --out forest_a_best --rl-algos dqn --episodes 600 --max-steps 1000 --forest-random-start-goal --forest-rand-min-cost-m 6 --forest-rand-fixed-prob 0 --forest-rand-tries 200 --forest-expert auto --forest-demo-prefill --forest-demo-pretrain-steps 80000 --forest-expert-exploration --forest-action-shield --learning-starts 5000 --device cuda --cuda-device 0 --seed 0",
+    "envs": [
+      "forest_a"
+    ],
+    "out": "forest_a_best",
+    "rl_algos": [
+      "dqn", "ddqn"
+    ],
+    "episodes": 600,
+    "max_steps": 1000,
+    "forest_random_start_goal": true,
+    "forest_rand_min_cost_m": 6.0,
+    "forest_rand_fixed_prob": 0.0,
+    "forest_rand_tries": 200,
+    "forest_expert": "auto",
+    "forest_demo_prefill": true,
+    "forest_demo_pretrain_steps": 80000,
+    "forest_expert_exploration": true,
+    "forest_action_shield": true,
+    "learning_starts": 5000,
+    "device": "cuda",
+    "cuda_device": 0,
+    "seed": 0
+  },
+  "infer": {
+    "_comment": "等价于: python infer.py --envs forest_a --models forest_a_best --out forest_a_best --rl-algos dqn --baselines all --random-start-goal --runs 4 --rand-min-cost-m 6 --rand-fixed-prob 0 --rand-tries 200 --rand-reject-unreachable --kpi-time-mode policy --max-steps 1000 --device cuda --cuda-device 0 --seed 22",
+    "envs": [
+      "forest_a"
+    ],
+    "models": "forest_a_best",
+    "out": "forest_a_best",
+    "rl_algos": [
+      "dqn", "ddqn"
+    ],
+    "baselines": [
+      "all"
+    ],
+    "random_start_goal": true,
+    "runs": 4,
+    "rand_min_cost_m": 6.0,
+    "rand_fixed_prob": 0.0,
+    "rand_tries": 200,
+    "rand_reject_unreachable": true,
+    "kpi_time_mode": "policy",
+    "max_steps": 1000,
+    "device": "cuda",
+    "cuda_device": 0,
+    "seed": 22
+  }
+}

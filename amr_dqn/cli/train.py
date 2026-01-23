@@ -20,6 +20,7 @@ import pandas as pd
 import torch
 
 from amr_dqn.agents import AgentConfig, DQNFamilyAgent
+from amr_dqn.config_io import apply_config_defaults, load_json, resolve_config_path, select_section
 from amr_dqn.env import AMRBicycleEnv, AMRGridEnv, RewardWeights
 from amr_dqn.maps import ENV_ORDER, FOREST_ENV_ORDER, get_map_spec
 
@@ -64,7 +65,12 @@ def plot_training_eval_metrics(df_eval: pd.DataFrame, *, out_path: Path) -> None
     )
     axes_arr = np.atleast_2d(axes)
 
-    algo_defs: list[tuple[str, str]] = [("iddqn", "IDDQN"), ("dqn", "DQN")]
+    algo_label = {"dqn": "DQN", "ddqn": "DDQN", "iddqn": "IDDQN"}
+    present = [str(x) for x in df_eval["algo"].dropna().drop_duplicates().tolist()]
+    ordered = [a for a in ("dqn", "ddqn", "iddqn") if a in present] + [
+        a for a in present if a not in ("dqn", "ddqn", "iddqn")
+    ]
+    algo_defs: list[tuple[str, str]] = [(a, algo_label.get(a, a.upper())) for a in ordered]
     for i, env_name in enumerate(envs):
         for j, (col, title) in enumerate(metrics):
             ax = axes_arr[i, j]
@@ -91,7 +97,7 @@ def plot_training_eval_metrics(df_eval: pd.DataFrame, *, out_path: Path) -> None
 
     handles, labels = axes_arr[0, 0].get_legend_handles_labels()
     if handles:
-        fig.legend(handles, labels, loc="upper center", ncol=2, fontsize=9, frameon=False)
+        fig.legend(handles, labels, loc="upper center", ncol=min(4, len(labels)), fontsize=9, frameon=False)
     fig.suptitle("Training greedy-eval metrics", y=0.98)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(out_path, dpi=200)
@@ -256,6 +262,7 @@ def train_one(
     forest_demo_data: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None,
     forest_expert: str,
     forest_expert_exploration: bool,
+    forest_action_shield: bool,
     forest_expert_prob_start: float,
     forest_expert_prob_final: float,
     forest_expert_prob_decay: float,
@@ -602,6 +609,18 @@ def train_one(
             p = float(np.clip(p_raw / ramp, 0.0, 1.0))
             reset_options = {"curriculum_progress": p, "curriculum_band_m": float(curriculum_band_m)}
         obs, _ = env.reset(seed=seed + ep, options=reset_options)
+        action_mask = None
+        if bool(forest_action_shield) and isinstance(env, AMRBicycleEnv):
+            # Apply the same admissible-action constraints during training as used at inference
+            # time (safety/progress "shield"). This avoids the common failure mode where the
+            # greedy Q action is systematically inadmissible and inference falls back to
+            # heuristics/top-k actions (yielding longer paths).
+            action_mask = env.admissible_action_mask(
+                horizon_steps=6,
+                min_od_m=0.0,
+                min_progress_m=1e-4,
+                fallback_to_safe=True,
+            )
         ep_return = 0.0
         done = False
         truncated = False
@@ -626,20 +645,26 @@ def train_one(
                     action = forest_expert_action_local()
                     used_expert = True
                 else:
-                    action = agent.act(obs, episode=ep, explore=True)
-                    if not bool(env.is_action_admissible(int(action), horizon_steps=6, min_od_m=0.0, min_progress_m=1e-4)):
-                        prog_mask = env.admissible_action_mask(
-                            horizon_steps=6,
-                            min_od_m=0.0,
-                            min_progress_m=1e-4,
-                            fallback_to_safe=False,
-                        )
-                        if bool(prog_mask.any()):
-                            action = agent.act_masked(obs, episode=ep, explore=True, action_mask=prog_mask)
-                        else:
-                            action = int(env._fallback_action_short_rollout(horizon_steps=6, min_od_m=0.0))
+                    if action_mask is not None:
+                        action = agent.act_masked(obs, episode=ep, explore=True, action_mask=action_mask)
+                    else:
+                        action = agent.act(obs, episode=ep, explore=True)
+                        if not bool(env.is_action_admissible(int(action), horizon_steps=6, min_od_m=0.0, min_progress_m=1e-4)):
+                            prog_mask = env.admissible_action_mask(
+                                horizon_steps=6,
+                                min_od_m=0.0,
+                                min_progress_m=1e-4,
+                                fallback_to_safe=False,
+                            )
+                            if bool(prog_mask.any()):
+                                action = agent.act_masked(obs, episode=ep, explore=True, action_mask=prog_mask)
+                            else:
+                                action = int(env._fallback_action_short_rollout(horizon_steps=6, min_od_m=0.0))
             else:
-                action = agent.act(obs, episode=ep, explore=True)
+                if action_mask is not None:
+                    action = agent.act_masked(obs, episode=ep, explore=True, action_mask=action_mask)
+                else:
+                    action = agent.act(obs, episode=ep, explore=True)
             next_obs, reward, done, truncated, info = env.step(action)
             last_info = dict(info)
             next_mask = None
@@ -650,6 +675,8 @@ def train_one(
                     min_progress_m=1e-4,
                     fallback_to_safe=True,
                 )
+                if action_mask is not None:
+                    action_mask = next_mask
             # Time-limit truncation should not be treated as terminal for bootstrapping.
             # Only mark expert transitions as demos when the *episode* reaches the goal.
             # Failed expert steps are still useful off-policy data, but should not be imitated/preserved.
@@ -829,13 +856,31 @@ def train_one(
     return agent, returns, eval_history
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Train DQN and IDDQN and generate Fig. 13-style plot.")
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(description="Train RL agents (default: DQN) and generate Fig. 13-style reward curves.")
+    ap.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="JSON config file. Supports a combined file with {train:{...}, infer:{...}}. CLI flags override config.",
+    )
+    ap.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        help="Config profile name under configs/ (e.g. forest_a_3000 -> configs/forest_a_3000.json). Overrides configs/config.json.",
+    )
     ap.add_argument(
         "--envs",
         nargs="*",
         default=list(ENV_ORDER),
         help="Subset of envs: a b c d forest_a forest_b forest_c forest_d",
+    )
+    ap.add_argument(
+        "--rl-algos",
+        nargs="+",
+        default=["dqn"],
+        help="RL algorithms to train: dqn ddqn iddqn (or 'all'). Default: dqn.",
     )
     ap.add_argument("--episodes", type=int, default=1000)
     ap.add_argument("--max-steps", type=int, default=300)
@@ -969,6 +1014,15 @@ def main() -> int:
         help="Forest-only: mix expert actions into the behavior policy (stabilizes long-horizon learning).",
     )
     ap.add_argument(
+        "--forest-action-shield",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Forest-only: apply an admissible-action mask (safety/progress shield) to the agent's actions during training. "
+            "Recommended to keep enabled even when --no-forest-expert-exploration is used to avoid train/infer mismatch."
+        ),
+    )
+    ap.add_argument(
         "--forest-expert",
         choices=("auto", "hybrid_astar", "cost_to_go"),
         default="auto",
@@ -1028,10 +1082,50 @@ def main() -> int:
         default=None,
         help="Show a training progress bar (default: on when running in a TTY).",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = build_parser()
+
+    pre_args, _ = ap.parse_known_args(argv)
+    try:
+        config_path = resolve_config_path(config=getattr(pre_args, "config", None), profile=getattr(pre_args, "profile", None))
+    except (ValueError, FileNotFoundError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if config_path is not None:
+        cfg_raw = load_json(Path(config_path))
+        cfg = select_section(cfg_raw, section="train")
+        apply_config_defaults(ap, cfg, strict=True)
+
+    args = ap.parse_args(argv)
     forest_envs = set(FOREST_ENV_ORDER)
     if int(args.max_steps) == 300 and args.envs and all(str(e) in forest_envs for e in args.envs):
         args.max_steps = 600
+    valid_algos = ("dqn", "ddqn", "iddqn")
+    raw_algos = [str(a).lower().strip() for a in (args.rl_algos or [])]
+    if any(a == "all" for a in raw_algos):
+        raw_algos = list(valid_algos)
+    rl_algos: list[str] = []
+    unknown = []
+    for a in raw_algos:
+        if a in valid_algos:
+            if a not in rl_algos:
+                rl_algos.append(a)
+        else:
+            unknown.append(a)
+    if unknown:
+        print(
+            f"Unknown --rl-algos value(s): {', '.join(unknown)}. Choose from: dqn ddqn iddqn (or 'all').",
+            file=sys.stderr,
+        )
+        return 2
+    if not rl_algos:
+        print("No RL algorithms selected (choose from: dqn ddqn iddqn).", file=sys.stderr)
+        return 2
+    args.rl_algos = rl_algos
 
     if args.self_check:
         info = torch_runtime_info()
@@ -1063,6 +1157,7 @@ def main() -> int:
 
     agent_cfg = AgentConfig()
     dqn_cfg = replace(agent_cfg, eps_start=0.6, n_step=3)
+    ddqn_cfg = replace(agent_cfg, eps_start=0.6, n_step=3)
     iddqn_cfg = replace(agent_cfg, eps_start=0.6, per_alpha=0.0, target_tau=0.005, n_step=int(args.iddqn_n_step))
     (out_dir / "configs").mkdir(parents=True, exist_ok=True)
     args_payload: dict[str, object] = {}
@@ -1088,12 +1183,20 @@ def main() -> int:
         encoding="utf-8",
     )
     (out_dir / "configs" / "agent_config.json").write_text(json.dumps(asdict(agent_cfg), indent=2, sort_keys=True), encoding="utf-8")
-    (out_dir / "configs" / "agent_config_dqn.json").write_text(json.dumps(asdict(dqn_cfg), indent=2, sort_keys=True), encoding="utf-8")
-    (out_dir / "configs" / "agent_config_iddqn.json").write_text(json.dumps(asdict(iddqn_cfg), indent=2, sort_keys=True), encoding="utf-8")
+    algo_cfgs = {"dqn": dqn_cfg, "ddqn": ddqn_cfg, "iddqn": iddqn_cfg}
+    for algo in args.rl_algos:
+        cfg = algo_cfgs.get(str(algo))
+        if cfg is None:
+            continue
+        (out_dir / "configs" / f"agent_config_{algo}.json").write_text(
+            json.dumps(asdict(cfg), indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
 
     all_rows: list[dict[str, float | int | str]] = []
     all_eval_rows: list[dict[str, float | int | str]] = []
     curves: dict[str, dict[str, np.ndarray]] = {}
+    algo_labels = {"dqn": "DQN", "ddqn": "DDQN", "iddqn": "IDDQN"}
 
     for env_name in args.envs:
         spec = get_map_spec(env_name)
@@ -1140,91 +1243,57 @@ def main() -> int:
 
         rand_max = None if float(args.forest_rand_max_cost_m) <= 0.0 else float(args.forest_rand_max_cost_m)
 
-        _, dqn_returns, dqn_eval = train_one(
-            env,
-            "dqn",
-            episodes=args.episodes,
-            seed=args.seed + 1000,
-            out_dir=out_dir,
-            agent_cfg=dqn_cfg,
-            train_freq=args.train_freq,
-            learning_starts=args.learning_starts,
-            forest_curriculum=bool(args.forest_curriculum),
-            curriculum_band_m=float(args.curriculum_band_m),
-            curriculum_ramp=float(args.curriculum_ramp),
-            forest_demo_prefill=bool(args.forest_demo_prefill),
-            forest_demo_pretrain_steps=int(args.forest_demo_pretrain_steps),
-            forest_demo_horizon=int(args.forest_demo_horizon),
-            forest_demo_w_clearance=float(args.forest_demo_w_clearance),
-            forest_demo_data=forest_demo_data,
-            forest_expert=str(args.forest_expert),
-            forest_expert_exploration=bool(args.forest_expert_exploration),
-            forest_expert_prob_start=float(args.forest_expert_prob_start),
-            forest_expert_prob_final=float(args.forest_expert_prob_final),
-            forest_expert_prob_decay=float(args.forest_expert_prob_decay),
-            forest_random_start_goal=bool(args.forest_random_start_goal),
-            forest_rand_min_cost_m=float(args.forest_rand_min_cost_m),
-            forest_rand_max_cost_m=rand_max,
-            forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
-            forest_rand_tries=int(args.forest_rand_tries),
-            eval_every=int(args.eval_every),
-            eval_runs=int(args.eval_runs),
-            eval_score_time_weight=float(args.eval_score_time_weight),
-            progress=progress,
-            device=device,
-        )
-        _, iddqn_returns, iddqn_eval = train_one(
-            env,
-            "iddqn",
-            episodes=args.episodes,
-            # Forest training (global-map + imitation warm-start) is currently sensitive to
-            # random initialization. Use the same deterministic seed offset as DQN so both
-            # models reliably converge to goal-reaching policies on the fixed forest maps.
-            seed=args.seed + 1000,
-            out_dir=out_dir,
-            agent_cfg=iddqn_cfg,
-            train_freq=args.train_freq,
-            learning_starts=args.learning_starts,
-            forest_curriculum=bool(args.forest_curriculum),
-            curriculum_band_m=float(args.curriculum_band_m),
-            curriculum_ramp=float(args.curriculum_ramp),
-            forest_demo_prefill=bool(args.forest_demo_prefill),
-            forest_demo_pretrain_steps=int(args.forest_demo_pretrain_steps),
-            forest_demo_horizon=int(args.forest_demo_horizon),
-            forest_demo_w_clearance=float(args.forest_demo_w_clearance),
-            forest_demo_data=forest_demo_data,
-            forest_expert=str(args.forest_expert),
-            forest_expert_exploration=bool(args.forest_expert_exploration),
-            forest_expert_prob_start=float(args.forest_expert_prob_start),
-            forest_expert_prob_final=float(args.forest_expert_prob_final),
-            forest_expert_prob_decay=float(args.forest_expert_prob_decay),
-            forest_random_start_goal=bool(args.forest_random_start_goal),
-            forest_rand_min_cost_m=float(args.forest_rand_min_cost_m),
-            forest_rand_max_cost_m=rand_max,
-            forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
-            forest_rand_tries=int(args.forest_rand_tries),
-            eval_every=int(args.eval_every),
-            eval_runs=int(args.eval_runs),
-            eval_score_time_weight=float(args.eval_score_time_weight),
-            progress=progress,
-            device=device,
-        )
-
-        curves[env_name] = {"dqn": dqn_returns, "iddqn": iddqn_returns}
-        for ep in range(args.episodes):
-            all_rows.append(
-                {
-                    "env": env_name,
-                    "episode": ep + 1,
-                    "dqn_return": float(dqn_returns[ep]),
-                    "iddqn_return": float(iddqn_returns[ep]),
-                }
+        env_curves: dict[str, np.ndarray] = {}
+        env_eval_rows: dict[str, list[dict[str, float | int]]] = {}
+        for algo in args.rl_algos:
+            cfg = algo_cfgs[str(algo)]
+            _, algo_returns, algo_eval = train_one(
+                env,
+                str(algo),
+                episodes=args.episodes,
+                # Forest training (global-map + imitation warm-start) can be sensitive to random initialization.
+                # Keep a deterministic seed offset across algorithms for fair comparisons.
+                seed=args.seed + 1000,
+                out_dir=out_dir,
+                agent_cfg=cfg,
+                train_freq=args.train_freq,
+                learning_starts=args.learning_starts,
+                forest_curriculum=bool(args.forest_curriculum),
+                curriculum_band_m=float(args.curriculum_band_m),
+                curriculum_ramp=float(args.curriculum_ramp),
+                forest_demo_prefill=bool(args.forest_demo_prefill),
+                forest_demo_pretrain_steps=int(args.forest_demo_pretrain_steps),
+                forest_demo_horizon=int(args.forest_demo_horizon),
+                forest_demo_w_clearance=float(args.forest_demo_w_clearance),
+                forest_demo_data=forest_demo_data,
+                forest_expert=str(args.forest_expert),
+                forest_expert_exploration=bool(args.forest_expert_exploration),
+                forest_action_shield=bool(args.forest_action_shield),
+                forest_expert_prob_start=float(args.forest_expert_prob_start),
+                forest_expert_prob_final=float(args.forest_expert_prob_final),
+                forest_expert_prob_decay=float(args.forest_expert_prob_decay),
+                forest_random_start_goal=bool(args.forest_random_start_goal),
+                forest_rand_min_cost_m=float(args.forest_rand_min_cost_m),
+                forest_rand_max_cost_m=rand_max,
+                forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
+                forest_rand_tries=int(args.forest_rand_tries),
+                eval_every=int(args.eval_every),
+                eval_runs=int(args.eval_runs),
+                eval_score_time_weight=float(args.eval_score_time_weight),
+                progress=progress,
+                device=device,
             )
+            env_curves[str(algo)] = algo_returns
+            env_eval_rows[str(algo)] = list(algo_eval)
+            for row in algo_eval:
+                all_eval_rows.append({"env": env_name, "algo": str(algo), **row})
 
-        for row in dqn_eval:
-            all_eval_rows.append({"env": env_name, "algo": "dqn", **row})
-        for row in iddqn_eval:
-            all_eval_rows.append({"env": env_name, "algo": "iddqn", **row})
+        curves[env_name] = dict(env_curves)
+        for ep in range(args.episodes):
+            row: dict[str, float | int | str] = {"env": env_name, "episode": ep + 1}
+            for algo, returns_arr in env_curves.items():
+                row[f"{algo}_return"] = float(returns_arr[ep])
+            all_rows.append(row)
 
     df = pd.DataFrame(all_rows)
     df.to_csv(out_dir / "training_returns.csv", index=False)
@@ -1250,13 +1319,17 @@ def main() -> int:
     used = 0
     for i, env_name in enumerate(envs_to_plot):
         ax = axes[i]
-        dqn = curves[env_name]["dqn"]
-        iddqn = curves[env_name]["iddqn"]
-        dqn_plot = moving_average(dqn, args.ma_window)
-        iddqn_plot = moving_average(iddqn, args.ma_window)
-
-        ax.plot(range(1, args.episodes + 1), iddqn_plot, label="IDDQN", linewidth=1.0)
-        ax.plot(range(1, args.episodes + 1), dqn_plot, label="DQN", linewidth=1.0)
+        for algo in args.rl_algos:
+            series = curves.get(env_name, {}).get(str(algo))
+            if series is None:
+                continue
+            series_plot = moving_average(series, args.ma_window)
+            ax.plot(
+                range(1, args.episodes + 1),
+                series_plot,
+                label=algo_labels.get(str(algo), str(algo).upper()),
+                linewidth=1.0,
+            )
         ax.set_title(f"Env. ({env_name})")
         ax.set_xlabel("Episodes")
         ax.set_ylabel("Rewards")
@@ -1267,7 +1340,8 @@ def main() -> int:
     for ax in axes[n_env:]:
         ax.axis("off")
 
-    fig.suptitle("Changes in the reward values of IDDQN and DQN during the training process")
+    algo_title = ", ".join(algo_labels.get(str(a), str(a).upper()) for a in args.rl_algos)
+    fig.suptitle(f"Training reward curves ({algo_title})")
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out_dir / "fig13_rewards.png", dpi=200)
     plt.close(fig)

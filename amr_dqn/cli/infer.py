@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
+from amr_dqn.config_io import apply_config_defaults, load_json, resolve_config_path, select_section
 from amr_dqn.runtime import configure_runtime, select_device, torch_runtime_info
 from amr_dqn.runs import create_run_dir, resolve_experiment_dir, resolve_models_dir
 
@@ -415,8 +416,20 @@ def draw_vehicle_boxes(
         ax.add_patch(poly)
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Run inference and generate Fig.12 + Table II-style KPIs.")
+    ap.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="JSON config file. Supports a combined file with {train:{...}, infer:{...}}. CLI flags override config.",
+    )
+    ap.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        help="Config profile name under configs/ (e.g. forest_a_3000 -> configs/forest_a_3000.json). Overrides configs/config.json.",
+    )
     ap.add_argument(
         "--envs",
         nargs="*",
@@ -468,9 +481,15 @@ def main() -> int:
         help="Optional baselines to evaluate: hybrid_astar rrt_star (or 'all'). Default: none.",
     )
     ap.add_argument(
+        "--rl-algos",
+        nargs="+",
+        default=["dqn"],
+        help="RL algorithms to evaluate: dqn ddqn iddqn (or 'all'). Default: dqn.",
+    )
+    ap.add_argument(
         "--skip-rl",
         action="store_true",
-        help="Skip loading/running DQN+IDDQN (useful for baseline-only evaluation).",
+        help="Skip loading/running RL agents (useful for baseline-only evaluation).",
     )
     ap.add_argument("--baseline-timeout", type=float, default=5.0, help="Planner timeout (seconds).")
     ap.add_argument("--hybrid-max-nodes", type=int, default=200_000, help="Hybrid A* node budget.")
@@ -595,16 +614,83 @@ def main() -> int:
         help="Forest-only: maximum sampling attempts to find reachable random (start,goal) pairs.",
     )
     ap.add_argument(
+        "--rand-two-suites",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Forest-only: when --random-start-goal is enabled, evaluate two random-pair suites (short + long) in one run. "
+            "This adds '/short' and '/long' rows to KPI tables and plots."
+        ),
+    )
+    ap.add_argument(
+        "--rand-short-min-cost-m",
+        type=float,
+        default=6.0,
+        help="Forest-only: minimum start→goal cost-to-go (meters) for the 'short' random-pair suite.",
+    )
+    ap.add_argument(
+        "--rand-short-max-cost-m",
+        type=float,
+        default=14.0,
+        help="Forest-only: maximum start→goal cost-to-go (meters) for the 'short' random-pair suite (<=0 disables).",
+    )
+    ap.add_argument(
+        "--rand-long-min-cost-m",
+        type=float,
+        default=18.0,
+        help="Forest-only: minimum start→goal cost-to-go (meters) for the 'long' random-pair suite.",
+    )
+    ap.add_argument(
+        "--rand-long-max-cost-m",
+        type=float,
+        default=0.0,
+        help="Forest-only: maximum start→goal cost-to-go (meters) for the 'long' random-pair suite (<=0 disables).",
+    )
+    ap.add_argument(
         "--self-check",
         action="store_true",
         help="Print CUDA/runtime info and exit (use to verify CUDA setup).",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = build_parser()
+
+    pre_args, _ = ap.parse_known_args(argv)
+    try:
+        config_path = resolve_config_path(config=getattr(pre_args, "config", None), profile=getattr(pre_args, "profile", None))
+    except (ValueError, FileNotFoundError) as exc:
+        raise SystemExit(str(exc))
+    if config_path is not None:
+        cfg_raw = load_json(Path(config_path))
+        cfg = select_section(cfg_raw, section="infer")
+        apply_config_defaults(ap, cfg, strict=True)
+
+    args = ap.parse_args(argv)
     if int(getattr(args, "plot_run_idx", 0)) < 0:
         raise SystemExit("--plot-run-idx must be >= 0")
     forest_envs = set(FOREST_ENV_ORDER)
     if int(args.max_steps) == 300 and args.envs and all(str(e) in forest_envs for e in args.envs):
         args.max_steps = 600
+    valid_algos = ("dqn", "ddqn", "iddqn")
+    raw_algos = [str(a).lower().strip() for a in (args.rl_algos or [])]
+    if any(a == "all" for a in raw_algos):
+        raw_algos = list(valid_algos)
+    rl_algos: list[str] = []
+    unknown = []
+    for a in raw_algos:
+        if a in valid_algos:
+            if a not in rl_algos:
+                rl_algos.append(a)
+        else:
+            unknown.append(a)
+    if unknown:
+        raise SystemExit(f"Unknown --rl-algos value(s): {', '.join(unknown)}. Choose from: dqn ddqn iddqn (or 'all').")
+    if not rl_algos:
+        raise SystemExit("No RL algorithms selected (choose from: dqn ddqn iddqn).")
+    args.rl_algos = rl_algos
 
     baseline_aliases = {
         "hybrid_astar": "hybrid_astar",
@@ -637,6 +723,32 @@ def main() -> int:
 
     if bool(args.skip_rl) and not baselines:
         raise SystemExit("--skip-rl requires at least one baseline via --baselines (e.g., --baselines all).")
+
+    if bool(getattr(args, "rand_two_suites", False)):
+        if not bool(getattr(args, "random_start_goal", False)):
+            raise SystemExit("--rand-two-suites requires --random-start-goal.")
+        if not args.envs or any(str(e) not in forest_envs for e in args.envs):
+            raise SystemExit("--rand-two-suites is forest-only (use e.g. --envs forest_a ...).")
+        if int(getattr(args, "runs", 0)) <= 0:
+            raise SystemExit("--rand-two-suites requires --runs >= 1.")
+        short_min = float(getattr(args, "rand_short_min_cost_m", 0.0))
+        short_max = float(getattr(args, "rand_short_max_cost_m", 0.0))
+        long_min = float(getattr(args, "rand_long_min_cost_m", 0.0))
+        long_max = float(getattr(args, "rand_long_max_cost_m", 0.0))
+        if short_max > 0.0 and short_min > short_max:
+            raise SystemExit("--rand-short-min-cost-m must be <= --rand-short-max-cost-m (or disable max via <=0).")
+        if long_max > 0.0 and long_min > long_max:
+            raise SystemExit("--rand-long-min-cost-m must be <= --rand-long-max-cost-m (or disable max via <=0).")
+
+    if bool(getattr(args, "rand_two_suites", False)):
+        expanded_envs: list[str] = []
+        for e in (args.envs or []):
+            base = str(e).split("::", 1)[0].strip()
+            if not base:
+                continue
+            expanded_envs.append(f"{base}::short")
+            expanded_envs.append(f"{base}::long")
+        args.envs = expanded_envs
 
     if args.self_check:
         info = torch_runtime_info()
@@ -715,8 +827,27 @@ def main() -> int:
     plot_meta: dict[tuple[str, int], dict[str, float]] = {}
 
     for env_name in args.envs:
-        spec = get_map_spec(env_name)
-        if env_name in FOREST_ENV_ORDER:
+        env_case = str(env_name)
+        suite_tag: str | None = None
+        env_base = str(env_case)
+        if "::" in env_case:
+            env_base, suite_tag_raw = env_case.split("::", 1)
+            env_base = str(env_base).strip()
+            suite_tag = str(suite_tag_raw).strip() or None
+
+        env_label = f"Env. ({env_base})" if suite_tag is None else f"Env. ({env_base})/{suite_tag}"
+
+        rand_min_cost_m = float(getattr(args, "rand_min_cost_m", 0.0))
+        rand_max_cost_m = float(getattr(args, "rand_max_cost_m", 0.0))
+        if suite_tag == "short":
+            rand_min_cost_m = float(getattr(args, "rand_short_min_cost_m", rand_min_cost_m))
+            rand_max_cost_m = float(getattr(args, "rand_short_max_cost_m", rand_max_cost_m))
+        elif suite_tag == "long":
+            rand_min_cost_m = float(getattr(args, "rand_long_min_cost_m", rand_min_cost_m))
+            rand_max_cost_m = float(getattr(args, "rand_long_max_cost_m", rand_max_cost_m))
+
+        spec = get_map_spec(env_base)
+        if env_base in FOREST_ENV_ORDER:
             env = AMRBicycleEnv(
                 spec,
                 max_steps=args.max_steps,
@@ -771,7 +902,7 @@ def main() -> int:
         plot_start_xy = tuple(spec.start_xy)
         plot_goal_xy = tuple(spec.goal_xy)
         if bool(getattr(args, "random_start_goal", False)) and isinstance(env, AMRBicycleEnv) and int(args.runs) > 0:
-            rand_max = None if float(args.rand_max_cost_m) <= 0.0 else float(args.rand_max_cost_m)
+            rand_max = None if float(rand_max_cost_m) <= 0.0 else float(rand_max_cost_m)
             if plot_run_idx >= int(args.runs):
                 raise SystemExit(
                     f"--plot-run-idx={plot_run_idx} must be < --runs={int(args.runs)} when --random-start-goal is enabled."
@@ -797,7 +928,7 @@ def main() -> int:
                     seed=int(args.seed) + 90_000 + int(attempts),
                     options={
                         "random_start_goal": True,
-                        "rand_min_cost_m": float(args.rand_min_cost_m),
+                        "rand_min_cost_m": float(rand_min_cost_m),
                         "rand_max_cost_m": rand_max,
                         "rand_fixed_prob": float(args.rand_fixed_prob),
                         "rand_tries": int(args.rand_tries),
@@ -806,6 +937,28 @@ def main() -> int:
 
                 start_xy = (int(env.start_xy[0]), int(env.start_xy[1]))
                 goal_xy = (int(env.goal_xy[0]), int(env.goal_xy[1]))
+
+                # When the sampling constraints are too strict, the env falls back to the canonical
+                # (start,goal) pair after exhausting `rand_tries`. That defeats the purpose of
+                # random-pair evaluation and also breaks the short/long suite separation.
+                if float(getattr(args, "rand_fixed_prob", 0.0)) <= 0.0:
+                    if start_xy == (int(spec.start_xy[0]), int(spec.start_xy[1])) and goal_xy == (
+                        int(spec.goal_xy[0]),
+                        int(spec.goal_xy[1]),
+                    ):
+                        attempts += 1
+                        continue
+
+                    cost0 = float(env._cost_to_goal_m[int(start_xy[1]), int(start_xy[0])])
+                    if not math.isfinite(cost0):
+                        attempts += 1
+                        continue
+                    if float(cost0) + 1e-6 < float(rand_min_cost_m):
+                        attempts += 1
+                        continue
+                    if rand_max is not None and float(rand_max) > 0.0 and float(cost0) - 1e-6 > float(rand_max):
+                        attempts += 1
+                        continue
 
                 if reject_unreachable:
                     res = plan_hybrid_astar(
@@ -833,8 +986,8 @@ def main() -> int:
             if len(reset_options_list) < int(args.runs):
                 raise RuntimeError(
                     f"Could not sample {int(args.runs)} reachable random (start,goal) pairs for {env_name!r} "
-                    f"after {attempts} attempts. Try increasing --rand-tries, relaxing --rand-min-cost-m / --rand-max-cost-m, "
-                    "or disabling screening via --no-rand-reject-unreachable."
+                    f"after {attempts} attempts (rand_min_cost_m={float(rand_min_cost_m):.2f}, rand_max_cost_m={rand_max}). "
+                    "Try increasing --rand-tries, adjusting the cost bounds, or disabling screening via --no-rand-reject-unreachable."
                 )
             if reset_options_list:
                 plot_start_xy = tuple(reset_options_list[plot_run_idx]["start_xy"])  # type: ignore[arg-type]
@@ -869,175 +1022,114 @@ def main() -> int:
             n_actions = int(env.action_space.n)
             agent_cfg = AgentConfig()
 
-            dqn_path = models_dir / env_name / "dqn.pt"
-            iddqn_path = models_dir / env_name / "iddqn.pt"
-            if not dqn_path.exists() or not iddqn_path.exists():
+            algo_label = {"dqn": "DQN", "ddqn": "DDQN", "iddqn": "IDDQN"}
+            algo_seed_offset = {"iddqn": 10_000, "dqn": 20_000, "ddqn": 30_000}
+            algo_paths = {str(a): (models_dir / env_base / f"{a}.pt") for a in args.rl_algos}
+            missing = [str(p) for p in algo_paths.values() if not p.exists()]
+            if missing:
+                exp = ", ".join(str(p) for p in algo_paths.values())
                 raise FileNotFoundError(
-                    f"Missing model(s) for env {env_name!r}. Expected: {dqn_path} and {iddqn_path}. "
+                    f"Missing model(s) for env {env_base!r}. Expected: {exp}. "
                     "Point --models at a training run (or an experiment name/dir with a latest run)."
                 )
 
-            ckpt_obs_dim = infer_checkpoint_obs_dim(dqn_path)
-            if infer_checkpoint_obs_dim(iddqn_path) != ckpt_obs_dim:
-                raise RuntimeError(f"Observation dim mismatch between {dqn_path} and {iddqn_path}")
+            ckpt_obs_dim = infer_checkpoint_obs_dim(next(iter(algo_paths.values())))
+            for path in algo_paths.values():
+                if infer_checkpoint_obs_dim(path) != ckpt_obs_dim:
+                    raise RuntimeError(f"Observation dim mismatch between checkpoints under: {models_dir / env_base}")
 
             obs_dim = env_obs_dim
             obs_transform = None
             if ckpt_obs_dim != env_obs_dim:
                 raise RuntimeError(
-                    f"Checkpoint expects obs_dim={ckpt_obs_dim} but env provides obs_dim={env_obs_dim} for {env_name!r}. "
+                    f"Checkpoint expects obs_dim={ckpt_obs_dim} but env provides obs_dim={env_obs_dim} for {env_base!r}. "
                     "Re-train models to match the environment observation space."
                 )
 
-            dqn_agent = DQNFamilyAgent("dqn", obs_dim, n_actions, config=agent_cfg, seed=args.seed, device=device)
-            dqn_agent.load(dqn_path)
-            iddqn_agent = DQNFamilyAgent("iddqn", obs_dim, n_actions, config=agent_cfg, seed=args.seed, device=device)
-            iddqn_agent.load(iddqn_path)
+            agents: dict[str, DQNFamilyAgent] = {}
+            for algo, path in algo_paths.items():
+                a = DQNFamilyAgent(str(algo), obs_dim, n_actions, config=agent_cfg, seed=args.seed, device=device)
+                a.load(path)
+                agents[str(algo)] = a
 
-            # Collect KPI estimates (IDDQN)
-            id_kpis: list[KPI] = []
-            id_times: list[float] = []
-            id_success = 0
-            for i in range(args.runs):
-                path, dt, reached = rollout_agent(
-                    env,
-                    iddqn_agent,
-                    max_steps=args.max_steps,
-                    seed=args.seed + 10_000 + i,
-                    reset_options=reset_options_list[i] if i < len(reset_options_list) else None,
-                    time_mode=str(getattr(args, "kpi_time_mode", "rollout")),
-                    obs_transform=obs_transform,
-                    forest_adm_horizon=int(args.forest_adm_horizon),
-                    forest_topk=int(args.forest_topk),
-                    forest_min_od_m=float(args.forest_min_od_m),
-                    forest_min_progress_m=float(args.forest_min_progress_m),
-                )
-                id_times.append(float(dt))
-                if int(i) in env_paths_by_run:
-                    env_paths_by_run[int(i)]["IDDQN"] = PathTrace(path_xy_cells=path, success=bool(reached))
+            for algo in args.rl_algos:
+                algo_key = str(algo)
+                pretty = algo_label.get(algo_key, algo_key.upper())
+                seed_base = int(algo_seed_offset.get(algo_key, 30_000))
 
-                start_xy = (int(spec.start_xy[0]), int(spec.start_xy[1]))
-                goal_xy = (int(spec.goal_xy[0]), int(spec.goal_xy[1]))
-                opts = reset_options_list[i] if i < len(reset_options_list) else None
-                if isinstance(opts, dict) and "start_xy" in opts and "goal_xy" in opts:
-                    sx, sy = opts["start_xy"]  # type: ignore[misc]
-                    gx, gy = opts["goal_xy"]  # type: ignore[misc]
-                    start_xy = (int(sx), int(sy))
-                    goal_xy = (int(gx), int(gy))
+                algo_kpis: list[KPI] = []
+                algo_times: list[float] = []
+                algo_success = 0
+                for i in range(int(args.runs)):
+                    path, dt, reached = rollout_agent(
+                        env,
+                        agents[algo_key],
+                        max_steps=args.max_steps,
+                        seed=int(args.seed) + seed_base + int(i),
+                        reset_options=reset_options_list[i] if i < len(reset_options_list) else None,
+                        time_mode=str(getattr(args, "kpi_time_mode", "rollout")),
+                        obs_transform=obs_transform,
+                        forest_adm_horizon=int(args.forest_adm_horizon),
+                        forest_topk=int(args.forest_topk),
+                        forest_min_od_m=float(args.forest_min_od_m),
+                        forest_min_progress_m=float(args.forest_min_progress_m),
+                    )
+                    algo_times.append(float(dt))
+                    if int(i) in env_paths_by_run:
+                        env_paths_by_run[int(i)][pretty] = PathTrace(path_xy_cells=path, success=bool(reached))
 
-                raw_corners = float(num_path_corners(path, angle_threshold_deg=13.0))
-                smoothed = smooth_path(path, iterations=2)
-                run_kpi = KPI(
-                    avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
-                    num_corners=raw_corners,
-                    min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
-                    inference_time_s=float(dt),
-                    max_corner_deg=float(max_corner_degree(smoothed)),
-                )
-                rows_runs.append(
+                    start_xy = (int(spec.start_xy[0]), int(spec.start_xy[1]))
+                    goal_xy = (int(spec.goal_xy[0]), int(spec.goal_xy[1]))
+                    opts = reset_options_list[i] if i < len(reset_options_list) else None
+                    if isinstance(opts, dict) and "start_xy" in opts and "goal_xy" in opts:
+                        sx, sy = opts["start_xy"]  # type: ignore[misc]
+                        gx, gy = opts["goal_xy"]  # type: ignore[misc]
+                        start_xy = (int(sx), int(sy))
+                        goal_xy = (int(gx), int(gy))
+
+                    raw_corners = float(num_path_corners(path, angle_threshold_deg=13.0))
+                    smoothed = smooth_path(path, iterations=2)
+                    run_kpi = KPI(
+                        avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
+                        num_corners=raw_corners,
+                        min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
+                        inference_time_s=float(dt),
+                        max_corner_deg=float(max_corner_degree(smoothed)),
+                    )
+                    rows_runs.append(
+                        {
+                            "Environment": str(env_label),
+                            "Algorithm": str(pretty),
+                            "run_idx": int(i),
+                            "start_x": int(start_xy[0]),
+                            "start_y": int(start_xy[1]),
+                            "goal_x": int(goal_xy[0]),
+                            "goal_y": int(goal_xy[1]),
+                            "success_rate": 1.0 if bool(reached) else 0.0,
+                            **dict(run_kpi.__dict__),
+                        }
+                    )
+                    if bool(reached):
+                        algo_success += 1
+                        algo_kpis.append(run_kpi)
+
+                k = mean_kpi(algo_kpis)
+                k_dict = dict(k.__dict__)
+                if algo_times:
+                    k_dict["inference_time_s"] = float(np.mean(algo_times))
+                rows.append(
                     {
-                        "Environment": f"Env. ({env_name})",
-                        "Algorithm": "IDDQN",
-                        "run_idx": int(i),
-                        "start_x": int(start_xy[0]),
-                        "start_y": int(start_xy[1]),
-                        "goal_x": int(goal_xy[0]),
-                        "goal_y": int(goal_xy[1]),
-                        "success_rate": 1.0 if bool(reached) else 0.0,
-                        **dict(run_kpi.__dict__),
+                        "Environment": str(env_label),
+                        "Algorithm": str(pretty),
+                        "success_rate": float(algo_success) / float(max(1, int(args.runs))),
+                        **k_dict,
                     }
                 )
-                if bool(reached):
-                    id_success += 1
-                    id_kpis.append(run_kpi)
-
-            k = mean_kpi(id_kpis)
-            k_dict = dict(k.__dict__)
-            if id_times:
-                k_dict["inference_time_s"] = float(np.mean(id_times))
-            rows.append(
-                {
-                    "Environment": f"Env. ({env_name})",
-                    "Algorithm": "IDDQN",
-                    "success_rate": float(id_success) / float(max(1, int(args.runs))),
-                    **k_dict,
-                }
-            )
-
-            # DQN
-            dq_kpis: list[KPI] = []
-            dq_times: list[float] = []
-            dq_success = 0
-            for i in range(args.runs):
-                path, dt, reached = rollout_agent(
-                    env,
-                    dqn_agent,
-                    max_steps=args.max_steps,
-                    seed=args.seed + 20_000 + i,
-                    reset_options=reset_options_list[i] if i < len(reset_options_list) else None,
-                    time_mode=str(getattr(args, "kpi_time_mode", "rollout")),
-                    obs_transform=obs_transform,
-                    forest_adm_horizon=int(args.forest_adm_horizon),
-                    forest_topk=int(args.forest_topk),
-                    forest_min_od_m=float(args.forest_min_od_m),
-                    forest_min_progress_m=float(args.forest_min_progress_m),
-                )
-                dq_times.append(float(dt))
-                if int(i) in env_paths_by_run:
-                    env_paths_by_run[int(i)]["DQN"] = PathTrace(path_xy_cells=path, success=bool(reached))
-
-                start_xy = (int(spec.start_xy[0]), int(spec.start_xy[1]))
-                goal_xy = (int(spec.goal_xy[0]), int(spec.goal_xy[1]))
-                opts = reset_options_list[i] if i < len(reset_options_list) else None
-                if isinstance(opts, dict) and "start_xy" in opts and "goal_xy" in opts:
-                    sx, sy = opts["start_xy"]  # type: ignore[misc]
-                    gx, gy = opts["goal_xy"]  # type: ignore[misc]
-                    start_xy = (int(sx), int(sy))
-                    goal_xy = (int(gx), int(gy))
-
-                raw_corners = float(num_path_corners(path, angle_threshold_deg=13.0))
-                smoothed = smooth_path(path, iterations=2)
-                run_kpi = KPI(
-                    avg_path_length=float(path_length(smoothed)) * float(cell_size_m),
-                    num_corners=raw_corners,
-                    min_collision_dist=float(min_distance_to_obstacle(grid, smoothed)) * float(cell_size_m),
-                    inference_time_s=float(dt),
-                    max_corner_deg=float(max_corner_degree(smoothed)),
-                )
-                rows_runs.append(
-                    {
-                        "Environment": f"Env. ({env_name})",
-                        "Algorithm": "DQN",
-                        "run_idx": int(i),
-                        "start_x": int(start_xy[0]),
-                        "start_y": int(start_xy[1]),
-                        "goal_x": int(goal_xy[0]),
-                        "goal_y": int(goal_xy[1]),
-                        "success_rate": 1.0 if bool(reached) else 0.0,
-                        **dict(run_kpi.__dict__),
-                    }
-                )
-                if bool(reached):
-                    dq_success += 1
-                    dq_kpis.append(run_kpi)
-
-            k = mean_kpi(dq_kpis)
-            k_dict = dict(k.__dict__)
-            if dq_times:
-                k_dict["inference_time_s"] = float(np.mean(dq_times))
-            rows.append(
-                {
-                    "Environment": f"Env. ({env_name})",
-                    "Algorithm": "DQN",
-                    "success_rate": float(dq_success) / float(max(1, int(args.runs))),
-                    **k_dict,
-                }
-            )
 
         if baselines:
             grid_map = grid_map_from_obstacles(grid_y0_bottom=grid, cell_size_m=float(cell_size_m))
             params = default_ackermann_params()
-            if env_name in FOREST_ENV_ORDER and isinstance(env, AMRBicycleEnv):
+            if env_base in FOREST_ENV_ORDER and isinstance(env, AMRBicycleEnv):
                 footprint = forest_two_circle_footprint()
                 goal_xy_tol_m = float(env.goal_tolerance_m)
                 goal_theta_tol_rad = float(env.goal_angle_tolerance_rad)
@@ -1110,7 +1202,7 @@ def main() -> int:
                     )
                     rows_runs.append(
                         {
-                            "Environment": f"Env. ({env_name})",
+                            "Environment": str(env_label),
                             "Algorithm": "Hybrid A*",
                             "run_idx": int(i),
                             "start_x": int(start_xy[0]),
@@ -1131,7 +1223,7 @@ def main() -> int:
                     k_dict["inference_time_s"] = float(np.mean(ha_times))
                 rows.append(
                     {
-                        "Environment": f"Env. ({env_name})",
+                        "Environment": str(env_label),
                         "Algorithm": "Hybrid A*",
                         "success_rate": float(ha_success) / float(max(1, int(n_runs))),
                         **k_dict,
@@ -1186,7 +1278,7 @@ def main() -> int:
                     )
                     rows_runs.append(
                         {
-                            "Environment": f"Env. ({env_name})",
+                            "Environment": str(env_label),
                             "Algorithm": "RRT*",
                             "run_idx": int(i),
                             "start_x": int(start_xy[0]),
@@ -1207,7 +1299,7 @@ def main() -> int:
                     k_dict["inference_time_s"] = float(np.mean(rrt_times))
                 rows.append(
                     {
-                        "Environment": f"Env. ({env_name})",
+                        "Environment": str(env_label),
                         "Algorithm": "RRT*",
                         "success_rate": float(rrt_success) / float(max(1, int(args.runs))),
                         **k_dict,
@@ -1331,19 +1423,21 @@ def main() -> int:
     # Plot Fig. 12-style paths
     envs_to_plot = list(args.envs)[:4]
     panels: list[tuple[str, int]] = []
+    env0_base = str(envs_to_plot[0]).split("::", 1)[0] if envs_to_plot else ""
     multi_pair_fig = (
         bool(getattr(args, "random_start_goal", False))
         and int(len(args.envs)) == 1
         and int(args.runs) >= 4
-        and str(envs_to_plot[0]) in set(FOREST_ENV_ORDER)
+        and str(env0_base) in set(FOREST_ENV_ORDER)
     )
     if envs_to_plot and multi_pair_fig:
         base = int(getattr(args, "plot_run_idx", 0))
         panels = [(str(envs_to_plot[0]), (base + k) % int(args.runs)) for k in range(4)]
     else:
         for env_name in envs_to_plot:
+            env_base = str(env_name).split("::", 1)[0]
             run_idx = 0
-            if bool(getattr(args, "random_start_goal", False)) and str(env_name) in set(FOREST_ENV_ORDER):
+            if bool(getattr(args, "random_start_goal", False)) and str(env_base) in set(FOREST_ENV_ORDER):
                 run_idx = int(getattr(args, "plot_run_idx", 0))
             panels.append((str(env_name), int(run_idx)))
 
@@ -1354,6 +1448,7 @@ def main() -> int:
     axes = np.atleast_1d(axes).ravel()
     styles = {
         "IDDQN": dict(color="red", linestyle="-", linewidth=2.0),
+        "DDQN": dict(color="orange", linestyle="-", linewidth=2.0),
         "DQN": dict(color="orangered", linestyle="-", linewidth=2.0),
         "Hybrid A*": dict(color="royalblue", linestyle="-", linewidth=2.0),
         "RRT*": dict(color="seagreen", linestyle="-", linewidth=2.0),
@@ -1361,11 +1456,15 @@ def main() -> int:
 
     for i, (env_name, run_idx) in enumerate(panels):
         ax = axes[i]
-        spec = get_map_spec(env_name)
+        env_base = str(env_name).split("::", 1)[0]
+        suite = str(env_name).split("::", 1)[1] if "::" in str(env_name) else ""
+        spec = get_map_spec(env_base)
         grid = spec.obstacle_grid()
-        title = f"Env. ({env_name})"
+        title = f"Env. ({env_base})"
+        if suite:
+            title = f"Env. ({env_base})/{suite}"
         if multi_pair_fig:
-            title = f"Env. ({env_name}) #{int(run_idx)}"
+            title = f"Env. ({env_base}) #{int(run_idx)}"
         plot_env(ax, grid, title=title)
 
         meta = plot_meta.get((env_name, int(run_idx))) or plot_meta.get((env_name, 0), {})

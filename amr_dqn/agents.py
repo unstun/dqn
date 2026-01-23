@@ -49,7 +49,7 @@ class AgentConfig:
 class DQNFamilyAgent:
     def __init__(
         self,
-        algo: Literal["dqn", "iddqn"],
+        algo: Literal["dqn", "ddqn", "iddqn"],
         obs_dim: int,
         n_actions: int,
         *,
@@ -64,8 +64,9 @@ class DQNFamilyAgent:
         self._rng = np.random.default_rng(seed)
         torch.manual_seed(seed)
 
-        # DQN is the baseline (plain Q-learning). IDDQN uses a dueling head and other
-        # stabilizers (PER + soft target updates) to improve performance on long-horizon forests.
+        # DQN is the baseline (plain Q-learning).
+        # DDQN keeps the same architecture but uses the Double DQN TD target (online argmax + target eval).
+        # IDDQN adds extra stabilizers (dueling head + optional PER + soft target updates) for long-horizon forests.
         net_cls = DuelingQNetwork if algo == "iddqn" else QNetwork
         self.q = net_cls(obs_dim, n_actions, hidden_dim=config.hidden_dim, hidden_layers=config.hidden_layers).to(
             self.device
@@ -402,7 +403,7 @@ class DQNFamilyAgent:
 
         with torch.no_grad():
             mask = next_action_masks.to(torch.bool)
-            if self.algo == "iddqn":
+            if self.algo in ("iddqn", "ddqn"):
                 # Double DQN target: action selection with online network, evaluation with target network.
                 q_next_online = self.q(next_obs)
                 q_next_online = q_next_online.masked_fill(~mask, torch.finfo(q_next_online.dtype).min)
