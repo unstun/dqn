@@ -62,11 +62,19 @@ def forest_oriented_box_footprint() -> OrientedBoxFootprint:
     return OrientedBoxFootprint(length=0.924, width=0.740)
 
 
-def forest_two_circle_footprint() -> TwoCircleFootprint:
+def forest_two_circle_footprint(*, wheelbase_m: float = 0.6) -> TwoCircleFootprint:
     # Use the same nominal vehicle dimensions as the forest env and convert to a conservative
     # two-circle approximation (robust for grid collision checks at arbitrary headings).
+    #
+    # IMPORTANT: The forest env's bicycle model state is the rear-axle center. To match that
+    # reference, shift the footprint forward by wheelbase/2 so the two-circle model covers
+    # the vehicle body centered around the axle midpoint.
     box = forest_oriented_box_footprint()
-    return TwoCircleFootprint.from_box(length=float(box.length), width=float(box.width))
+    return TwoCircleFootprint.from_box(
+        length=float(box.length),
+        width=float(box.width),
+        center_shift=0.5 * float(wheelbase_m),
+    )
 
 
 def _default_start_theta(start_xy: tuple[int, int], goal_xy: tuple[int, int], *, cell_size_m: float) -> float:

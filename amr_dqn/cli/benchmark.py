@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from amr_dqn.agents import parse_rl_algo
 from amr_dqn.runs import latest_run_dir, latest_run_dir_with_models, resolve_experiment_dir
 
 
@@ -42,8 +43,11 @@ def main() -> int:
     ap.add_argument(
         "--rl-algos",
         nargs="+",
-        default=["dqn"],
-        help="RL algorithms to run: dqn ddqn iddqn (or 'all'). Default: dqn.",
+        default=["mlp-dqn"],
+        help=(
+            "RL algorithms to run: mlp-dqn mlp-ddqn mlp-pddqn cnn-dqn cnn-ddqn cnn-pddqn (or 'all'). "
+            "Legacy aliases: dqn ddqn iddqn cnn-iddqn. Default: mlp-dqn."
+        ),
     )
     ap.add_argument("--episodes", type=int, default=300)
     ap.add_argument("--max-steps", type=int, default=600)
@@ -62,17 +66,34 @@ def main() -> int:
     ap.add_argument("--rand-fixed-prob", type=float, default=0.2)
     ap.add_argument("--rand-tries", type=int, default=200)
     args = ap.parse_args()
-    algo_label = {"dqn": "DQN", "ddqn": "DDQN", "iddqn": "IDDQN"}
-    valid_algos = ("dqn", "ddqn", "iddqn")
+    algo_label = {
+        "mlp-dqn": "MLP-DQN",
+        "mlp-ddqn": "MLP-DDQN",
+        "mlp-pddqn": "MLP-PDDQN",
+        "cnn-dqn": "CNN-DQN",
+        "cnn-ddqn": "CNN-DDQN",
+        "cnn-pddqn": "CNN-PDDQN",
+    }
+    canonical_all = ("mlp-dqn", "mlp-ddqn", "mlp-pddqn", "cnn-dqn", "cnn-ddqn", "cnn-pddqn")
     raw_algos = [str(a).lower().strip() for a in (args.rl_algos or [])]
     if any(a == "all" for a in raw_algos):
-        raw_algos = list(valid_algos)
+        raw_algos = list(canonical_all)
     rl_algos: list[str] = []
+    unknown: list[str] = []
     for a in raw_algos:
-        if a in valid_algos and a not in rl_algos:
-            rl_algos.append(a)
+        try:
+            canonical, _arch, _base, _legacy = parse_rl_algo(a)
+        except ValueError:
+            unknown.append(a)
+            continue
+        if canonical not in rl_algos:
+            rl_algos.append(canonical)
+    if unknown:
+        raise SystemExit(
+            f"Unknown --rl-algos value(s): {', '.join(unknown)}. Choose from: {' '.join(canonical_all)} (or 'all')."
+        )
     if not rl_algos:
-        raise SystemExit("No RL algorithms selected (choose from: dqn ddqn iddqn).")
+        raise SystemExit(f"No RL algorithms selected (choose from: {' '.join(canonical_all)}).")
 
     exp_dir = resolve_experiment_dir(args.out, runs_root=args.runs_root)
 

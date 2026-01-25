@@ -1,78 +1,27 @@
-# AMR DQN (I)DDQN Repro
+# dqn (forest bicycle env)
 
-## Repository layout
+本仓库默认只保留森林运动学（Ackermann/bicycle）模型场景：`forest_a` / `forest_b` / `forest_c` / `forest_d`。
 
-- `amr_dqn/`: core library code
-  - `amr_dqn/maps/`: map specifications
-  - `amr_dqn/cli/`: training + inference CLIs
-- `train.py`, `infer.py`: thin wrappers (keep old commands working)
-- `runs/`: all generated results (experiments + timestamped runs)
-- `docs/`: paper + extracted figures/assets
+## 环境
 
-## Conda (CUDA)
+- 统一使用 conda 环境：`ros2py310`
+- 默认使用 CUDA（如需强制 CPU：加 `--device cpu`）
 
-GPU training/inference requires a CUDA-enabled PyTorch build. In this repo, the recommended environment is:
+自检（确认 PyTorch/CUDA 可用）：
 
-```powershell
-D:/anaconda/Scripts/activate
-conda activate ros2py310
-python train.py --self-check --device cuda
+```bash
+conda run -n ros2py310 python train.py --self-check
+conda run -n ros2py310 python infer.py --self-check
 ```
 
-Non-interactive alternative (no manual activation):
+## 训练 / 推理
 
-```powershell
-conda run -n ros2py310 python train.py --self-check --device cuda
+推荐直接用 profile（见 `configs/*.json`）：
+
+```bash
+conda run -n ros2py310 python train.py --profile forest_a_all6_300_cuda
+conda run -n ros2py310 python infer.py --profile forest_a_all6_300_cuda
 ```
 
-## Training
+更完整的命令示例与参数说明见：`runtxt.md`。
 
-```
-python train.py --out outputs_repro_1000 --episodes 1000 --device cuda
-```
-
-Outputs go to `runs/outputs_repro_1000/train_<timestamp>/...` (models, curves, configs).
-
-## Forest scenario (bicycle model, 0.1m)
-
-Train on generated forest maps (Ackermann/bicycle dynamics, 35 discrete `(δ̇, a)` actions):
-
-```
-python train.py --envs forest_a forest_b forest_c forest_d --out outputs_forest --episodes 1000 --device cuda
-```
-
-## Inference / KPIs
-
-Use the latest training run for an experiment name:
-
-```
-python infer.py --models outputs_repro_1000 --out outputs_repro_1000 --device cuda
-```
-
-Include classical baselines (Hybrid A* + RRT*):
-
-```
-python infer.py --models outputs_repro_1000 --out outputs_repro_1000 --baselines all --device cuda
-```
-
-Baseline-only (no checkpoints required):
-
-```
-python infer.py --envs forest_b --out outputs_forest_baselines --baselines all --skip-rl --max-steps 600 --device cpu
-```
-
-Inference outputs are stored under the selected training run:
-
-`runs/outputs_repro_1000/train_<timestamp>/infer/<timestamp>/...`
-
-Or write inference outputs to a separate experiment directory:
-
-```
-python infer.py --models outputs_repro_1000 --out outputs_repro_1000_kpi2 --device cuda --cuda-device 0
-```
-
-Or point directly at a specific training run directory/models directory:
-
-```
-python infer.py --models runs/outputs_repro_1000/train_<timestamp> --out outputs_repro_1000_kpi2
-```

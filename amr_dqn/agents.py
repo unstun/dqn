@@ -10,9 +10,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from amr_dqn.networks import DuelingQNetwork, QNetwork
-from amr_dqn.replay_buffer import PrioritizedReplayBuffer, ReplayBuffer
-from amr_dqn.schedules import adaptive_epsilon, linear_epsilon
+from amr_dqn.networks import CNNQNetwork, MLPQNetwork, infer_flat_obs_cnn_layout
+from amr_dqn.replay_buffer import ReplayBuffer
+from amr_dqn.schedules import linear_epsilon
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,10 @@ class AgentConfig:
     replay_capacity: int = 100_000
     batch_size: int = 128
     target_update_steps: int = 1000
-    target_tau: float = 0.0
+    # When >0, use Polyak (soft) target updates at every training step:
+    #   target = (1 - tau) * target + tau * online
+    # When 0, use periodic hard updates every `target_update_steps`.
+    target_update_tau: float = 0.0
     grad_clip_norm: float = 10.0
 
     eps_start: float = 0.9
@@ -35,21 +38,50 @@ class AgentConfig:
     hidden_layers: int = 3
     hidden_dim: int = 256
 
-    # Prioritized replay (IDDQN only). Default off for stability on static global-planning maps.
-    per_alpha: float = 0.0
-    per_beta_start: float = 0.4
-    per_beta_steps: int = 50_000
-
     # Expert margin loss (DQfD-style) for forest stabilization.
     demo_margin: float = 0.8
     demo_lambda: float = 1.0
     demo_ce_lambda: float = 1.0
 
 
+AlgoArch = Literal["mlp", "cnn"]
+AlgoBase = Literal["dqn", "ddqn"]
+
+
+def parse_rl_algo(algo: str) -> tuple[str, AlgoArch, AlgoBase, bool]:
+    """Return (canonical_name, arch, base_algo, is_legacy_alias)."""
+
+    a = str(algo).lower().strip()
+    if a in {"dqn", "ddqn"}:
+        base: AlgoBase = "dqn" if a == "dqn" else "ddqn"
+        return (f"mlp-{base}", "mlp", base, True)
+
+    if a == "iddqn":
+        # Legacy name (avoid collision with published "IDDQN").
+        # This project uses it for a Polyak/soft-target Double DQN variant.
+        return ("mlp-pddqn", "mlp", "ddqn", True)
+
+    if a == "cnn-iddqn":
+        # Legacy name (avoid collision with published "IDDQN").
+        return ("cnn-pddqn", "cnn", "ddqn", True)
+
+    supported = {"mlp-dqn", "mlp-ddqn", "mlp-pddqn", "cnn-dqn", "cnn-ddqn", "cnn-pddqn"}
+    if a in supported:
+        arch_s, variant = a.split("-", 1)
+        arch: AlgoArch = "mlp" if arch_s == "mlp" else "cnn"
+        base: AlgoBase = "dqn" if variant == "dqn" else "ddqn"
+        return (a, arch, base, False)
+
+    raise ValueError(
+        "algo must be one of: mlp-dqn mlp-ddqn mlp-pddqn cnn-dqn cnn-ddqn cnn-pddqn "
+        "(legacy: dqn ddqn iddqn cnn-iddqn)"
+    )
+
+
 class DQNFamilyAgent:
     def __init__(
         self,
-        algo: Literal["dqn", "ddqn", "iddqn"],
+        algo: str,
         obs_dim: int,
         n_actions: int,
         *,
@@ -57,7 +89,10 @@ class DQNFamilyAgent:
         seed: int = 0,
         device: str | torch.device = "cpu",
     ) -> None:
-        self.algo = algo
+        canonical_algo, arch, base_algo, _legacy = parse_rl_algo(algo)
+        self.algo = canonical_algo
+        self.arch = arch
+        self.base_algo = base_algo
         self.config = config
         self.device = torch.device(device)
 
@@ -66,31 +101,29 @@ class DQNFamilyAgent:
 
         # DQN is the baseline (plain Q-learning).
         # DDQN keeps the same architecture but uses the Double DQN TD target (online argmax + target eval).
-        # IDDQN adds extra stabilizers (dueling head + optional PER + soft target updates) for long-horizon forests.
-        net_cls = DuelingQNetwork if algo == "iddqn" else QNetwork
-        self.q = net_cls(obs_dim, n_actions, hidden_dim=config.hidden_dim, hidden_layers=config.hidden_layers).to(
-            self.device
-        )
-        self.q_target = net_cls(obs_dim, n_actions, hidden_dim=config.hidden_dim, hidden_layers=config.hidden_layers).to(
-            self.device
-        )
+        self._net_cls: type[nn.Module]
+        self._net_kwargs: dict[str, object]
+        if self.arch == "cnn":
+            layout = infer_flat_obs_cnn_layout(int(obs_dim))
+            self._net_cls = CNNQNetwork
+            self._net_kwargs = {
+                "scalar_dim": int(layout.scalar_dim),
+                "map_channels": int(layout.map_channels),
+                "map_size": int(layout.map_size),
+            }
+        else:
+            self._net_cls = MLPQNetwork
+            self._net_kwargs = {}
+
+        self.q = self._net_cls(obs_dim, n_actions, hidden_dim=config.hidden_dim, hidden_layers=config.hidden_layers, **self._net_kwargs).to(self.device)
+        self.q_target = self._net_cls(obs_dim, n_actions, hidden_dim=config.hidden_dim, hidden_layers=config.hidden_layers, **self._net_kwargs).to(self.device)
         self.q_target.load_state_dict(self.q.state_dict())
         self.q_target.eval()
 
         self.optimizer = torch.optim.Adam(self.q.parameters(), lr=config.learning_rate)
         self.loss_fn = nn.SmoothL1Loss(reduction="none")
 
-        self._use_per = bool(algo == "iddqn" and float(config.per_alpha) > 0.0)
-        if self._use_per:
-            self.replay = PrioritizedReplayBuffer(
-                config.replay_capacity,
-                obs_dim,
-                n_actions,
-                rng=self._rng,
-                alpha=float(config.per_alpha),
-            )
-        else:
-            self.replay = ReplayBuffer(config.replay_capacity, obs_dim, n_actions, rng=self._rng)
+        self.replay = ReplayBuffer(config.replay_capacity, obs_dim, n_actions, rng=self._rng)
 
         self._train_steps = 0
         self._n_actions = int(n_actions)
@@ -105,26 +138,16 @@ class DQNFamilyAgent:
         *,
         hidden_dim: int,
         hidden_layers: int,
+        net_kwargs: dict[str, object] | None = None,
     ) -> None:
-        self.q = net_cls(self._obs_dim, self._n_actions, hidden_dim=hidden_dim, hidden_layers=hidden_layers).to(self.device)
-        self.q_target = net_cls(self._obs_dim, self._n_actions, hidden_dim=hidden_dim, hidden_layers=hidden_layers).to(
-            self.device
-        )
+        net_kwargs = {} if net_kwargs is None else dict(net_kwargs)
+        self.q = net_cls(self._obs_dim, self._n_actions, hidden_dim=hidden_dim, hidden_layers=hidden_layers, **net_kwargs).to(self.device)
+        self.q_target = net_cls(self._obs_dim, self._n_actions, hidden_dim=hidden_dim, hidden_layers=hidden_layers, **net_kwargs).to(self.device)
         self.q_target.load_state_dict(self.q.state_dict())
         self.q_target.eval()
         self.optimizer = torch.optim.Adam(self.q.parameters(), lr=self.config.learning_rate)
 
     def epsilon(self, episode: int) -> float:
-        if self.algo == "iddqn":
-            # The logistic schedule from the paper starts at ~0.5*eps_start (k=0),
-            # which is often too little exploration for sparse-success navigation.
-            # Use the same linear decay as DQN for stability.
-            return linear_epsilon(
-                episode,
-                eps_start=self.config.eps_start,
-                eps_final=self.config.eps_final,
-                decay_episodes=self.config.eps_decay,
-            )
         return linear_epsilon(
             episode,
             eps_start=self.config.eps_start,
@@ -194,28 +217,16 @@ class DQNFamilyAgent:
         demo: bool,
         n_steps: int,
     ) -> None:
-        if self._use_per:
-            self.replay.add(
-                obs,
-                int(action),
-                float(reward),
-                next_obs,
-                bool(done),
-                next_action_mask=next_action_mask,
-                demo=bool(demo),
-                n_steps=int(n_steps),
-            )
-        else:
-            self.replay.add(
-                obs,
-                int(action),
-                float(reward),
-                next_obs,
-                bool(done),
-                next_action_mask=next_action_mask,
-                demo=bool(demo),
-                n_steps=int(n_steps),
-            )
+        self.replay.add(
+            obs,
+            int(action),
+            float(reward),
+            next_obs,
+            bool(done),
+            next_action_mask=next_action_mask,
+            demo=bool(demo),
+            n_steps=int(n_steps),
+        )
 
     def observe(
         self,
@@ -325,16 +336,10 @@ class DQNFamilyAgent:
             if len(self.replay) < int(self.config.batch_size):
                 break
 
-            if self._use_per:
-                batch = self.replay.sample(self.config.batch_size, beta=1.0)
-                obs = torch.from_numpy(batch.obs).to(self.device)
-                actions = torch.from_numpy(batch.actions).to(self.device)
-                demos = torch.from_numpy(batch.demos).to(self.device)
-            else:
-                batch = self.replay.sample(self.config.batch_size)
-                obs = torch.from_numpy(batch.obs).to(self.device)
-                actions = torch.from_numpy(batch.actions).to(self.device)
-                demos = torch.from_numpy(batch.demos).to(self.device)
+            batch = self.replay.sample(self.config.batch_size)
+            obs = torch.from_numpy(batch.obs).to(self.device)
+            actions = torch.from_numpy(batch.actions).to(self.device)
+            demos = torch.from_numpy(batch.demos).to(self.device)
 
             demo_mask = demos.float().clamp(0.0, 1.0) > 0.0
             if not bool(torch.any(demo_mask)):
@@ -371,39 +376,22 @@ class DQNFamilyAgent:
         if len(self.replay) < self.config.batch_size:
             return {}
 
-        if self._use_per:
-            beta_steps = max(1, int(self.config.per_beta_steps))
-            beta = float(self.config.per_beta_start) + (1.0 - float(self.config.per_beta_start)) * float(
-                min(1.0, float(self._train_steps) / float(beta_steps))
-            )
-            batch = self.replay.sample(self.config.batch_size, beta=beta)
-            obs = torch.from_numpy(batch.obs).to(self.device)
-            actions = torch.from_numpy(batch.actions).to(self.device)
-            rewards = torch.from_numpy(batch.rewards).to(self.device)
-            next_obs = torch.from_numpy(batch.next_obs).to(self.device)
-            next_action_masks = torch.from_numpy(batch.next_action_masks).to(self.device)
-            dones = torch.from_numpy(batch.dones).to(self.device)
-            n_steps = torch.from_numpy(batch.n_steps).to(self.device)
-            weights = torch.from_numpy(batch.weights).to(self.device)
-            demos = torch.from_numpy(batch.demos).to(self.device)
-        else:
-            batch = self.replay.sample(self.config.batch_size)
-            obs = torch.from_numpy(batch.obs).to(self.device)
-            actions = torch.from_numpy(batch.actions).to(self.device)
-            rewards = torch.from_numpy(batch.rewards).to(self.device)
-            next_obs = torch.from_numpy(batch.next_obs).to(self.device)
-            next_action_masks = torch.from_numpy(batch.next_action_masks).to(self.device)
-            dones = torch.from_numpy(batch.dones).to(self.device)
-            n_steps = torch.from_numpy(batch.n_steps).to(self.device)
-            weights = None
-            demos = torch.from_numpy(batch.demos).to(self.device)
+        batch = self.replay.sample(self.config.batch_size)
+        obs = torch.from_numpy(batch.obs).to(self.device)
+        actions = torch.from_numpy(batch.actions).to(self.device)
+        rewards = torch.from_numpy(batch.rewards).to(self.device)
+        next_obs = torch.from_numpy(batch.next_obs).to(self.device)
+        next_action_masks = torch.from_numpy(batch.next_action_masks).to(self.device)
+        dones = torch.from_numpy(batch.dones).to(self.device)
+        n_steps = torch.from_numpy(batch.n_steps).to(self.device)
+        demos = torch.from_numpy(batch.demos).to(self.device)
 
         q_all = self.q(obs)
         q_values = q_all.gather(1, actions.view(-1, 1)).squeeze(1)
 
         with torch.no_grad():
             mask = next_action_masks.to(torch.bool)
-            if self.algo in ("iddqn", "ddqn"):
+            if self.base_algo == "ddqn":
                 # Double DQN target: action selection with online network, evaluation with target network.
                 q_next_online = self.q(next_obs)
                 q_next_online = q_next_online.masked_fill(~mask, torch.finfo(q_next_online.dtype).min)
@@ -426,7 +414,7 @@ class DQNFamilyAgent:
 
         td_error = target - q_values
         losses = self.loss_fn(q_values, target)
-        td_loss = (losses * weights).mean() if weights is not None else losses.mean()
+        td_loss = losses.mean()
 
         # Expert large-margin loss (DQfD). Only applied to `demo` transitions.
         demo_lambda = float(getattr(self.config, "demo_lambda", 0.0))
@@ -439,10 +427,7 @@ class DQNFamilyAgent:
                 q_other.scatter_(1, actions.view(-1, 1), torch.finfo(q_other.dtype).min)
                 q_max_other = q_other.max(dim=1).values
                 margin = torch.relu(q_max_other + float(demo_margin) - q_values)
-                if weights is not None:
-                    margin_loss = (margin * demo_mask * weights).mean()
-                else:
-                    margin_loss = (margin * demo_mask).mean()
+                margin_loss = (margin * demo_mask).mean()
 
         # Expert behavior cloning loss on demo transitions (works as a strong stabilizer on static maps).
         demo_ce_lambda = float(getattr(self.config, "demo_ce_lambda", 0.0))
@@ -451,10 +436,7 @@ class DQNFamilyAgent:
             demo_mask = demos.float().clamp(0.0, 1.0)
             if torch.any(demo_mask > 0.0):
                 ce = F.cross_entropy(q_all, actions.long(), reduction="none")
-                if weights is not None:
-                    ce_loss = (ce * demo_mask * weights).mean()
-                else:
-                    ce_loss = (ce * demo_mask).mean()
+                ce_loss = (ce * demo_mask).mean()
 
         loss = td_loss + float(demo_lambda) * margin_loss + float(demo_ce_lambda) * ce_loss
 
@@ -464,22 +446,14 @@ class DQNFamilyAgent:
             nn.utils.clip_grad_norm_(self.q.parameters(), max_norm=self.config.grad_clip_norm)
         self.optimizer.step()
 
-        if self._use_per:
-            self.replay.update_priorities(
-                batch.idxs,
-                td_errors=td_error.detach().abs().cpu().numpy(),
-            )
-
         self._train_steps += 1
-        tau = float(np.clip(float(self.config.target_tau), 0.0, 1.0))
-        if self.algo == "iddqn" and tau > 0.0:
+        tau = float(getattr(self.config, "target_update_tau", 0.0))
+        if tau > 0.0:
             with torch.no_grad():
-                for p_t, p in zip(self.q_target.parameters(), self.q.parameters()):
-                    p_t.data.mul_(1.0 - tau)
-                    p_t.data.add_(tau * p.data)
-        else:
-            if self._train_steps % self.config.target_update_steps == 0:
-                self.q_target.load_state_dict(self.q.state_dict())
+                for p_t, p in zip(self.q_target.parameters(), self.q.parameters(), strict=False):
+                    p_t.data.lerp_(p.data, float(tau))
+        elif self._train_steps % self.config.target_update_steps == 0:
+            self.q_target.load_state_dict(self.q.state_dict())
 
         return {
             "loss": float(loss.item()),
@@ -493,7 +467,12 @@ class DQNFamilyAgent:
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "algo": self.algo,
-            "network": "dueling" if isinstance(self.q, DuelingQNetwork) else "plain",
+            "arch": self.arch,
+            "base_algo": self.base_algo,
+            "network": self.arch,
+            "network_kwargs": dict(self._net_kwargs),
+            "obs_dim": int(self._obs_dim),
+            "n_actions": int(self._n_actions),
             "config": self.config.__dict__,
             "q_state_dict": self.q.state_dict(),
             "q_target_state_dict": self.q_target.state_dict(),
@@ -506,26 +485,43 @@ class DQNFamilyAgent:
         q_sd = payload["q_state_dict"]
         q_target_sd = payload.get("q_target_state_dict", {})
 
+        payload_algo = payload.get("algo", self.algo)
+        canonical_algo, arch, base_algo, _legacy = parse_rl_algo(str(payload_algo))
+        self.algo = canonical_algo
+        self.arch = arch
+        self.base_algo = base_algo
+
+        network = str(payload.get("network", self.arch)).lower().strip()
+        if network in {"plain", "qnetwork", "mlp"}:
+            net_cls: type[nn.Module] = MLPQNetwork
+            net_kwargs: dict[str, object] = {}
+            self.arch = "mlp"
+        elif network == "cnn":
+            net_cls = CNNQNetwork
+            net_kwargs_raw = payload.get("network_kwargs") or {}
+            if not isinstance(net_kwargs_raw, dict):
+                net_kwargs_raw = {}
+            if not net_kwargs_raw:
+                layout = infer_flat_obs_cnn_layout(int(self._obs_dim))
+                net_kwargs = {"scalar_dim": layout.scalar_dim, "map_channels": layout.map_channels, "map_size": layout.map_size}
+            else:
+                net_kwargs = {str(k): v for k, v in net_kwargs_raw.items()}
+            self.arch = "cnn"
+        else:
+            raise ValueError(f"Unsupported network type in checkpoint: {network!r}")
+
+        self._net_cls = net_cls
+        self._net_kwargs = dict(net_kwargs)
+
         cfg = payload.get("config") or {}
         hidden_dim = int(cfg.get("hidden_dim", self.config.hidden_dim))
         hidden_layers = int(cfg.get("hidden_layers", self.config.hidden_layers))
 
-        # Backwards-compatible loading:
-        # - Old IDDQN checkpoints used `QNetwork` (keys: "net.*").
-        # - New IDDQN uses dueling heads (keys: "feature.*", "value.*", "advantage.*").
-        if any(str(k).startswith("feature.") or str(k).startswith("value.") or str(k).startswith("advantage.") for k in q_sd):
-            net_cls = DuelingQNetwork
-        else:
-            net_cls = QNetwork
-
-        if not isinstance(self.q, net_cls):
-            self._rebuild_networks(net_cls, hidden_dim=hidden_dim, hidden_layers=hidden_layers)
-        else:
-            # Architecture can change across experiments (hidden_dim/layers). Rebuild when shapes mismatch.
-            try:
-                self.q.load_state_dict(q_sd, strict=True)
-            except RuntimeError:
-                self._rebuild_networks(net_cls, hidden_dim=hidden_dim, hidden_layers=hidden_layers)
+        # Architecture can change across experiments (hidden_dim/layers). Rebuild when shapes mismatch.
+        try:
+            self.q.load_state_dict(q_sd, strict=True)
+        except RuntimeError:
+            self._rebuild_networks(net_cls, hidden_dim=hidden_dim, hidden_layers=hidden_layers, net_kwargs=net_kwargs)
 
         self.q.load_state_dict(q_sd, strict=True)
         if q_target_sd:

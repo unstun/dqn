@@ -67,17 +67,27 @@ class TwoCircleFootprint:
     """
     Conservative two-circle approximation of an oriented box footprint.
 
-    The circles are centered on the robot x-axis at (+/-center_offset, 0)
+    The circles are centered on the robot x-axis at:
+        (center_shift +/- center_offset, 0)
     in the robot frame.
+
+    `center_shift` is useful when the pose reference point is not the geometric
+    center of the robot body (e.g., rear-axle bicycle model).
     """
 
     radius: float
     center_offset: float
+    center_shift: float = 0.0
 
     def __post_init__(self) -> None:
         self.radius = float(self.radius)
         self.center_offset = float(self.center_offset)
-        if not math.isfinite(self.radius) or not math.isfinite(self.center_offset):
+        self.center_shift = float(self.center_shift)
+        if (
+            not math.isfinite(self.radius)
+            or not math.isfinite(self.center_offset)
+            or not math.isfinite(self.center_shift)
+        ):
             raise ValueError("TwoCircleFootprint parameters must be finite.")
         if self.radius <= 0.0:
             raise ValueError("TwoCircleFootprint.radius must be > 0.")
@@ -85,7 +95,7 @@ class TwoCircleFootprint:
             raise ValueError("TwoCircleFootprint.center_offset must be >= 0.")
 
     @classmethod
-    def from_box(cls, length: float, width: float) -> "TwoCircleFootprint":
+    def from_box(cls, length: float, width: float, *, center_shift: float = 0.0) -> "TwoCircleFootprint":
         """
         Build a conservative two-circle cover for an oriented rectangle.
 
@@ -102,7 +112,7 @@ class TwoCircleFootprint:
         half_width = width / 2.0
         center_offset = half_length / 2.0
         radius = math.hypot(center_offset, half_width)
-        return cls(radius=radius, center_offset=center_offset)
+        return cls(radius=radius, center_offset=center_offset, center_shift=float(center_shift))
 
     @property
     def length(self) -> float:
@@ -113,7 +123,11 @@ class TwoCircleFootprint:
         return 2.0 * self.radius
 
     def corners(self, x: float, y: float, theta: float) -> List[Tuple[float, float]]:
-        return OrientedBoxFootprint(self.length, self.width).corners(x, y, theta)
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+        cx = x + cos_t * float(self.center_shift)
+        cy = y + sin_t * float(self.center_shift)
+        return OrientedBoxFootprint(self.length, self.width).corners(cx, cy, theta)
 
     def point_inside(self, px: float, py: float, x: float, y: float, theta: float) -> bool:
         """Check if world point lies inside the union of the two circles."""
@@ -124,20 +138,24 @@ class TwoCircleFootprint:
         rx = cos_t * dx + sin_t * dy
         ry = -sin_t * dx + cos_t * dy
         r2 = self.radius * self.radius + 1e-12
-        d = self.center_offset
-        dx_front = rx - d
+        d = float(self.center_offset)
+        s = float(self.center_shift)
+        dx_front = rx - (s + d)
         if dx_front * dx_front + ry * ry <= r2:
             return True
-        dx_rear = rx + d
+        dx_rear = rx - (s - d)
         return dx_rear * dx_rear + ry * ry <= r2
 
     def circle_centers(self, x: float, y: float, theta: float) -> List[Tuple[float, float]]:
         """Return world-frame centers of the front and rear circles."""
-        d = self.center_offset
+        d = float(self.center_offset)
+        s = float(self.center_shift)
         cos_t = math.cos(theta)
         sin_t = math.sin(theta)
-        front = (x + cos_t * d, y + sin_t * d)
-        rear = (x - cos_t * d, y - sin_t * d)
+        front_d = s + d
+        rear_d = s - d
+        front = (x + cos_t * front_d, y + sin_t * front_d)
+        rear = (x + cos_t * rear_d, y + sin_t * rear_d)
         return [front, rear]
 
     def collides(
@@ -268,12 +286,14 @@ class GridFootprintChecker:
         self.offset_bounds: List[Tuple[int, int, int, int]] = []
 
         self._circle_center_offset = 0.0
+        self._circle_center_shift = 0.0
         self._circle_radius = 0.0
         self._circle_radius_sq = 0.0
         self._circle_reach = 0.0
 
         if self._two_circle:
             self._circle_center_offset = float(footprint.center_offset)
+            self._circle_center_shift = float(footprint.center_shift)
             self._circle_radius = max(float(footprint.radius) + self.padding, 0.0)
             self._circle_radius_sq = self._circle_radius * self._circle_radius + 1e-12
             self._circle_reach = self._circle_radius + grid_map.resolution * 0.5
@@ -344,13 +364,16 @@ class GridFootprintChecker:
         return bool((sub_occ & (dist2 <= self._circle_radius_sq)).any())
 
     def _collides_two_circle_pose(self, x: float, y: float, theta: float) -> bool:
+        s = self._circle_center_shift
         d = self._circle_center_offset
         cos_t = math.cos(theta)
         sin_t = math.sin(theta)
-        front_x = x + cos_t * d
-        front_y = y + sin_t * d
-        rear_x = x - cos_t * d
-        rear_y = y - sin_t * d
+        mid_x = x + cos_t * s
+        mid_y = y + sin_t * s
+        front_x = mid_x + cos_t * d
+        front_y = mid_y + sin_t * d
+        rear_x = mid_x - cos_t * d
+        rear_y = mid_y - sin_t * d
         if self._collides_circle_world(front_x, front_y):
             return True
         return self._collides_circle_world(rear_x, rear_y)

@@ -8,12 +8,16 @@
     "models": "forest_a_best",
     "out": "forest_a_best",
     "rl_algos": [
-      "dqn",
-      "ddqn"
+      "mlp-dqn",
+      "mlp-ddqn"
     ],
     "baselines": [
       "all"
     ],
+    "forest_baseline_rollout": true,
+    "forest_baseline_controller": "mpc",
+    "forest_baseline_mpc_candidates": 256,
+    "forest_baseline_save_traces": true,
     "random_start_goal": true,
     "rand_two_suites": true,
     "runs": 4,

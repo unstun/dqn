@@ -3,9 +3,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-import cv2
-import numpy as np
-
 
 def path_length(path: list[tuple[float, float]]) -> float:
     if len(path) < 2:
@@ -48,52 +45,43 @@ def max_corner_degree(path: list[tuple[float, float]]) -> float:
     return float(max(angles) if angles else 0.0)
 
 
-def min_distance_to_obstacle(grid: np.ndarray, path: list[tuple[float, float]]) -> float:
-    """Approximate minimum Euclidean clearance from path vertices to obstacle boundaries (cell units)."""
-    if len(path) == 0:
+def avg_abs_curvature(path_m: list[tuple[float, float]]) -> float:
+    """Length-weighted average absolute curvature (1/m) for a polyline in meters."""
+    if len(path_m) < 3:
         return 0.0
-    h, w = grid.shape
-
-    # cv2.distanceTransform expects origin at top-left, but Euclidean distances are invariant
-    # under vertical flips. We compute in top-origin then flip back to y=0 bottom for sampling.
-    grid_top = grid[::-1, :]
-    free = (grid_top == 0).astype(np.uint8) * 255
-    dist_top = cv2.distanceTransform(
-        free, distanceType=cv2.DIST_L2, maskSize=cv2.DIST_MASK_PRECISE
-    ).astype(np.float32)
-
-    # Convert center-to-center distances to approximate clearance from the path vertex
-    # (assumed at the cell center) to the obstacle cell boundary.
-    dist_top = np.maximum(0.0, dist_top - 0.5).astype(np.float32, copy=False)
-    dist = dist_top[::-1, :]
-
-    def sample_bilinear(x: float, y: float) -> float:
-        if not (0.0 <= x <= (w - 1) and 0.0 <= y <= (h - 1)):
-            return float("inf")
-        x0 = int(math.floor(x))
-        y0 = int(math.floor(y))
-        x1 = min(x0 + 1, w - 1)
-        y1 = min(y0 + 1, h - 1)
-        fx = float(x - x0)
-        fy = float(y - y0)
-        v00 = float(dist[y0, x0])
-        v10 = float(dist[y0, x1])
-        v01 = float(dist[y1, x0])
-        v11 = float(dist[y1, x1])
-        v0 = v00 * (1.0 - fx) + v10 * fx
-        v1 = v01 * (1.0 - fx) + v11 * fx
-        return v0 * (1.0 - fy) + v1 * fy
-
-    best = float("inf")
-    for x, y in path:
-        best = min(best, sample_bilinear(float(x), float(y)))
-    return float(best if math.isfinite(best) else 0.0)
+    num = 0.0
+    denom = 0.0
+    for (x0, y0), (x1, y1), (x2, y2) in zip(path_m[:-2], path_m[1:-1], path_m[2:], strict=False):
+        x0 = float(x0)
+        y0 = float(y0)
+        x1 = float(x1)
+        y1 = float(y1)
+        x2 = float(x2)
+        y2 = float(y2)
+        a = math.hypot(x1 - x0, y1 - y0)
+        b = math.hypot(x2 - x1, y2 - y1)
+        c = math.hypot(x2 - x0, y2 - y0)
+        if a < 1e-9 or b < 1e-9 or c < 1e-9:
+            continue
+        # 2*triangle_area = |(p1-p0) x (p2-p0)|
+        area2 = abs((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0))
+        # Curvature magnitude of the circumcircle: kappa = 4A/(abc) = 2*(2A)/(abc) = 2*area2/(abc)
+        kappa = (2.0 * area2) / (a * b * c)
+        w = 0.5 * (a + b)
+        num += abs(kappa) * w
+        denom += w
+    if denom < 1e-12:
+        return 0.0
+    return float(num / denom)
 
 
 @dataclass(frozen=True)
 class KPI:
     avg_path_length: float
-    num_corners: float
-    min_collision_dist: float
+    path_time_s: float
+    avg_curvature_1_m: float
+    planning_time_s: float
+    tracking_time_s: float
     inference_time_s: float
+    num_corners: float
     max_corner_deg: float

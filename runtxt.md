@@ -1,9 +1,11 @@
 # Run commands + parameter guide
 
-This repo exposes two CLIs:
+This repo exposes two CLIs (wrappers for `amr_dqn/cli/*`):
 
-- `python train.py ...` (wrapper for `amr_dqn/cli/train.py`)
-- `python infer.py ...` (wrapper for `amr_dqn/cli/infer.py`)
+- `conda run -n ros2py310 python train.py ...`
+- `conda run -n ros2py310 python infer.py ...`
+
+By default both CLIs use CUDA (`--device cpu` to force CPU).
 
 Below are example commands, followed by a parameter-by-parameter reference explaining what each flag does and how to tune it.
 
@@ -12,25 +14,11 @@ Below are example commands, followed by a parameter-by-parameter reference expla
 Use this to verify CUDA/PyTorch setup before a long run:
 
 ```bash
-python train.py --self-check --device cuda
-python infer.py --self-check --device cuda
+conda run -n ros2py310 python train.py --self-check
+conda run -n ros2py310 python infer.py --self-check
 ```
 
-## 1) Train (paper env `a b c d`)
-
-Default behavior writes to `runs/<out>/train_<timestamp>/...`:
-
-```bash
-python train.py --envs a b c d --out outputs_repro_1000 --episodes 1000 --device cuda
-```
-
-No timestamp (writes directly to `runs/<out>/...`; will overwrite files in that folder):
-
-```bash
-python train.py --envs a b c d --out outputs_repro_1000 --episodes 1000 --device cuda --no-timestamp-runs
-```
-
-## 2) Train (forest env: bicycle dynamics + DQfD-style stabilizers)
+## 1) Train (forest env: bicycle dynamics + DQfD-style stabilizers)
 
 Notes for `forest_*` envs:
 
@@ -41,16 +29,16 @@ Notes for `forest_*` envs:
   - DQfD-style demo losses on `demo=True` transitions (large-margin + behavior cloning)
   - optional start-state curriculum (`--forest-curriculum`, on by default)
 
-Baseline multi-map run (Fig.13-style curves; saves `models/<env>/{dqn.pt,iddqn.pt}`):
+Baseline multi-map run (Fig.13-style curves; saves `models/<env>/{mlp-dqn.pt,mlp-ddqn.pt}`):
 
 ```bash
-python train.py --envs forest_a forest_b forest_c forest_d --out outputs_forest --episodes 1000 --max-steps 600 --device cuda
+conda run -n ros2py310 python train.py --envs forest_a forest_b forest_c forest_d --out outputs_forest --rl-algos mlp-dqn mlp-ddqn --episodes 1000
 ```
 
 Single-map DQfD-style run (fast iteration; similar to `runs/outputs_forest_dqfd{1,2}` configs):
 
 ```bash
-python train.py --envs forest_b --out outputs_forest_dqfd2 --episodes 600 --max-steps 600 --device cuda --no-progress --no-timestamp-runs --no-forest-curriculum --forest-expert-prob-start 1.0 --forest-expert-prob-final 0.0 --forest-expert-prob-decay 0.7
+conda run -n ros2py310 python train.py --envs forest_b --out outputs_forest_dqfd2 --episodes 600 --no-progress --no-timestamp-runs --no-forest-curriculum --forest-expert-prob-start 1.0 --forest-expert-prob-final 0.0 --forest-expert-prob-decay 0.7
 ```
 
 Optional: add a short expert replay prefill before learning starts (closer to original "DQfD"):
@@ -59,7 +47,7 @@ Optional: add a short expert replay prefill before learning starts (closer to or
 python train.py ... --forest-demo-prefill
 ```
 
-## 3) Inference + plots/KPIs
+## 2) Inference + plots/KPIs
 
 `--models` accepts: experiment name/dir, train run dir, or a `models/` dir.
 
@@ -68,43 +56,42 @@ Important: keep `--sensor-range` and `--n-sectors` consistent with training (or 
 Use an experiment name (auto-picks latest train run under `runs/<name>/...`):
 
 ```bash
-python infer.py --envs a b c d --models outputs_repro_1000 --out outputs_repro_1000 --device cuda
-python infer.py --envs forest_a forest_b forest_c forest_d --models outputs_forest --out outputs_forest --runs 1 --max-steps 600 --device cuda
+conda run -n ros2py310 python infer.py --envs forest_a forest_b forest_c forest_d --models outputs_forest --out outputs_forest --runs 1
 ```
 
 Forest DQfD-style inference (picks the latest models under `runs/outputs_forest_dqfd2/...`):
 
 ```bash
-python infer.py --envs forest_b --models outputs_forest_dqfd2 --out outputs_forest_dqfd2_infer --runs 1 --max-steps 600 --device cuda
+conda run -n ros2py310 python infer.py --envs forest_b --models outputs_forest_dqfd2 --out outputs_forest_dqfd2_infer --runs 1
 ```
 
 Or point directly at a specific models dir (useful if you trained with `--no-timestamp-runs`):
 
 ```bash
-python infer.py --envs forest_b --models runs/outputs_forest_dqfd2/models --out outputs_forest_dqfd2_infer --runs 1 --max-steps 600 --device cpu --no-timestamp-runs
+conda run -n ros2py310 python infer.py --envs forest_b --models runs/outputs_forest_dqfd2/models --out outputs_forest_dqfd2_infer --runs 1 --device cpu --no-timestamp-runs
 ```
 
 Include classical baselines (Hybrid A* + RRT*) in the same KPI table + path plots:
 
 ```bash
-python infer.py --envs a b c d --models outputs_repro_1000 --out outputs_repro_1000 --baselines all --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000 --device cuda
+conda run -n ros2py310 python infer.py --envs forest_a forest_b forest_c forest_d --models outputs_forest --out outputs_forest --baselines all --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000
 ```
 
 Baseline-only (no checkpoints required):
 
 ```bash
-python infer.py --envs forest_b --out outputs_forest_baselines --baselines all --skip-rl --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000 --max-steps 600 --device cpu
+conda run -n ros2py310 python infer.py --envs forest_b --out outputs_forest_baselines --baselines all --skip-rl --baseline-timeout 5 --hybrid-max-nodes 200000 --rrt-max-iter 5000 --device cpu
 ```
 
 ---
 
 # Parameter reference
 
-Run `python train.py --help` / `python infer.py --help` to see the same flags from the CLI help output.
+Run `conda run -n ros2py310 python train.py --help` / `conda run -n ros2py310 python infer.py --help` to see the same flags from the CLI help output.
 
-## A) Training (`python train.py ...`)
+## A) Training (`conda run -n ros2py310 python train.py ...`)
 
-Training always runs **both** algorithms (DQN and IDDQN) for every env in `--envs`, so runtime scales roughly with:
+Training always runs **both** algorithms (DQN and DDQN) for every env in `--envs`, so runtime scales roughly with:
 
 `2 * len(envs) * episodes * max_steps`.
 
@@ -121,21 +108,18 @@ Training always runs **both** algorithms (DQN and IDDQN) for every env in `--env
 
 ### A.2 Environment selection + episode length
 
-- `--envs` (default: `a b c d`): Which maps to train on (space-separated).
-  - Options: `a b c d forest_a forest_b forest_c forest_d`.
+- `--envs` (default: `forest_a forest_b forest_c forest_d`): Which maps to train on (space-separated).
+  - Options: `forest_a forest_b forest_c forest_d`.
   - Adjust for faster iteration by training on a single env, e.g. `--envs forest_b`.
 - `--episodes` (default: `1000`): Episodes per env per algorithm.
   - Increase for more learning; decrease for quick smoke tests.
-- `--max-steps` (default: `300`): Max steps per episode before time-limit truncation.
-  - For forest maps, use a larger value (commonly `600`) so the bicycle model has enough horizon to reach the goal.
+- `--max-steps` (default: `600`): Max steps per episode before time-limit truncation.
 
 ### A.3 Observation / geometry parameters
 
 These affect the environment observation vector and therefore model checkpoint compatibility.
 
-- `--sensor-range` (default: `6`):
-  - Grid env (`a-d`): ray sensor horizon in **cells**.
-  - Forest env: lidar range in **meters**.
+- `--sensor-range` (default: `6`): Forest lidar range in **meters**.
   - Adjust to change how far obstacles are "seen". If you change it, retrain and keep inference consistent.
 - `--n-sectors` (default: `36`): Forest-only lidar sectors (36=10°, 72=5°). Ignored for non-forest envs.
   - Larger values increase observation dimension (`obs_dim = 11 + n_sectors`) and compute cost.
@@ -150,7 +134,7 @@ These affect the environment observation vector and therefore model checkpoint c
 
 ### A.5 Runtime / device
 
-- `--device` (default: `auto`): Torch device selection.
+- `--device` (default: `cuda`): Torch device selection.
   - `auto`: use CUDA if available else CPU
   - `cuda`: require CUDA (error if not available)
   - `cpu`: force CPU
@@ -163,7 +147,7 @@ These affect the environment observation vector and therefore model checkpoint c
 
 - `--train-freq` (default: `4`): Perform one gradient update every N environment steps (after `--learning-starts`).
   - Smaller = more updates (slower, often more stable); larger = fewer updates (faster, may under-train).
-- `--learning-starts` (default: `500`): Number of environment steps to collect before starting updates.
+- `--learning-starts` (default: `2000`): Number of environment steps to collect before starting updates.
   - If you run very short jobs (few episodes / small `--max-steps`), reduce this too, otherwise training may do zero updates.
   - Forest `--forest-demo-prefill` uses this value as the demo prefill target size.
 
@@ -205,7 +189,7 @@ These affect the environment observation vector and therefore model checkpoint c
 - `--forest-expert-prob-decay` (default: `0.6`): Fraction of episodes over which expert probability decays from start -> final.
   - Smaller = decays faster; larger = uses expert longer.
 
-## B) Inference (`python infer.py ...`)
+## B) Inference (`conda run -n ros2py310 python infer.py ...`)
 
 ### B.1 Model source + output paths
 
@@ -219,11 +203,11 @@ These affect the environment observation vector and therefore model checkpoint c
 
 ### B.2 Environment / observation parameters (must match training)
 
-- `--envs` (default: `a b c d`): Which envs to evaluate.
-- `--max-steps` (default: `300`): Rollout horizon (use `600` for forest-style evaluations).
+- `--envs` (default: `forest_a forest_b forest_c forest_d`): Which envs to evaluate.
+- `--max-steps` (default: `600`): Rollout horizon.
 - `--sensor-range` (default: `6`): Same meaning as training. Must match the training setting for the checkpoints you are loading.
 - `--n-sectors` (default: `36`): Forest-only; must match training.
-- `--cell-size` (default: `1.0`): Grid-only; affects KPI unit conversion (meters) for path length and clearance.
+- `--cell-size` (default: `1.0`): Ignored for forest envs (kept for backwards compatibility).
 
 ### B.3 KPI averaging / randomness
 
@@ -233,7 +217,7 @@ These affect the environment observation vector and therefore model checkpoint c
 
 ### B.4 Runtime / device
 
-- `--device` (default: `auto`): Same as training.
+- `--device` (default: `cuda`): Same as training.
 - `--cuda-device` (default: `0`): Same as training.
 - `--self-check` (default: off): Same as training.
 - `--kpi-time-mode` (default: `rollout`): How `inference_time_s` is measured for RL rollouts.
@@ -244,17 +228,20 @@ These affect the environment observation vector and therefore model checkpoint c
 
 - `--baselines` (default: none): Add classical planners to the KPI table/plots.
   - Options: `hybrid_astar`, `rrt_star`, or `all`.
-- `--skip-rl` (default: off): Run baselines without loading DQN/IDDQN checkpoints.
+- `--skip-rl` (default: off): Run baselines without loading DQN/DDQN checkpoints.
 - `--baseline-timeout` (default: `5.0`): Per-planner time budget (seconds).
 - `--hybrid-max-nodes` (default: `200000`): Hybrid A* node budget.
 - `--rrt-max-iter` (default: `5000`): RRT* iteration budget.
-- `--forest-baseline-rollout` (default: disabled): Forest-only; roll out a discrete tracker on baseline paths and include tracking compute in `inference_time_s`.
+- `--forest-baseline-rollout` (default: enabled): Forest-only; roll out a baseline tracking controller on planned paths and include tracking compute in `inference_time_s` (disable with `--no-forest-baseline-rollout`).
+  - `--forest-baseline-controller` (default: `discrete`): `discrete` enumerates the env action table; `mpc` samples continuous controls and steps via `AMRBicycleEnv.step_continuous()`.
+  - `--forest-baseline-mpc-candidates` (default: `256`): MPC samples per control step (when controller is `mpc`).
+  - `--forest-baseline-save-traces` (default: disabled): Save per-run executed baseline trajectories to `<run_dir>/traces/*.csv` (forest-only, MPC controller).
 
 ---
 
 ## C) Code-level hyperparameters (not CLI flags yet)
 
-The DQN/IDDQN hyperparameters are defined in `amr_dqn/agents.py` as `AgentConfig`. To change them:
+The DQN/DDQN hyperparameters are defined in `amr_dqn/agents.py` as `AgentConfig`. To change them:
 
 1) Edit `amr_dqn/agents.py` (`AgentConfig` defaults), then retrain.
 2) Keep training + inference consistent (a checkpoint trained with one config may not load if you later change network sizes).
@@ -265,12 +252,10 @@ Key fields (defaults shown):
 - `learning_rate=5e-4`: Adam learning rate (higher = faster/less stable; lower = slower/more stable).
 - `replay_capacity=100_000`: Replay buffer size (larger = more diverse replay, more memory).
 - `batch_size=128`: Minibatch size per update (larger = smoother gradients, more compute).
-- `target_update_steps=1000`: DQN-only hard target update period (in gradient updates).
-- `target_tau=0.005`: IDDQN-only soft target update rate (Polyak averaging; larger = faster target tracking).
+- `target_update_steps=1000`: Hard target update period (in gradient updates).
 - `grad_clip_norm=10.0`: Gradient clipping threshold (reduce if you see unstable spikes).
 - `eps_start=0.9`, `eps_final=0.01`, `eps_decay=2000`: Exploration schedule (start, end, and decay rate/episodes).
 - `hidden_layers=2`, `hidden_dim=128`: MLP size (bigger = more capacity, slower).
-- `per_alpha=0.6`, `per_beta_start=0.4`, `per_beta_steps=50_000`: IDDQN prioritized replay settings (set `per_alpha=0` to disable PER).
 - `demo_margin=0.8`, `demo_lambda=1.0`, `demo_ce_lambda=1.0`: DQfD-style demo losses (used only on `demo=True` transitions from forest expert mixing/prefill).
 
 

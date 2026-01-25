@@ -4,12 +4,12 @@
     "baselines": [],
     "cell_size": 1.0,
     "cuda_device": 0,
-    "device": "auto",
+    "device": "cuda",
     "envs": [
-      "a",
-      "b",
-      "c",
-      "d"
+      "forest_a",
+      "forest_b",
+      "forest_c",
+      "forest_d"
     ],
     "forest_adm_horizon": 15,
     "forest_baseline_rollout": false,
@@ -18,7 +18,7 @@
     "forest_topk": 10,
     "hybrid_max_nodes": 200000,
     "kpi_time_mode": "policy",
-    "max_steps": 300,
+    "max_steps": 600,
     "models": "outputs",
     "n_sectors": 36,
     "obs_map_size": 12,
@@ -32,7 +32,7 @@
     "rand_tries": 200,
     "random_start_goal": false,
     "rl_algos": [
-      "dqn"
+      "mlp-dqn"
     ],
     "rrt_max_iter": 5000,
     "runs": 5,
@@ -49,12 +49,12 @@
     "cuda_device": 0,
     "curriculum_band_m": 2.0,
     "curriculum_ramp": 0.35,
-    "device": "auto",
+    "device": "cuda",
     "envs": [
-      "a",
-      "b",
-      "c",
-      "d"
+      "forest_a",
+      "forest_b",
+      "forest_c",
+      "forest_d"
     ],
     "episodes": 1000,
     "eval_every": 0,
@@ -76,16 +76,15 @@
     "forest_rand_min_cost_m": 6.0,
     "forest_rand_tries": 200,
     "forest_random_start_goal": false,
-    "iddqn_n_step": 3,
     "learning_starts": 2000,
     "ma_window": 20,
-    "max_steps": 300,
+    "max_steps": 600,
     "n_sectors": 36,
     "obs_map_size": 12,
     "out": "outputs",
     "progress": null,
     "rl_algos": [
-      "dqn"
+      "mlp-dqn"
     ],
     "runs_root": "runs",
     "seed": 0,

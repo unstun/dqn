@@ -1,0 +1,61 @@
+{
+  "_comment": "Profile: forest_a_best_latest (train + infer with baseline+MPC tracking + aligned footprint). Usage: python train.py --profile forest_a_best_latest ; python infer.py --profile forest_a_best_latest",
+  "train": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "forest_a_best_latest",
+    "rl_algos": [
+      "mlp-dqn",
+      "mlp-ddqn"
+    ],
+    "episodes": 600,
+    "max_steps": 1000,
+    "forest_random_start_goal": true,
+    "forest_rand_min_cost_m": 6.0,
+    "forest_rand_fixed_prob": 0.0,
+    "forest_rand_tries": 200,
+    "forest_expert": "auto",
+    "forest_demo_prefill": true,
+    "forest_demo_pretrain_steps": 80000,
+    "forest_expert_exploration": true,
+    "forest_action_shield": true,
+    "learning_starts": 5000,
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 0
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "models": "forest_a_best_latest",
+    "out": "forest_a_best_latest",
+    "rl_algos": [
+      "mlp-dqn",
+      "mlp-ddqn"
+    ],
+    "baselines": [
+      "all"
+    ],
+    "forest_baseline_rollout": true,
+    "forest_baseline_controller": "mpc",
+    "forest_baseline_mpc_candidates": 256,
+    "forest_baseline_save_traces": true,
+    "random_start_goal": true,
+    "rand_two_suites": true,
+    "runs": 4,
+    "rand_short_min_cost_m": 6.0,
+    "rand_short_max_cost_m": 14.0,
+    "rand_long_min_cost_m": 42.0,
+    "rand_long_max_cost_m": 0.0,
+    "rand_fixed_prob": 0.0,
+    "rand_tries": 400,
+    "rand_reject_unreachable": true,
+    "kpi_time_mode": "policy",
+    "max_steps": 1000,
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 22
+  }
+}

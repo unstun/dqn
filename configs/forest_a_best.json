@@ -8,7 +8,7 @@
     ],
     "out": "forest_a_best",
     "rl_algos": [
-      "dqn", "ddqn"
+      "mlp-dqn", "mlp-ddqn"
     ],
     "episodes": 600,
     "max_steps": 1000,
@@ -34,7 +34,7 @@
     "models": "forest_a_best",
     "out": "forest_a_best",
     "rl_algos": [
-      "dqn", "ddqn"
+      "mlp-dqn", "mlp-ddqn"
     ],
     "baselines": [
       "all"

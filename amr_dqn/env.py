@@ -1098,12 +1098,11 @@ class AMRBicycleEnv(gym.Env):
         info = {"agent_xy": self._agent_xy_for_plot(), "pose_m": (self._x_m, self._y_m, self._psi_rad)}
         return obs, info
 
-    def step(self, action: int):
+    def _step_with_controls(self, *, delta_dot: float, a: float):
         self._steps += 1
 
-        a_id = int(action)
-        delta_dot = float(self.action_table[a_id, 0])
-        a = float(self.action_table[a_id, 1])
+        delta_dot = float(delta_dot)
+        a = float(a)
         prev_delta_dot = float(self._prev_delta_dot)
         prev_a = float(self._prev_a)
 
@@ -1211,8 +1210,8 @@ class AMRBicycleEnv(gym.Env):
             reward -= float(self.stuck_penalty)
 
         # Markov: the *next* state carries previous action = action taken now.
-        self._prev_delta_dot = delta_dot
-        self._prev_a = a
+        self._prev_delta_dot = float(delta_dot)
+        self._prev_a = float(a)
 
         obs = self._observe()
         info = {
@@ -1229,6 +1228,24 @@ class AMRBicycleEnv(gym.Env):
             "steps": int(self._steps),
         }
         return obs, float(reward), bool(terminated), bool(truncated), info
+
+    def step(self, action: int):
+        a_id = int(action)
+        delta_dot = float(self.action_table[a_id, 0])
+        a = float(self.action_table[a_id, 1])
+        return self._step_with_controls(delta_dot=delta_dot, a=a)
+
+    def step_continuous(self, *, delta_dot_rad_s: float, a_m_s2: float):
+        """Continuous-control variant of `step()` (uses the same dynamics/collision/termination).
+
+        This is intended for evaluating continuous controllers (e.g., MPC) on the forest env without
+        forcing them through the discrete `action_table` interface used by DQN.
+        """
+        dd_max = float(self.model.delta_dot_max_rad_s)
+        a_max = float(self.model.a_max_m_s2)
+        delta_dot = float(np.clip(float(delta_dot_rad_s), -dd_max, +dd_max))
+        a = float(np.clip(float(a_m_s2), -a_max, +a_max))
+        return self._step_with_controls(delta_dot=delta_dot, a=a)
 
     def _agent_xy_for_plot(self) -> tuple[float, float]:
         return (float(self._x_m) / self.cell_size_m, float(self._y_m) / self.cell_size_m)

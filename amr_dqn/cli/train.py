@@ -19,10 +19,10 @@ import numpy as np
 import pandas as pd
 import torch
 
-from amr_dqn.agents import AgentConfig, DQNFamilyAgent
+from amr_dqn.agents import AgentConfig, DQNFamilyAgent, parse_rl_algo
 from amr_dqn.config_io import apply_config_defaults, load_json, resolve_config_path, select_section
 from amr_dqn.env import AMRBicycleEnv, AMRGridEnv, RewardWeights
-from amr_dqn.maps import ENV_ORDER, FOREST_ENV_ORDER, get_map_spec
+from amr_dqn.maps import FOREST_ENV_ORDER, get_map_spec
 
 
 def moving_average(x: np.ndarray, window: int) -> np.ndarray:
@@ -65,11 +65,22 @@ def plot_training_eval_metrics(df_eval: pd.DataFrame, *, out_path: Path) -> None
     )
     axes_arr = np.atleast_2d(axes)
 
-    algo_label = {"dqn": "DQN", "ddqn": "DDQN", "iddqn": "IDDQN"}
+    algo_label = {
+        "mlp-dqn": "MLP-DQN",
+        "mlp-ddqn": "MLP-DDQN",
+        "mlp-pddqn": "MLP-PDDQN",
+        "cnn-dqn": "CNN-DQN",
+        "cnn-ddqn": "CNN-DDQN",
+        "cnn-pddqn": "CNN-PDDQN",
+        # Legacy (older runs)
+        "dqn": "DQN",
+        "ddqn": "DDQN",
+        "iddqn": "MLP-PDDQN",
+        "cnn-iddqn": "CNN-PDDQN",
+    }
     present = [str(x) for x in df_eval["algo"].dropna().drop_duplicates().tolist()]
-    ordered = [a for a in ("dqn", "ddqn", "iddqn") if a in present] + [
-        a for a in present if a not in ("dqn", "ddqn", "iddqn")
-    ]
+    pref = ("mlp-dqn", "mlp-ddqn", "mlp-pddqn", "cnn-dqn", "cnn-ddqn", "cnn-pddqn", "dqn", "ddqn")
+    ordered = [a for a in pref if a in present] + [a for a in present if a not in pref]
     algo_defs: list[tuple[str, str]] = [(a, algo_label.get(a, a.upper())) for a in ordered]
     for i, env_name in enumerate(envs):
         for j, (col, title) in enumerate(metrics):
@@ -851,7 +862,7 @@ def train_one(
     agent.q_target.load_state_dict(chosen_q_target)
     agent._train_steps = int(chosen_train_steps)
 
-    model_path = out_dir / "models" / env.map_spec.name / f"{algo}.pt"
+    model_path = out_dir / "models" / env.map_spec.name / f"{agent.algo}.pt"
     agent.save(model_path)
     return agent, returns, eval_history
 
@@ -873,17 +884,20 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--envs",
         nargs="*",
-        default=list(ENV_ORDER),
-        help="Subset of envs: a b c d forest_a forest_b forest_c forest_d",
+        default=list(FOREST_ENV_ORDER),
+        help="Subset of envs: forest_a forest_b forest_c forest_d",
     )
     ap.add_argument(
         "--rl-algos",
         nargs="+",
-        default=["dqn"],
-        help="RL algorithms to train: dqn ddqn iddqn (or 'all'). Default: dqn.",
+        default=["mlp-dqn"],
+        help=(
+            "RL algorithms to train: mlp-dqn mlp-ddqn mlp-pddqn cnn-dqn cnn-ddqn cnn-pddqn (or 'all'). "
+            "Legacy aliases: dqn ddqn iddqn cnn-iddqn. Default: mlp-dqn."
+        ),
     )
     ap.add_argument("--episodes", type=int, default=1000)
-    ap.add_argument("--max-steps", type=int, default=300)
+    ap.add_argument("--max-steps", type=int, default=600)
     ap.add_argument("--sensor-range", type=int, default=6)
     ap.add_argument(
         "--n-sectors",
@@ -925,12 +939,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--train-freq", type=int, default=4)
     ap.add_argument("--learning-starts", type=int, default=2000)
-    ap.add_argument(
-        "--iddqn-n-step",
-        type=int,
-        default=3,
-        help="IDDQN-only: n-step return horizon (1 disables n-step).",
-    )
     ap.add_argument("--ma-window", type=int, default=20, help="Moving average window for plotting (1=raw).")
     ap.add_argument(
         "--eval-every",
@@ -1104,26 +1112,31 @@ def main(argv: list[str] | None = None) -> int:
     forest_envs = set(FOREST_ENV_ORDER)
     if int(args.max_steps) == 300 and args.envs and all(str(e) in forest_envs for e in args.envs):
         args.max_steps = 600
-    valid_algos = ("dqn", "ddqn", "iddqn")
+    canonical_all = ("mlp-dqn", "mlp-ddqn", "mlp-pddqn", "cnn-dqn", "cnn-ddqn", "cnn-pddqn")
     raw_algos = [str(a).lower().strip() for a in (args.rl_algos or [])]
     if any(a == "all" for a in raw_algos):
-        raw_algos = list(valid_algos)
+        raw_algos = list(canonical_all)
+
     rl_algos: list[str] = []
     unknown = []
     for a in raw_algos:
-        if a in valid_algos:
-            if a not in rl_algos:
-                rl_algos.append(a)
-        else:
+        try:
+            canonical, _arch, _base, _legacy = parse_rl_algo(a)
+        except ValueError:
             unknown.append(a)
+            continue
+        if canonical not in rl_algos:
+            rl_algos.append(canonical)
+
     if unknown:
         print(
-            f"Unknown --rl-algos value(s): {', '.join(unknown)}. Choose from: dqn ddqn iddqn (or 'all').",
+            f"Unknown --rl-algos value(s): {', '.join(unknown)}. Choose from: "
+            f"{' '.join(canonical_all)} (or 'all'). Legacy aliases: dqn ddqn iddqn cnn-iddqn.",
             file=sys.stderr,
         )
         return 2
     if not rl_algos:
-        print("No RL algorithms selected (choose from: dqn ddqn iddqn).", file=sys.stderr)
+        print(f"No RL algorithms selected (choose from: {' '.join(canonical_all)}).", file=sys.stderr)
         return 2
     args.rl_algos = rl_algos
 
@@ -1158,7 +1171,7 @@ def main(argv: list[str] | None = None) -> int:
     agent_cfg = AgentConfig()
     dqn_cfg = replace(agent_cfg, eps_start=0.6, n_step=3)
     ddqn_cfg = replace(agent_cfg, eps_start=0.6, n_step=3)
-    iddqn_cfg = replace(agent_cfg, eps_start=0.6, per_alpha=0.0, target_tau=0.005, n_step=int(args.iddqn_n_step))
+    pddqn_cfg = replace(agent_cfg, eps_start=0.6, n_step=3, target_update_tau=0.01)
     (out_dir / "configs").mkdir(parents=True, exist_ok=True)
     args_payload: dict[str, object] = {}
     for k, v in vars(args).items():
@@ -1183,7 +1196,14 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     (out_dir / "configs" / "agent_config.json").write_text(json.dumps(asdict(agent_cfg), indent=2, sort_keys=True), encoding="utf-8")
-    algo_cfgs = {"dqn": dqn_cfg, "ddqn": ddqn_cfg, "iddqn": iddqn_cfg}
+    algo_cfgs = {
+        "mlp-dqn": dqn_cfg,
+        "mlp-ddqn": ddqn_cfg,
+        "mlp-pddqn": pddqn_cfg,
+        "cnn-dqn": dqn_cfg,
+        "cnn-ddqn": ddqn_cfg,
+        "cnn-pddqn": pddqn_cfg,
+    }
     for algo in args.rl_algos:
         cfg = algo_cfgs.get(str(algo))
         if cfg is None:
@@ -1196,7 +1216,14 @@ def main(argv: list[str] | None = None) -> int:
     all_rows: list[dict[str, float | int | str]] = []
     all_eval_rows: list[dict[str, float | int | str]] = []
     curves: dict[str, dict[str, np.ndarray]] = {}
-    algo_labels = {"dqn": "DQN", "ddqn": "DDQN", "iddqn": "IDDQN"}
+    algo_labels = {
+        "mlp-dqn": "MLP-DQN",
+        "mlp-ddqn": "MLP-DDQN",
+        "mlp-pddqn": "MLP-PDDQN",
+        "cnn-dqn": "CNN-DQN",
+        "cnn-ddqn": "CNN-DDQN",
+        "cnn-pddqn": "CNN-PDDQN",
+    }
 
     for env_name in args.envs:
         spec = get_map_spec(env_name)
