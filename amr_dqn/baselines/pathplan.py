@@ -90,7 +90,7 @@ def plan_hybrid_astar(
     params: AckermannParams,
     start_xy: tuple[int, int],
     goal_xy: tuple[int, int],
-    goal_theta_rad: float = 0.0,
+    goal_theta_rad: float | None = 0.0,
     start_theta_rad: float | None = None,
     goal_xy_tol_m: float = 0.1,
     goal_theta_tol_rad: float = math.pi,
@@ -98,9 +98,6 @@ def plan_hybrid_astar(
     max_nodes: int = 200_000,
 ) -> PlannerResult:
     cell_size_m = float(grid_map.resolution)
-    st = float(start_theta_rad) if start_theta_rad is not None else _default_start_theta(start_xy, goal_xy, cell_size_m=cell_size_m)
-    start = AckermannState(float(start_xy[0]) * cell_size_m, float(start_xy[1]) * cell_size_m, st)
-    goal = AckermannState(float(goal_xy[0]) * cell_size_m, float(goal_xy[1]) * cell_size_m, float(goal_theta_rad))
 
     planner = HybridAStarPlanner(
         grid_map,
@@ -110,8 +107,30 @@ def plan_hybrid_astar(
         goal_theta_tol=float(goal_theta_tol_rad),
     )
 
+    st = float(start_theta_rad) if start_theta_rad is not None else _default_start_theta(start_xy, goal_xy, cell_size_m=cell_size_m)
+    start = AckermannState(float(start_xy[0]) * cell_size_m, float(start_xy[1]) * cell_size_m, st)
+
+    gx_m = float(goal_xy[0]) * cell_size_m
+    gy_m = float(goal_xy[1]) * cell_size_m
+
+    gt = float(goal_theta_rad) if goal_theta_rad is not None else float(st)
+    if goal_theta_rad is None:
+        # Forest-style evaluation cares about reaching a goal region, not a specific heading.
+        # Pick a collision-free goal heading to avoid spurious "goal_in_collision" failures
+        # when the rear-axle cell is valid but the shifted footprint collides at an arbitrary yaw.
+        def wrap_pi(x: float) -> float:
+            return float((float(x) + math.pi) % (2.0 * math.pi) - math.pi)
+
+        candidates = [wrap_pi(float(st) + (math.pi / 4.0) * float(k)) for k in range(8)]
+        for th in candidates:
+            if not bool(planner.collision_checker.collides_pose(gx_m, gy_m, float(th))):
+                gt = float(th)
+                break
+
+    goal = AckermannState(gx_m, gy_m, float(gt))
+
     t0 = time.perf_counter()
-    path, stats = planner.plan(start, goal, timeout=float(timeout_s), max_nodes=int(max_nodes), self_check=False)
+    path, stats = planner.plan(start, goal, timeout=float(timeout_s), max_nodes=int(max_nodes), self_check=True)
     t1 = time.perf_counter()
     dt = float(stats.get("time", t1 - t0))
 
@@ -134,7 +153,7 @@ def plan_rrt_star(
     start_xy: tuple[int, int],
     goal_xy: tuple[int, int],
     seed: int = 0,
-    goal_theta_rad: float = 0.0,
+    goal_theta_rad: float | None = 0.0,
     start_theta_rad: float | None = None,
     goal_xy_tol_m: float = 0.1,
     goal_theta_tol_rad: float = math.pi,
@@ -144,7 +163,6 @@ def plan_rrt_star(
     cell_size_m = float(grid_map.resolution)
     st = float(start_theta_rad) if start_theta_rad is not None else _default_start_theta(start_xy, goal_xy, cell_size_m=cell_size_m)
     start = AckermannState(float(start_xy[0]) * cell_size_m, float(start_xy[1]) * cell_size_m, st)
-    goal = AckermannState(float(goal_xy[0]) * cell_size_m, float(goal_xy[1]) * cell_size_m, float(goal_theta_rad))
 
     planner = RRTStarPlanner(
         grid_map,
@@ -154,6 +172,22 @@ def plan_rrt_star(
         goal_xy_tol=float(goal_xy_tol_m),
         goal_theta_tol=float(goal_theta_tol_rad),
     )
+
+    gx_m = float(goal_xy[0]) * cell_size_m
+    gy_m = float(goal_xy[1]) * cell_size_m
+
+    gt = float(goal_theta_rad) if goal_theta_rad is not None else float(st)
+    if goal_theta_rad is None:
+        def wrap_pi(x: float) -> float:
+            return float((float(x) + math.pi) % (2.0 * math.pi) - math.pi)
+
+        candidates = [wrap_pi(float(st) + (math.pi / 4.0) * float(k)) for k in range(8)]
+        for th in candidates:
+            if not bool(planner.collision_checker.collides_pose(gx_m, gy_m, float(th))):
+                gt = float(th)
+                break
+
+    goal = AckermannState(gx_m, gy_m, float(gt))
 
     t0 = time.perf_counter()
     path, stats = planner.plan(

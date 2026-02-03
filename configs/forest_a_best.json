@@ -21,6 +21,8 @@
     "forest_demo_pretrain_steps": 80000,
     "forest_expert_exploration": true,
     "forest_action_shield": true,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
     "learning_starts": 5000,
     "device": "cuda",
     "cuda_device": 0,
@@ -47,6 +49,8 @@
     "rand_reject_unreachable": true,
     "kpi_time_mode": "policy",
     "max_steps": 1000,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
     "device": "cuda",
     "cuda_device": 0,
     "seed": 22

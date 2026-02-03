@@ -14,7 +14,10 @@ from amr_dqn.runs import create_run_dir, resolve_experiment_dir
 configure_runtime()
 
 import matplotlib.pyplot as plt
-import gym
+try:
+    import gymnasium as gym
+except ImportError:  # pragma: no cover
+    import gym  # type: ignore
 import numpy as np
 import pandas as pd
 import torch
@@ -23,6 +26,7 @@ from amr_dqn.agents import AgentConfig, DQNFamilyAgent, parse_rl_algo
 from amr_dqn.config_io import apply_config_defaults, load_json, resolve_config_path, select_section
 from amr_dqn.env import AMRBicycleEnv, AMRGridEnv, RewardWeights
 from amr_dqn.maps import FOREST_ENV_ORDER, get_map_spec
+from amr_dqn.replay_buffer import FLAG_HAZARD, FLAG_NEAR_GOAL, FLAG_STUCK
 
 
 def moving_average(x: np.ndarray, window: int) -> np.ndarray:
@@ -165,6 +169,7 @@ def collect_forest_demos(
     forest_rand_max_cost_m: float | None,
     forest_rand_fixed_prob: float,
     forest_rand_tries: int,
+    forest_rand_edge_margin_m: float,
     forest_expert: str,
     forest_demo_horizon: int,
     forest_demo_w_clearance: float,
@@ -199,6 +204,7 @@ def collect_forest_demos(
                 "rand_max_cost_m": forest_rand_max_cost_m,
                 "rand_fixed_prob": float(forest_rand_fixed_prob),
                 "rand_tries": int(forest_rand_tries),
+                "rand_edge_margin_m": float(forest_rand_edge_margin_m),
             }
         elif forest_curriculum:
             p = float(demo_prog[demo_ep % int(demo_prog.size)])
@@ -261,8 +267,11 @@ def train_one(
     seed: int,
     out_dir: Path,
     agent_cfg: AgentConfig,
+    replay_near_goal_factor: float,
+    replay_hazard_od_m: float,
     train_freq: int,
     learning_starts: int,
+    save_ckpt: str,
     forest_curriculum: bool,
     curriculum_band_m: float,
     curriculum_ramp: float,
@@ -282,6 +291,7 @@ def train_one(
     forest_rand_max_cost_m: float | None,
     forest_rand_fixed_prob: float,
     forest_rand_tries: int,
+    forest_rand_edge_margin_m: float,
     eval_every: int,
     eval_runs: int,
     eval_score_time_weight: float,
@@ -291,6 +301,19 @@ def train_one(
     obs_dim = int(env.observation_space.shape[0])
     n_actions = int(env.action_space.n)
     agent = DQNFamilyAgent(algo, obs_dim, n_actions, config=agent_cfg, seed=seed, device=device)
+
+    near_goal_dist_m = 0.0
+    hazard_od_m_thr = float(replay_hazard_od_m)
+    if isinstance(env, AMRBicycleEnv):
+        near_goal_factor = max(0.0, float(replay_near_goal_factor))
+        near_goal_dist_m = float(near_goal_factor) * float(env.goal_tolerance_m)
+        if hazard_od_m_thr <= 0.0:
+            hazard_od_m_thr = max(
+                0.0,
+                2.0 * float(env.safe_distance_m),
+                float(env.safe_speed_distance_m),
+                0.4,
+            )
 
     returns = np.zeros((episodes,), dtype=np.float32)
     global_step = 0
@@ -334,6 +357,7 @@ def train_one(
                     "rand_max_cost_m": forest_rand_max_cost_m,
                     "rand_fixed_prob": float(forest_rand_fixed_prob),
                     "rand_tries": int(forest_rand_tries),
+                    "rand_edge_margin_m": float(forest_rand_edge_margin_m),
                 },
             )
             eval_reset_options_list.append(
@@ -397,6 +421,7 @@ def train_one(
                         "rand_max_cost_m": forest_rand_max_cost_m,
                         "rand_fixed_prob": float(forest_rand_fixed_prob),
                         "rand_tries": int(forest_rand_tries),
+                        "rand_edge_margin_m": float(forest_rand_edge_margin_m),
                     }
                 elif forest_curriculum:
                     # When curriculum is enabled, diversify demonstration starts to match the
@@ -613,6 +638,7 @@ def train_one(
                 "rand_max_cost_m": forest_rand_max_cost_m,
                 "rand_fixed_prob": float(forest_rand_fixed_prob),
                 "rand_tries": int(forest_rand_tries),
+                "rand_edge_margin_m": float(forest_rand_edge_margin_m),
             }
         elif forest_curriculum and isinstance(env, AMRBicycleEnv):
             p_raw = float(ep) / float(max(1, episodes - 1))
@@ -637,7 +663,7 @@ def train_one(
         truncated = False
         ep_steps = 0
         last_info: dict[str, object] = {}
-        ep_buffer: list[tuple[np.ndarray, int, float, np.ndarray, bool, bool, bool, np.ndarray | None]] = []
+        ep_buffer: list[tuple[np.ndarray, int, float, np.ndarray, bool, bool, bool, np.ndarray | None, int]] = []
         pending_updates = 0
 
         while not (done or truncated):
@@ -688,6 +714,21 @@ def train_one(
                 )
                 if action_mask is not None:
                     action_mask = next_mask
+
+            replay_flags = 0
+            if isinstance(env, AMRBicycleEnv) and bool(getattr(agent_cfg, "replay_stratified", False)):
+                d_goal_m = float(last_info.get("d_goal_m", float("inf")))
+                if math.isfinite(d_goal_m) and (float(d_goal_m) <= float(near_goal_dist_m)):
+                    replay_flags |= int(FLAG_NEAR_GOAL)
+
+                if bool(last_info.get("stuck", False)):
+                    replay_flags |= int(FLAG_STUCK)
+
+                od_m = float(last_info.get("od_m", float("inf")))
+                if math.isfinite(od_m) and (od_m >= 0.0) and (od_m <= float(hazard_od_m_thr)):
+                    replay_flags |= int(FLAG_HAZARD)
+                if bool(last_info.get("collision", False)):
+                    replay_flags |= int(FLAG_HAZARD)
             # Time-limit truncation should not be treated as terminal for bootstrapping.
             # Only mark expert transitions as demos when the *episode* reaches the goal.
             # Failed expert steps are still useful off-policy data, but should not be imitated/preserved.
@@ -701,6 +742,7 @@ def train_one(
                     bool(truncated),
                     bool(used_expert),
                     next_mask,
+                    int(replay_flags),
                 )
             )
             ep_return += float(reward)
@@ -711,7 +753,7 @@ def train_one(
             obs = next_obs
 
         reached_ep = bool(last_info.get("reached", False))
-        for o, a, r, no, d, tr, ue, nm in ep_buffer:
+        for o, a, r, no, d, tr, ue, nm, rf in ep_buffer:
             agent.observe(
                 o,
                 int(a),
@@ -721,6 +763,7 @@ def train_one(
                 demo=bool(ue and reached_ep),
                 truncated=bool(tr),
                 next_action_mask=nm,
+                replay_flags=int(rf),
             )
         for _ in range(int(pending_updates)):
             agent.update()
@@ -843,20 +886,43 @@ def train_one(
         return (int(successes), int(1_000_000 * float(avg_ret)), -int(avg_steps))
 
     # Choose between the final policy and the best (exploratory) episode checkpoint based on greedy performance.
-    best_greedy_score = eval_greedy(final_q, final_q_target)
-    chosen_q, chosen_q_target, chosen_train_steps = final_q, final_q_target, final_train_steps
+    def select_checkpoint() -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], int, str]:
+        mode = str(save_ckpt).lower().strip()
+        if mode == "final":
+            return final_q, final_q_target, final_train_steps, "final"
+        if mode == "best":
+            if best_q is not None and best_q_target is not None:
+                return best_q, best_q_target, best_train_steps, "best"
+            return final_q, final_q_target, final_train_steps, "final"
+        if mode == "pretrain":
+            if pretrain_q is not None and pretrain_q_target is not None:
+                return pretrain_q, pretrain_q_target, pretrain_train_steps, "pretrain"
+            return final_q, final_q_target, final_train_steps, "final"
+        if mode not in {"auto", ""}:
+            raise ValueError("--save-ckpt must be one of: auto, final, best, pretrain")
 
-    if best_q is not None and best_q_target is not None:
-        candidate_score = eval_greedy(best_q, best_q_target)
-        if candidate_score > best_greedy_score:
-            best_greedy_score = candidate_score
-            chosen_q, chosen_q_target, chosen_train_steps = best_q, best_q_target, best_train_steps
+        best_greedy_score = eval_greedy(final_q, final_q_target)
+        chosen_q, chosen_q_target, chosen_train_steps, chosen_src = final_q, final_q_target, final_train_steps, "final"
 
-    if pretrain_q is not None and pretrain_q_target is not None:
-        candidate_score = eval_greedy(pretrain_q, pretrain_q_target)
-        if candidate_score > best_greedy_score:
-            best_greedy_score = candidate_score
-            chosen_q, chosen_q_target, chosen_train_steps = pretrain_q, pretrain_q_target, pretrain_train_steps
+        if best_q is not None and best_q_target is not None:
+            candidate_score = eval_greedy(best_q, best_q_target)
+            if candidate_score > best_greedy_score:
+                best_greedy_score = candidate_score
+                chosen_q, chosen_q_target, chosen_train_steps, chosen_src = best_q, best_q_target, best_train_steps, "best"
+
+        if pretrain_q is not None and pretrain_q_target is not None:
+            candidate_score = eval_greedy(pretrain_q, pretrain_q_target)
+            if candidate_score > best_greedy_score:
+                chosen_q, chosen_q_target, chosen_train_steps, chosen_src = (
+                    pretrain_q,
+                    pretrain_q_target,
+                    pretrain_train_steps,
+                    "pretrain",
+                )
+
+        return chosen_q, chosen_q_target, chosen_train_steps, chosen_src
+
+    chosen_q, chosen_q_target, chosen_train_steps, chosen_src = select_checkpoint()
 
     agent.q.load_state_dict(chosen_q)
     agent.q_target.load_state_dict(chosen_q_target)
@@ -864,6 +930,7 @@ def train_one(
 
     model_path = out_dir / "models" / env.map_spec.name / f"{agent.algo}.pt"
     agent.save(model_path)
+    print(f"[train] Saved {agent.algo} ({chosen_src}, train_steps={int(chosen_train_steps)}) -> {model_path}")
     return agent, returns, eval_history
 
 
@@ -898,6 +965,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--episodes", type=int, default=1000)
     ap.add_argument("--max-steps", type=int, default=600)
+    ap.add_argument(
+        "--no-terminate-on-stuck",
+        action="store_true",
+        help="Forest-only: disable stuck termination (still reports stuck and applies stuck penalty).",
+    )
     ap.add_argument("--sensor-range", type=int, default=6)
     ap.add_argument(
         "--n-sectors",
@@ -939,7 +1011,61 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--train-freq", type=int, default=4)
     ap.add_argument("--learning-starts", type=int, default=2000)
+    ap.add_argument(
+        "--replay-stratified",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use stratified replay sampling (oversample demo/near-goal/stuck/hazard transitions).",
+    )
+    ap.add_argument(
+        "--replay-frac-demo",
+        type=float,
+        default=0.0,
+        help="When --replay-stratified: fraction of each batch drawn from demo transitions.",
+    )
+    ap.add_argument(
+        "--replay-frac-goal",
+        type=float,
+        default=0.0,
+        help="When --replay-stratified: fraction of each batch drawn from near-goal transitions.",
+    )
+    ap.add_argument(
+        "--replay-frac-stuck",
+        type=float,
+        default=0.0,
+        help="When --replay-stratified: fraction of each batch drawn from stuck transitions.",
+    )
+    ap.add_argument(
+        "--replay-frac-hazard",
+        type=float,
+        default=0.0,
+        help="When --replay-stratified: fraction of each batch drawn from near-collision (low OD) transitions.",
+    )
+    ap.add_argument(
+        "--replay-near-goal-factor",
+        type=float,
+        default=2.0,
+        help="Near-goal threshold factor: d_goal_m <= factor * goal_tolerance_m.",
+    )
+    ap.add_argument(
+        "--replay-hazard-od-m",
+        type=float,
+        default=0.4,
+        help="Hazard threshold (meters): od_m <= this marks a transition as near-collision (<=0 uses an env-based default).",
+    )
     ap.add_argument("--ma-window", type=int, default=20, help="Moving average window for plotting (1=raw).")
+    ap.add_argument(
+        "--save-ckpt",
+        type=str,
+        choices=("auto", "final", "best", "pretrain"),
+        default="auto",
+        help=(
+            "Which policy snapshot to save as models/<env>/<algo>.pt. "
+            "auto (default): choose best greedy among {final,best,pretrain}; "
+            "final: save the last weights; best: save the best-scoring training episode snapshot; "
+            "pretrain: save the post-imitation snapshot (train_steps usually 0)."
+        ),
+    )
     ap.add_argument(
         "--eval-every",
         type=int,
@@ -969,6 +1095,48 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=12,
         help="Downsampled global-map observation size (applies to both grid and forest envs).",
+    )
+    ap.add_argument(
+        "--goal-tolerance-m",
+        type=float,
+        default=1.0,
+        help="Forest-only: positional tolerance (meters) to count as 'at goal'.",
+    )
+    ap.add_argument(
+        "--goal-angle-tolerance-deg",
+        type=float,
+        default=180.0,
+        help="Forest-only: heading tolerance (degrees) to count as 'at goal' (180 disables).",
+    )
+    ap.add_argument(
+        "--goal-stop-speed-m-s",
+        type=float,
+        default=0.05,
+        help="Forest-only: max |v| (m/s) required to count as 'stopped' at the goal.",
+    )
+    ap.add_argument(
+        "--goal-stop-delta-deg",
+        type=float,
+        default=1.0,
+        help="Forest-only: max |delta| (degrees) required to count as 'wheels straight' at the goal.",
+    )
+    ap.add_argument(
+        "--forest-action-delta-dot-bins",
+        type=int,
+        default=7,
+        help=(
+            "Forest-only: number of discrete steering-rate (delta_dot) levels for the DQN action table "
+            "(use an odd number to include 0, e.g. 15)."
+        ),
+    )
+    ap.add_argument(
+        "--forest-action-accel-bins",
+        type=int,
+        default=5,
+        help=(
+            "Forest-only: number of discrete acceleration (a) levels for the DQN action table "
+            "(use an odd number to include 0, e.g. 15)."
+        ),
     )
     ap.add_argument(
         "--forest-curriculum",
@@ -1065,6 +1233,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=200,
         help="Forest-only: rejection-sampling tries per episode when sampling random start/goal pairs.",
+    )
+    ap.add_argument(
+        "--forest-rand-edge-margin-m",
+        type=float,
+        default=0.0,
+        help="Forest-only: minimum distance to map boundary (meters) for random start/goal sampling (<=0 disables).",
     )
     ap.add_argument(
         "--forest-expert-prob-start",
@@ -1169,6 +1343,14 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = run_paths.run_dir
 
     agent_cfg = AgentConfig()
+    agent_cfg = replace(
+        agent_cfg,
+        replay_stratified=bool(args.replay_stratified),
+        replay_frac_demo=float(args.replay_frac_demo),
+        replay_frac_goal=float(args.replay_frac_goal),
+        replay_frac_stuck=float(args.replay_frac_stuck),
+        replay_frac_hazard=float(args.replay_frac_hazard),
+    )
     dqn_cfg = replace(agent_cfg, eps_start=0.6, n_step=3)
     ddqn_cfg = replace(agent_cfg, eps_start=0.6, n_step=3)
     pddqn_cfg = replace(agent_cfg, eps_start=0.6, n_step=3, target_update_tau=0.01)
@@ -1235,6 +1417,13 @@ def main(argv: list[str] | None = None) -> int:
                 sensor_range_m=float(args.sensor_range),
                 n_sectors=args.n_sectors,
                 obs_map_size=int(args.obs_map_size),
+                goal_tolerance_m=float(args.goal_tolerance_m),
+                goal_angle_tolerance_deg=float(args.goal_angle_tolerance_deg),
+                goal_stop_speed_m_s=float(args.goal_stop_speed_m_s),
+                goal_stop_delta_deg=float(args.goal_stop_delta_deg),
+                terminate_on_stuck=not bool(getattr(args, "no_terminate_on_stuck", False)),
+                action_delta_dot_bins=int(args.forest_action_delta_dot_bins),
+                action_accel_bins=int(args.forest_action_accel_bins),
             )
             forest_demo_data = None
             if bool(args.forest_demo_prefill) and int(args.learning_starts) > 0:
@@ -1251,6 +1440,7 @@ def main(argv: list[str] | None = None) -> int:
                     forest_rand_max_cost_m=rand_max,
                     forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
                     forest_rand_tries=int(args.forest_rand_tries),
+                    forest_rand_edge_margin_m=float(args.forest_rand_edge_margin_m),
                     forest_expert=str(args.forest_expert),
                     forest_demo_horizon=int(args.forest_demo_horizon),
                     forest_demo_w_clearance=float(args.forest_demo_w_clearance),
@@ -1283,8 +1473,11 @@ def main(argv: list[str] | None = None) -> int:
                 seed=args.seed + 1000,
                 out_dir=out_dir,
                 agent_cfg=cfg,
+                replay_near_goal_factor=float(args.replay_near_goal_factor),
+                replay_hazard_od_m=float(args.replay_hazard_od_m),
                 train_freq=args.train_freq,
                 learning_starts=args.learning_starts,
+                save_ckpt=str(args.save_ckpt),
                 forest_curriculum=bool(args.forest_curriculum),
                 curriculum_band_m=float(args.curriculum_band_m),
                 curriculum_ramp=float(args.curriculum_ramp),
@@ -1304,6 +1497,7 @@ def main(argv: list[str] | None = None) -> int:
                 forest_rand_max_cost_m=rand_max,
                 forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
                 forest_rand_tries=int(args.forest_rand_tries),
+                forest_rand_edge_margin_m=float(args.forest_rand_edge_margin_m),
                 eval_every=int(args.eval_every),
                 eval_runs=int(args.eval_runs),
                 eval_score_time_weight=float(args.eval_score_time_weight),

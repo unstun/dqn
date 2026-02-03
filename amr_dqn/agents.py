@@ -43,6 +43,13 @@ class AgentConfig:
     demo_lambda: float = 1.0
     demo_ce_lambda: float = 1.0
 
+    # Replay sampling: optionally oversample rare-but-important transitions (forest long-horizon).
+    replay_stratified: bool = False
+    replay_frac_demo: float = 0.0
+    replay_frac_goal: float = 0.0
+    replay_frac_stuck: float = 0.0
+    replay_frac_hazard: float = 0.0
+
 
 AlgoArch = Literal["mlp", "cnn"]
 AlgoBase = Literal["dqn", "ddqn"]
@@ -123,14 +130,24 @@ class DQNFamilyAgent:
         self.optimizer = torch.optim.Adam(self.q.parameters(), lr=config.learning_rate)
         self.loss_fn = nn.SmoothL1Loss(reduction="none")
 
-        self.replay = ReplayBuffer(config.replay_capacity, obs_dim, n_actions, rng=self._rng)
+        self.replay = ReplayBuffer(
+            config.replay_capacity,
+            obs_dim,
+            n_actions,
+            rng=self._rng,
+            stratified=bool(getattr(config, "replay_stratified", False)),
+            frac_demo=float(getattr(config, "replay_frac_demo", 0.0)),
+            frac_goal=float(getattr(config, "replay_frac_goal", 0.0)),
+            frac_stuck=float(getattr(config, "replay_frac_stuck", 0.0)),
+            frac_hazard=float(getattr(config, "replay_frac_hazard", 0.0)),
+        )
 
         self._train_steps = 0
         self._n_actions = int(n_actions)
         self._obs_dim = int(obs_dim)
         self._n_step = int(max(1, int(getattr(config, "n_step", 1))))
         # (obs, action, reward, next_obs, done, demo, next_action_mask)
-        self._nstep_buffer: deque[tuple[np.ndarray, int, float, np.ndarray, bool, bool, np.ndarray | None]] = deque()
+        self._nstep_buffer: deque[tuple[np.ndarray, int, float, np.ndarray, bool, bool, np.ndarray | None, int]] = deque()
 
     def _rebuild_networks(
         self,
@@ -216,6 +233,7 @@ class DQNFamilyAgent:
         next_action_mask: np.ndarray | None,
         demo: bool,
         n_steps: int,
+        replay_flags: int,
     ) -> None:
         self.replay.add(
             obs,
@@ -226,6 +244,7 @@ class DQNFamilyAgent:
             next_action_mask=next_action_mask,
             demo=bool(demo),
             n_steps=int(n_steps),
+            flags=int(replay_flags),
         )
 
     def observe(
@@ -239,6 +258,7 @@ class DQNFamilyAgent:
         demo: bool = False,
         truncated: bool = False,
         next_action_mask: np.ndarray | None = None,
+        replay_flags: int = 0,
     ) -> None:
         """Record a transition (supports n-step returns).
 
@@ -257,12 +277,15 @@ class DQNFamilyAgent:
                 next_action_mask=next_action_mask,
                 demo=bool(demo),
                 n_steps=1,
+                replay_flags=int(replay_flags),
             )
             if bool(done) or bool(truncated):
                 self.end_episode()
             return
 
-        self._nstep_buffer.append((obs, int(action), float(reward), next_obs, bool(done), bool(demo), next_action_mask))
+        self._nstep_buffer.append(
+            (obs, int(action), float(reward), next_obs, bool(done), bool(demo), next_action_mask, int(replay_flags))
+        )
 
         episode_end = bool(done) or bool(truncated)
         if (len(self._nstep_buffer) < int(self._n_step)) and not episode_end:
@@ -285,17 +308,19 @@ class DQNFamilyAgent:
             next_obs_n = self._nstep_buffer[0][3]
             next_mask_n = self._nstep_buffer[0][6]
             done_n = False
+            flags_n = 0
             for i in range(horizon):
-                _o, _a, r, no, d, _demo, nm = self._nstep_buffer[i]
+                _o, _a, r, no, d, _demo, nm, fl = self._nstep_buffer[i]
                 ret += (gamma**i) * float(r)
                 n_used = i + 1
                 next_obs_n = no
                 next_mask_n = nm
                 done_n = bool(d)
+                flags_n |= int(fl)
                 if done_n:
                     break
 
-            obs0, a0, _r0, _no0, _d0, demo0, _nm0 = self._nstep_buffer[0]
+            obs0, a0, _r0, _no0, _d0, demo0, _nm0, _fl0 = self._nstep_buffer[0]
             self._add_to_replay(
                 obs0,
                 int(a0),
@@ -305,6 +330,7 @@ class DQNFamilyAgent:
                 next_action_mask=next_mask_n,
                 demo=bool(demo0),
                 n_steps=int(n_used),
+                replay_flags=int(flags_n),
             )
             self._nstep_buffer.popleft()
 

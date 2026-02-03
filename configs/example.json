@@ -11,6 +11,8 @@
       "forest_c",
       "forest_d"
     ],
+    "forest_action_accel_bins": 15,
+    "forest_action_delta_dot_bins": 15,
     "forest_adm_horizon": 15,
     "forest_baseline_rollout": false,
     "forest_min_od_m": 0.0,
@@ -60,6 +62,8 @@
     "eval_every": 0,
     "eval_runs": 5,
     "eval_score_time_weight": 0.5,
+    "forest_action_accel_bins": 15,
+    "forest_action_delta_dot_bins": 15,
     "forest_action_shield": true,
     "forest_curriculum": true,
     "forest_demo_horizon": 15,

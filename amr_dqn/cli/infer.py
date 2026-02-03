@@ -19,7 +19,10 @@ configure_runtime()
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.ticker as mticker
-import gym
+try:
+    import gymnasium as gym
+except ImportError:  # pragma: no cover
+    import gym  # type: ignore
 import numpy as np
 import pandas as pd
 import torch
@@ -65,12 +68,64 @@ class RolloutResult:
     steps: int
     path_time_s: float
     controls: ControlTrace | None = None
+    collision: bool = False
+    truncated: bool = False
 
 
 def _env_dt_s(env: gym.Env) -> float:
     if isinstance(env, AMRBicycleEnv):
         return float(env.model.dt)
     return 1.0
+
+
+def forest_stop_action(env: AMRBicycleEnv) -> int:
+    """Pick a discrete action that keeps the robot near the goal while driving v,delta -> 0."""
+    dt = float(env.model.dt)
+    if not (dt > 0.0):
+        return 0
+
+    x0 = float(env._x_m)
+    y0 = float(env._y_m)
+    psi0 = float(env._psi_rad)
+    v0 = float(env._v_m_s)
+    delta0 = float(env._delta_rad)
+
+    gx_m = float(env.goal_xy[0]) * float(env.cell_size_m)
+    gy_m = float(env.goal_xy[1]) * float(env.cell_size_m)
+    tol_m = max(1e-6, float(env.goal_tolerance_m))
+    v_max = max(1e-9, float(env.model.v_max_m_s))
+    delta_max = max(1e-9, float(env.model.delta_max_rad))
+
+    best_action = 0
+    best_cost = float("inf")
+    for a_id in range(int(env.action_table.shape[0])):
+        delta_dot = float(env.action_table[a_id, 0])
+        accel = float(env.action_table[a_id, 1])
+        x, y, psi, v1, delta1 = bicycle_integrate_one_step(
+            x_m=x0,
+            y_m=y0,
+            psi_rad=psi0,
+            v_m_s=v0,
+            delta_rad=delta0,
+            delta_dot_rad_s=delta_dot,
+            a_m_s2=accel,
+            params=env.model,
+        )
+        _od, coll = env._od_and_collision_at_pose_m(x, y, psi)
+        if bool(coll):
+            continue
+
+        d_goal = float(math.hypot(float(gx_m) - float(x), float(gy_m) - float(y)))
+        d_term = d_goal / float(tol_m)
+        v_term = abs(float(v1)) / float(v_max)
+        delta_term = abs(float(delta1)) / float(delta_max)
+        cost = 5.0 * float(d_term) + float(v_term) + float(delta_term)
+
+        if float(cost) < float(best_cost):
+            best_cost = float(cost)
+            best_action = int(a_id)
+
+    return int(best_action)
 
 
 def rollout_agent(
@@ -87,8 +142,9 @@ def rollout_agent(
     forest_min_od_m: float = 0.0,
     forest_min_progress_m: float = 1e-4,
     collect_controls: bool = False,
+    trace_path: Path | None = None,
 ) -> RolloutResult:
-    obs, _info0 = env.reset(seed=seed, options=reset_options)
+    obs, info0 = env.reset(seed=seed, options=reset_options)
     if obs_transform is not None:
         obs = obs_transform(obs)
     path: list[tuple[float, float]] = [(float(env.start_xy[0]), float(env.start_xy[1]))]
@@ -101,6 +157,43 @@ def rollout_agent(
         t_series = [0.0]
         v_series = [float(getattr(env, "_v_m_s", 0.0))]
         delta_series = [float(getattr(env, "_delta_rad", 0.0))]
+
+    trace_rows: list[dict[str, object]] | None = [] if trace_path is not None else None
+    if trace_rows is not None:
+        if isinstance(env, AMRBicycleEnv):
+            d_goal0 = float(env._distance_to_goal_m())
+            alpha0 = float(env._goal_relative_angle_rad())
+            reached_pose0 = bool(env._goal_pose_reached(d_goal_m=d_goal0, alpha_rad=alpha0))
+            reached_stop0 = bool(env._goal_stop_reached(v_m_s=float(env._v_m_s), delta_rad=float(env._delta_rad)))
+            reached0 = bool(reached_pose0 and reached_stop0)
+            trace_rows.append(
+                {
+                    "step": 0,
+                    "x_m": float(info0.get("pose_m", (env._x_m, env._y_m, env._psi_rad))[0]),
+                    "y_m": float(info0.get("pose_m", (env._x_m, env._y_m, env._psi_rad))[1]),
+                    "theta_rad": float(info0.get("pose_m", (env._x_m, env._y_m, env._psi_rad))[2]),
+                    "v_m_s": float(getattr(env, "_v_m_s", 0.0)),
+                    "delta_rad": float(getattr(env, "_delta_rad", 0.0)),
+                    "action_id": -1,
+                    "delta_dot_rad_s": 0.0,
+                    "a_m_s2": 0.0,
+                    "od_m": float(getattr(env, "_last_od_m", float("nan"))),
+                    "collision": bool(getattr(env, "_last_collision", False)),
+                    "reached": bool(reached0),
+                    "reached_pose": bool(reached_pose0),
+                    "reached_stop": bool(reached_stop0),
+                    "stuck": False,
+                    "d_goal_m": float(d_goal0),
+                    "alpha_rad": float(alpha0),
+                    "cell_size_m": float(getattr(env, "cell_size_m", float("nan"))),
+                    "start_x": int(getattr(env, "start_xy", (0, 0))[0]),
+                    "start_y": int(getattr(env, "start_xy", (0, 0))[1]),
+                    "goal_x": int(getattr(env, "goal_xy", (0, 0))[0]),
+                    "goal_y": int(getattr(env, "goal_xy", (0, 0))[1]),
+                }
+            )
+        else:
+            trace_rows = None
 
     def sync_cuda() -> None:
         if agent.device.type == "cuda" and torch.cuda.is_available():
@@ -121,6 +214,7 @@ def rollout_agent(
     topk_k = max(1, int(forest_topk))
     min_od = float(forest_min_od_m)
     min_prog = float(forest_min_progress_m)
+    last_collision = False
 
     while not (done or truncated) and steps < max_steps:
         steps += 1
@@ -128,54 +222,71 @@ def rollout_agent(
             sync_cuda()
             t0 = time.perf_counter()
         if isinstance(env, AMRBicycleEnv):
-            # Forest policy rollout: greedy Q policy with admissible-action safety gating.
-            # Optionally, tie-break top-k actions using a lightweight Hybrid A* reference tracker
-            # (precomputed path; no online planning during inference).
-            with torch.no_grad():
-                x = torch.from_numpy(obs.astype(np.float32, copy=False)).to(agent.device)
-                q = agent.q(x.unsqueeze(0)).squeeze(0)
+            reached_pose = bool(
+                env._goal_pose_reached(
+                    d_goal_m=float(env._distance_to_goal_m()),
+                    alpha_rad=float(env._goal_relative_angle_rad()),
+                )
+            )
+            reached_stop = bool(env._goal_stop_reached(v_m_s=float(env._v_m_s), delta_rad=float(env._delta_rad)))
+            if reached_pose and not reached_stop:
+                a = int(forest_stop_action(env))
+            else:
+                # Forest policy rollout: greedy Q policy with admissible-action safety gating.
+                # Optionally, tie-break top-k actions using a lightweight Hybrid A* reference tracker
+                # (precomputed path; no online planning during inference).
+                with torch.no_grad():
+                    x = torch.from_numpy(obs.astype(np.float32, copy=False)).to(agent.device)
+                    q = agent.q(x.unsqueeze(0)).squeeze(0)
 
-            a0 = int(torch.argmax(q).item())
-            a = int(a0)
+                a0 = int(torch.argmax(q).item())
+                a = int(a0)
 
-            a0_adm = bool(env.is_action_admissible(int(a0), horizon_steps=adm_h, min_od_m=min_od, min_progress_m=min_prog))
-            if not a0_adm:
-                chosen: int | None = None
-                kk = int(min(int(topk_k), int(q.numel())))
-                topk = torch.topk(q, k=kk, dim=0).indices.detach().cpu().numpy()
-                for cand in topk.tolist():
-                    cand_i = int(cand)
-                    if cand_i == int(a0):
-                        continue
-                    if bool(env.is_action_admissible(cand_i, horizon_steps=adm_h, min_od_m=min_od, min_progress_m=min_prog)):
-                        chosen = int(cand_i)
-                        break
+                a0_adm = bool(
+                    env.is_action_admissible(int(a0), horizon_steps=adm_h, min_od_m=min_od, min_progress_m=min_prog)
+                )
+                if not a0_adm:
+                    chosen: int | None = None
+                    kk = int(min(int(topk_k), int(q.numel())))
+                    topk = torch.topk(q, k=kk, dim=0).indices.detach().cpu().numpy()
+                    for cand in topk.tolist():
+                        cand_i = int(cand)
+                        if cand_i == int(a0):
+                            continue
+                        if bool(
+                            env.is_action_admissible(
+                                cand_i, horizon_steps=adm_h, min_od_m=min_od, min_progress_m=min_prog
+                            )
+                        ):
+                            chosen = int(cand_i)
+                            break
 
-                if chosen is None:
-                    # If there are no safe actions that make short-horizon cost-to-go progress,
-                    # fall back to a lightweight heuristic rollout instead of picking an arbitrary
-                    # "safe but stalled" action by Q-value (which often collapses to stopping).
-                    prog_mask = env.admissible_action_mask(
-                        horizon_steps=adm_h,
-                        min_od_m=min_od,
-                        min_progress_m=min_prog,
-                        fallback_to_safe=False,
-                    )
-                    if bool(prog_mask.any()):
-                        q_masked = q.clone()
-                        q_masked[torch.from_numpy(~prog_mask).to(q.device)] = torch.finfo(q_masked.dtype).min
-                        chosen = int(torch.argmax(q_masked).item())
-                    else:
-                        chosen = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=min_od))
+                    if chosen is None:
+                        # If there are no safe actions that make short-horizon cost-to-go progress,
+                        # fall back to a lightweight heuristic rollout instead of picking an arbitrary
+                        # "safe but stalled" action by Q-value (which often collapses to stopping).
+                        prog_mask = env.admissible_action_mask(
+                            horizon_steps=adm_h,
+                            min_od_m=min_od,
+                            min_progress_m=min_prog,
+                            fallback_to_safe=False,
+                        )
+                        if bool(prog_mask.any()):
+                            q_masked = q.clone()
+                            q_masked[torch.from_numpy(~prog_mask).to(q.device)] = torch.finfo(q_masked.dtype).min
+                            chosen = int(torch.argmax(q_masked).item())
+                        else:
+                            chosen = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=min_od))
 
-                if chosen is not None:
-                    a = int(chosen)
+                    if chosen is not None:
+                        a = int(chosen)
         else:
             a = agent.act(obs, episode=0, explore=False)
         if time_mode == "policy":
             sync_cuda()
             inference_time_s += float(time.perf_counter() - t0)
         obs, _, done, truncated, info = env.step(a)
+        last_collision = bool(info.get("collision", False))
         if obs_transform is not None:
             obs = obs_transform(obs)
         x, y = info["agent_xy"]
@@ -184,6 +295,36 @@ def rollout_agent(
             t_series.append(float(steps) * dt_s)
             v_series.append(float(info.get("v_m_s", float(getattr(env, "_v_m_s", 0.0)))))
             delta_series.append(float(info.get("delta_rad", float(getattr(env, "_delta_rad", 0.0)))))
+        if trace_rows is not None and isinstance(env, AMRBicycleEnv):
+            px, py, pth = info.get("pose_m", (env._x_m, env._y_m, env._psi_rad))
+            dd = float(env.action_table[int(a), 0])
+            aa = float(env.action_table[int(a), 1])
+            trace_rows.append(
+                {
+                    "step": int(steps),
+                    "x_m": float(px),
+                    "y_m": float(py),
+                    "theta_rad": float(pth),
+                    "v_m_s": float(info.get("v_m_s", env._v_m_s)),
+                    "delta_rad": float(info.get("delta_rad", env._delta_rad)),
+                    "action_id": int(a),
+                    "delta_dot_rad_s": float(dd),
+                    "a_m_s2": float(aa),
+                    "od_m": float(info.get("od_m", float("nan"))),
+                    "collision": bool(info.get("collision", False)),
+                    "reached": bool(info.get("reached", False)),
+                    "reached_pose": bool(info.get("reached_pose", False)),
+                    "reached_stop": bool(info.get("reached_stop", False)),
+                    "stuck": bool(info.get("stuck", False)),
+                    "d_goal_m": float(info.get("d_goal_m", float("nan"))),
+                    "alpha_rad": float(info.get("alpha_rad", float("nan"))),
+                    "cell_size_m": float(getattr(env, "cell_size_m", float("nan"))),
+                    "start_x": int(getattr(env, "start_xy", (0, 0))[0]),
+                    "start_y": int(getattr(env, "start_xy", (0, 0))[1]),
+                    "goal_x": int(getattr(env, "goal_xy", (0, 0))[0]),
+                    "goal_y": int(getattr(env, "goal_xy", (0, 0))[1]),
+                }
+            )
         if info.get("reached"):
             reached = True
             break
@@ -191,6 +332,11 @@ def rollout_agent(
     if time_mode == "rollout":
         sync_cuda()
         inference_time_s = float(time.perf_counter() - t_rollout0)
+
+    if trace_path is not None and trace_rows is not None:
+        trace_path = Path(trace_path)
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(trace_rows).to_csv(trace_path, index=False)
     controls = None
     if t_series is not None and v_series is not None and delta_series is not None:
         controls = ControlTrace(
@@ -205,180 +351,8 @@ def rollout_agent(
         steps=int(steps),
         path_time_s=float(steps) * dt_s,
         controls=controls,
-    )
-
-
-def rollout_tracked_path(
-    env: AMRBicycleEnv,
-    ref_path_xy_cells: list[tuple[float, float]],
-    *,
-    max_steps: int,
-    seed: int,
-    reset_options: dict[str, object] | None = None,
-    time_mode: str = "rollout",
-    lookahead_points: int = 5,
-    horizon_steps: int = 15,
-    w_target: float = 0.2,
-    w_heading: float = 0.2,
-    w_clearance: float = 0.8,
-    w_speed: float = 0.0,
-    collect_controls: bool = False,
-) -> RolloutResult:
-    time_mode = str(time_mode).lower().strip()
-    if time_mode not in {"rollout", "policy"}:
-        raise ValueError("time_mode must be one of: rollout, policy")
-
-    obs, _info0 = env.reset(seed=seed, options=reset_options)
-    path: list[tuple[float, float]] = [(float(env.start_xy[0]), float(env.start_xy[1]))]
-    dt_s = float(_env_dt_s(env))
-
-    t_series: list[float] | None = None
-    v_series: list[float] | None = None
-    delta_series: list[float] | None = None
-    if bool(collect_controls):
-        t_series = [0.0]
-        v_series = [float(getattr(env, "_v_m_s", 0.0))]
-        delta_series = [float(getattr(env, "_delta_rad", 0.0))]
-    if len(ref_path_xy_cells) < 2:
-        controls = None
-        if t_series is not None and v_series is not None and delta_series is not None:
-            controls = ControlTrace(
-                t_s=np.asarray(t_series, dtype=np.float64),
-                v_m_s=np.asarray(v_series, dtype=np.float64),
-                delta_rad=np.asarray(delta_series, dtype=np.float64),
-            )
-        return RolloutResult(
-            path_xy_cells=path,
-            compute_time_s=0.0,
-            reached=False,
-            steps=0,
-            path_time_s=0.0,
-            controls=controls,
-        )
-
-    def choose_action(progress_idx: int) -> tuple[int, int]:
-        x_cells = float(env._x_m) / float(env.cell_size_m)
-        y_cells = float(env._y_m) / float(env.cell_size_m)
-
-        # Find nearest reference-path index (windowed search around previous index).
-        start_i = max(0, int(progress_idx) - 25)
-        end_i = min(len(ref_path_xy_cells), int(progress_idx) + 250)
-        if end_i <= start_i:
-            start_i, end_i = 0, len(ref_path_xy_cells)
-        best_i = start_i
-        best_d2 = float("inf")
-        for i in range(start_i, end_i):
-            px, py = ref_path_xy_cells[i]
-            d2 = (float(px) - x_cells) ** 2 + (float(py) - y_cells) ** 2
-            if d2 < best_d2:
-                best_d2 = d2
-                best_i = i
-        progress_idx = int(best_i)
-
-        la = max(1, int(lookahead_points))
-        tgt_i = min(int(best_i) + la, len(ref_path_xy_cells) - 1)
-        tx_cells, ty_cells = ref_path_xy_cells[tgt_i]
-        tx_m = float(tx_cells) * float(env.cell_size_m)
-        ty_m = float(ty_cells) * float(env.cell_size_m)
-
-        h = max(1, int(horizon_steps))
-        best_score = -float("inf")
-        best_action: int | None = None
-
-        x0 = float(env._x_m)
-        y0 = float(env._y_m)
-        psi0 = float(env._psi_rad)
-        v0 = float(env._v_m_s)
-        delta0 = float(env._delta_rad)
-        v_max = float(env.model.v_max_m_s)
-
-        for a_id in range(int(env.action_table.shape[0])):
-            delta_dot = float(env.action_table[a_id, 0])
-            a = float(env.action_table[a_id, 1])
-
-            x, y, psi, v, delta = x0, y0, psi0, v0, delta0
-            min_od = float("inf")
-            ok = True
-            for _ in range(h):
-                x, y, psi, v, delta = bicycle_integrate_one_step(
-                    x_m=x,
-                    y_m=y,
-                    psi_rad=psi,
-                    v_m_s=v,
-                    delta_rad=delta,
-                    delta_dot_rad_s=delta_dot,
-                    a_m_s2=a,
-                    params=env.model,
-                )
-                od, coll = env._od_and_collision_at_pose_m(x, y, psi)
-                min_od = min(float(min_od), float(od))
-                if coll:
-                    ok = False
-                    break
-            if not ok:
-                continue
-
-            cost = float(env._cost_to_goal_pose_m(x, y, psi))
-            dist_tgt = float(math.hypot(float(tx_m) - float(x), float(ty_m) - float(y)))
-            tgt_heading = float(math.atan2(float(ty_m) - float(y), float(tx_m) - float(x)))
-            heading_err = wrap_angle_rad(float(tgt_heading) - float(psi))
-
-            score = -float(cost)
-            score += -float(w_target) * float(dist_tgt) - float(w_heading) * abs(float(heading_err))
-            score += float(w_clearance) * float(min_od)
-            if w_speed:
-                score += float(w_speed) * (float(v) / float(v_max))
-
-            if float(score) > float(best_score):
-                best_score = float(score)
-                best_action = int(a_id)
-
-        if best_action is None or not math.isfinite(best_score):
-            return int(env._fallback_action_short_rollout(horizon_steps=int(horizon_steps), min_od_m=0.0)), int(progress_idx)
-
-        return int(best_action), int(progress_idx)
-
-    inference_time_s = 0.0
-    t_rollout0 = time.perf_counter()
-    done = False
-    truncated = False
-    steps = 0
-    reached = False
-    progress_idx = 0
-    while not (done or truncated) and steps < max_steps:
-        steps += 1
-        t0 = time.perf_counter() if time_mode == "policy" else None
-        a, progress_idx = choose_action(progress_idx)
-        if t0 is not None:
-            inference_time_s += float(time.perf_counter() - t0)
-        obs, _, done, truncated, info = env.step(int(a))
-        x, y = info["agent_xy"]
-        path.append((float(x), float(y)))
-        if t_series is not None and v_series is not None and delta_series is not None:
-            t_series.append(float(steps) * dt_s)
-            v_series.append(float(info.get("v_m_s", float(getattr(env, "_v_m_s", 0.0)))))
-            delta_series.append(float(info.get("delta_rad", float(getattr(env, "_delta_rad", 0.0)))))
-        if info.get("reached"):
-            reached = True
-            break
-
-    if time_mode == "rollout":
-        inference_time_s = float(time.perf_counter() - t_rollout0)
-
-    controls = None
-    if t_series is not None and v_series is not None and delta_series is not None:
-        controls = ControlTrace(
-            t_s=np.asarray(t_series, dtype=np.float64),
-            v_m_s=np.asarray(v_series, dtype=np.float64),
-            delta_rad=np.asarray(delta_series, dtype=np.float64),
-        )
-    return RolloutResult(
-        path_xy_cells=path,
-        compute_time_s=float(inference_time_s),
-        reached=bool(reached),
-        steps=int(steps),
-        path_time_s=float(steps) * dt_s,
-        controls=controls,
+        collision=bool(last_collision),
+        truncated=bool(truncated),
     )
 
 
@@ -393,23 +367,32 @@ def rollout_tracked_path_mpc(
     trace_path: Path | None = None,
     lookahead_points: int = 5,
     horizon_steps: int = 15,
-    n_candidates: int = 512,
-    w_target: float = 0.2,
-    w_heading: float = 0.2,
-    w_clearance: float = 0.8,
-    w_speed: float = 0.0,
-    w_control: float = 0.01,
+    osqp_max_iter: int | None = None,
+    stage_state_cost_weight: float = 1.0,
+    terminal_cost_weight: float = 10.0,
+    stage_input_cost_weight: float = 0.1,
     collect_controls: bool = False,
 ) -> RolloutResult:
-    """Continuous-control MPC-style tracker for baseline paths (forest only).
+    """QP-based MPC tracker for baseline paths (forest only).
 
-    This tracker does NOT use the discrete `action_table`. Instead, it samples continuous control
-    candidates `(delta_dot, a)`, evaluates them with a short horizon rollout, and applies the best
-    control using `AMRBicycleEnv.step_continuous(...)`.
+    Replaces the previous random-shooting tracker with a quadratic-programming MPC solved by
+    `qpmpc` (https://github.com/stephane-caron/qpmpc) using an OSQP backend.
+
+    The MPC optimizes a small planar-kinematics proxy model (position integrator) to produce a
+    desired velocity vector, then maps it to the bicycle model controls `(a, delta_dot)`.
     """
     time_mode = str(time_mode).lower().strip()
     if time_mode not in {"rollout", "policy"}:
         raise ValueError("time_mode must be one of: rollout, policy")
+
+    try:
+        from qpmpc import MPCProblem, MPCQP
+        from qpsolvers import solve_problem
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError(
+            "Forest baseline path tracking requires qpmpc + qpsolvers[osqp]. "
+            "Install in your environment: pip install qpmpc \"qpsolvers[osqp]\""
+        ) from exc
 
     obs, _info0 = env.reset(seed=seed, options=reset_options)
     path: list[tuple[float, float]] = [(float(env.start_xy[0]), float(env.start_xy[1]))]
@@ -443,6 +426,35 @@ def rollout_tracked_path_mpc(
                 "stuck": False,
             }
         )
+
+    def resample_path_max_step(path_xy: list[tuple[float, float]], *, max_step_cells: float) -> list[tuple[float, float]]:
+        if len(path_xy) < 2:
+            return list(path_xy)
+        step = max(1e-6, float(max_step_cells))
+        out: list[tuple[float, float]] = [(float(path_xy[0][0]), float(path_xy[0][1]))]
+        for (x0, y0), (x1, y1) in zip(path_xy, path_xy[1:]):
+            x0f = float(x0)
+            y0f = float(y0)
+            x1f = float(x1)
+            y1f = float(y1)
+            dx = float(x1f) - float(x0f)
+            dy = float(y1f) - float(y0f)
+            dist = float(math.hypot(float(dx), float(dy)))
+            if dist <= 1e-12:
+                continue
+            n = max(1, int(math.ceil(float(dist) / float(step))))
+            for j in range(1, int(n) + 1):
+                t = float(j) / float(n)
+                out.append((float(x0f + dx * t), float(y0f + dy * t)))
+        return out
+
+    # Make the reference path dense enough for dt-based tracking. The planners output
+    # ~0.3m-spaced points, which makes the per-step MPC targets overly aggressive and
+    # encourages corner-cutting in cluttered forests.
+    cell_size_m = max(1e-9, float(getattr(env, "cell_size_m", 1.0)))
+    max_step_m = max(1e-6, float(env.model.v_max_m_s) * float(dt_s))
+    ref_path_xy_cells = resample_path_max_step(ref_path_xy_cells, max_step_cells=float(max_step_m) / float(cell_size_m))
+
     if len(ref_path_xy_cells) < 2:
         controls = None
         if t_series is not None and v_series is not None and delta_series is not None:
@@ -458,94 +470,96 @@ def rollout_tracked_path_mpc(
             steps=0,
             path_time_s=0.0,
             controls=controls,
+            collision=bool(getattr(env, "_last_collision", False)),
+            truncated=False,
         )
 
-    n = max(16, int(n_candidates))
     h = max(1, int(horizon_steps))
     la = max(1, int(lookahead_points))
     v_max = float(env.model.v_max_m_s)
     dd_max = float(env.model.delta_dot_max_rad_s)
     a_max = float(env.model.a_max_m_s2)
-    rng = getattr(env, "_rng", np.random.default_rng(int(seed)))
+    delta_max = float(env.model.delta_max_rad)
+    wheelbase = float(env.model.wheelbase_m)
 
-    def choose_controls(progress_idx: int) -> tuple[float, float, int]:
-        x_cells = float(env._x_m) / float(env.cell_size_m)
-        y_cells = float(env._y_m) / float(env.cell_size_m)
+    ref_m = np.asarray(
+        [(float(x) * float(env.cell_size_m), float(y) * float(env.cell_size_m)) for x, y in ref_path_xy_cells],
+        dtype=np.float64,
+    )
 
-        # Find nearest reference-path index (windowed search around previous index).
+    dt = max(1e-9, float(dt_s))
+    A = np.eye(2, dtype=np.float64)
+    B = (dt * np.eye(2, dtype=np.float64)).astype(np.float64, copy=False)
+    D = np.array(
+        [
+            [1.0, 0.0],
+            [-1.0, 0.0],
+            [0.0, 1.0],
+            [0.0, -1.0],
+        ],
+        dtype=np.float64,
+    )
+    e = np.array([v_max, v_max, v_max, v_max], dtype=np.float64)
+
+    # Create a reusable QP structure and update only the linear term per step.
+    problem = MPCProblem(
+        A,
+        B,
+        None,
+        D,
+        e,
+        nb_timesteps=int(h),
+        terminal_cost_weight=float(terminal_cost_weight),
+        stage_state_cost_weight=float(stage_state_cost_weight),
+        stage_input_cost_weight=float(stage_input_cost_weight),
+        initial_state=np.zeros((2,), dtype=np.float64),
+        goal_state=np.zeros((2,), dtype=np.float64),
+        target_states=np.zeros((int(h), 2), dtype=np.float64).reshape(-1),
+    )
+    mpc_qp = MPCQP(problem, sparse=True)
+
+    qp_kwargs: dict[str, object] = {"verbose": False}
+    if osqp_max_iter is not None and int(osqp_max_iter) > 0:
+        qp_kwargs["max_iter"] = int(osqp_max_iter)
+
+    def nearest_ref_index(progress_idx: int) -> int:
+        x_m = float(env._x_m)
+        y_m = float(env._y_m)
         start_i = max(0, int(progress_idx) - 25)
-        end_i = min(len(ref_path_xy_cells), int(progress_idx) + 250)
+        end_i = min(int(ref_m.shape[0]), int(progress_idx) + 250)
         if end_i <= start_i:
-            start_i, end_i = 0, len(ref_path_xy_cells)
-        best_i = start_i
-        best_d2 = float("inf")
-        for i in range(start_i, end_i):
-            px, py = ref_path_xy_cells[i]
-            d2 = (float(px) - x_cells) ** 2 + (float(py) - y_cells) ** 2
-            if d2 < best_d2:
-                best_d2 = d2
-                best_i = i
-        progress_idx = int(best_i)
+            start_i, end_i = 0, int(ref_m.shape[0])
+        w = ref_m[start_i:end_i]
+        d2 = (w[:, 0] - x_m) ** 2 + (w[:, 1] - y_m) ** 2
+        return int(start_i + int(np.argmin(d2)))
 
-        tgt_i = min(int(best_i) + la, len(ref_path_xy_cells) - 1)
-        tx_cells, ty_cells = ref_path_xy_cells[tgt_i]
-        tx_m = float(tx_cells) * float(env.cell_size_m)
-        ty_m = float(ty_cells) * float(env.cell_size_m)
+    def solve_velocity_cmd(progress_idx: int) -> tuple[float, float, int]:
+        best_i = nearest_ref_index(progress_idx)
+        tgt0 = min(int(best_i) + int(la), int(ref_m.shape[0]) - 1)
+        idxs = [min(int(best_i) + int(la) + k, int(ref_m.shape[0]) - 1) for k in range(int(h))]
+        targets = ref_m[idxs]
 
-        # Candidate continuous controls.
-        delta_dot = rng.uniform(-dd_max, +dd_max, size=(n,)).astype(np.float64, copy=False)
-        accel = rng.uniform(-a_max, +a_max, size=(n,)).astype(np.float64, copy=False)
+        x0 = np.array([float(env._x_m), float(env._y_m)], dtype=np.float64)
+        problem.update_initial_state(x0)
+        problem.update_target_states(targets.reshape(-1))
+        problem.update_goal_state(targets[-1])
+        mpc_qp.update_cost_vector(problem)
 
-        # Deterministic anchors (help stability / reproducibility).
-        anchors = np.array(
-            [
-                (0.0, 0.0),
-                (0.0, +a_max),
-                (0.0, -a_max),
-                (+dd_max, 0.0),
-                (-dd_max, 0.0),
-            ],
-            dtype=np.float64,
-        )
-        delta_dot[: anchors.shape[0]] = anchors[:, 0]
-        accel[: anchors.shape[0]] = anchors[:, 1]
+        qpsol = solve_problem(mpc_qp.problem, solver="osqp", **qp_kwargs)
+        if bool(getattr(qpsol, "found", False)) and getattr(qpsol, "x", None) is not None:
+            U = np.asarray(qpsol.x, dtype=np.float64).reshape((int(h), 2))
+            vx, vy = float(U[0, 0]), float(U[0, 1])
+            return vx, vy, int(best_i)
 
-        # Evaluate candidates with a constant-control horizon rollout (vectorized in the env).
-        x, y, psi, v, min_od, coll, reached = env._rollout_constant_actions_end_state(
-            delta_dot_rad_s=delta_dot,
-            a_m_s2=accel,
-            horizon_steps=h,
-        )
-        cost1 = env._cost_to_goal_pose_m_vec(x, y, psi)
-        dist_tgt = np.hypot(float(tx_m) - x, float(ty_m) - y)
-        tgt_heading = np.arctan2(float(ty_m) - y, float(tx_m) - x)
-        heading_err = env._wrap_angle_rad_np(tgt_heading - psi)
-
-        # Score (higher is better).
-        score = -cost1
-        score += -float(w_target) * dist_tgt - float(w_heading) * np.abs(heading_err)
-        score += float(w_clearance) * min_od
-        if float(w_speed) != 0.0 and float(v_max) > 1e-6:
-            score += float(w_speed) * (v / float(v_max))
-        if float(w_control) != 0.0:
-            dd_n = delta_dot / max(1e-9, float(dd_max))
-            a_n = accel / max(1e-9, float(a_max))
-            score -= float(w_control) * (dd_n * dd_n + a_n * a_n)
-
-        ok = (~coll) & np.isfinite(cost1)
-        ok_reached = ok & reached
-        if bool(ok_reached.any()):
-            idx = np.nonzero(ok_reached)[0]
-            best = int(idx[int(np.argmax(score[idx]))])
-            return float(delta_dot[best]), float(accel[best]), int(progress_idx)
-        if bool(ok.any()):
-            idx = np.nonzero(ok)[0]
-            best = int(idx[int(np.argmax(score[idx]))])
-            return float(delta_dot[best]), float(accel[best]), int(progress_idx)
-
-        # Fallback: pick the candidate that maximizes clearance, even if it looks bad.
-        best = int(np.argmax(min_od))
-        return float(delta_dot[best]), float(accel[best]), int(progress_idx)
+        # Fallback: point directly toward the next lookahead point.
+        tx, ty = ref_m[tgt0]
+        dx = float(tx) - float(x0[0])
+        dy = float(ty) - float(x0[1])
+        d = float(math.hypot(dx, dy))
+        if d <= 1e-9:
+            return 0.0, 0.0, int(best_i)
+        speed = min(float(v_max), float(d) / float(dt))
+        return float(speed * dx / d), float(speed * dy / d), int(best_i)
 
     inference_time_s = 0.0
     t_rollout0 = time.perf_counter()
@@ -553,14 +567,59 @@ def rollout_tracked_path_mpc(
     truncated = False
     steps = 0
     reached = False
+    last_collision = False
     progress_idx = 0
     while not (done or truncated) and steps < max_steps:
         steps += 1
         t0 = time.perf_counter() if time_mode == "policy" else None
-        delta_dot, accel, progress_idx = choose_controls(progress_idx)
+        reached_pose = bool(
+            env._goal_pose_reached(d_goal_m=float(env._distance_to_goal_m()), alpha_rad=float(env._goal_relative_angle_rad()))
+        )
+        reached_stop = bool(env._goal_stop_reached(v_m_s=float(env._v_m_s), delta_rad=float(env._delta_rad)))
+        if reached_pose and not reached_stop:
+            dt0 = float(env.model.dt)
+            delta_dot = float(np.clip(-float(env._delta_rad) / max(1e-9, dt0), -dd_max, +dd_max))
+            accel = float(np.clip(-float(env._v_m_s) / max(1e-9, dt0), -a_max, +a_max))
+        else:
+            vx_des, vy_des, progress_idx = solve_velocity_cmd(progress_idx)
+
+            # Soft speed cap near obstacles (matches env reward shaping).
+            od_m = float(getattr(env, "_last_od_m", float("inf")))
+            od_pos = max(0.0, float(od_m)) if math.isfinite(float(od_m)) else float("inf")
+            v_cap = float(v_max)
+            if math.isfinite(od_pos) and od_pos < float(env.safe_speed_distance_m):
+                v_cap = float(v_max) * float(np.clip(od_pos / float(env.safe_speed_distance_m), 0.0, 1.0))
+            speed_xy = float(math.hypot(float(vx_des), float(vy_des)))
+            if speed_xy > float(v_cap) and speed_xy > 1e-9:
+                s = float(v_cap) / float(speed_xy)
+                vx_des *= float(s)
+                vy_des *= float(s)
+
+            # Convert desired planar velocity into bicycle controls.
+            psi = float(env._psi_rad)
+            v_cur = float(env._v_m_s)
+            delta_cur = float(env._delta_rad)
+
+            v_mag = float(math.hypot(float(vx_des), float(vy_des)))
+            psi_des = float(math.atan2(float(vy_des), float(vx_des))) if v_mag > 1e-9 else float(psi)
+            v_cmd = float(v_mag)
+            heading_err = float(wrap_angle_rad(float(psi_des) - float(psi)))
+            if abs(float(heading_err)) > 0.5 * math.pi:
+                psi_des = float(wrap_angle_rad(float(psi_des) + math.pi))
+                v_cmd = -float(v_mag)
+                heading_err = float(wrap_angle_rad(float(psi_des) - float(psi)))
+
+            accel = float(np.clip((float(v_cmd) - float(v_cur)) / float(dt), -a_max, +a_max))
+            k_psi = 2.0
+            psi_dot_des = float(k_psi) * float(heading_err)
+            v_for_steer = max(0.2, float(abs(v_cur)))
+            delta_des = float(math.atan2(float(wheelbase) * float(psi_dot_des), float(v_for_steer)))
+            delta_des = float(np.clip(delta_des, -delta_max, +delta_max))
+            delta_dot = float(np.clip((float(delta_des) - float(delta_cur)) / float(dt), -dd_max, +dd_max))
         if t0 is not None:
             inference_time_s += float(time.perf_counter() - t0)
         obs, _, done, truncated, info = env.step_continuous(delta_dot_rad_s=float(delta_dot), a_m_s2=float(accel))
+        last_collision = bool(info.get("collision", False))
         x, y = info["agent_xy"]
         path.append((float(x), float(y)))
         if t_series is not None and v_series is not None and delta_series is not None:
@@ -611,6 +670,8 @@ def rollout_tracked_path_mpc(
         steps=int(steps),
         path_time_s=float(steps) * dt_s,
         controls=controls,
+        collision=bool(last_collision),
+        truncated=bool(truncated),
     )
 
 
@@ -803,6 +864,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=True,
         help="Write into <experiment>/<timestamp>/ (or <train_run>/infer/<timestamp>/) to avoid mixing outputs.",
     )
+    ap.add_argument(
+        "--progress",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Show an inference progress bar (default: on when running in a TTY).",
+    )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--runs", type=int, default=5, help="Averaging runs for stochastic methods.")
     ap.add_argument(
@@ -853,6 +920,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--hybrid-max-nodes", type=int, default=200_000, help="Hybrid A* node budget.")
     ap.add_argument("--rrt-max-iter", type=int, default=5_000, help="RRT* iteration budget.")
     ap.add_argument("--max-steps", type=int, default=600)
+    ap.add_argument(
+        "--no-terminate-on-stuck",
+        action="store_true",
+        help="Forest-only: disable stuck termination (still reports stuck and applies stuck penalty).",
+    )
     ap.add_argument("--sensor-range", type=int, default=6)
     ap.add_argument(
         "--n-sectors",
@@ -865,6 +937,48 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=12,
         help="Downsampled global-map observation size (applies to both grid and forest envs).",
+    )
+    ap.add_argument(
+        "--goal-tolerance-m",
+        type=float,
+        default=1.0,
+        help="Forest-only: positional tolerance (meters) to count as 'at goal'.",
+    )
+    ap.add_argument(
+        "--goal-angle-tolerance-deg",
+        type=float,
+        default=180.0,
+        help="Forest-only: heading tolerance (degrees) to count as 'at goal' (180 disables).",
+    )
+    ap.add_argument(
+        "--goal-stop-speed-m-s",
+        type=float,
+        default=0.05,
+        help="Forest-only: max |v| (m/s) required to count as 'stopped' at the goal.",
+    )
+    ap.add_argument(
+        "--goal-stop-delta-deg",
+        type=float,
+        default=1.0,
+        help="Forest-only: max |delta| (degrees) required to count as 'wheels straight' at the goal.",
+    )
+    ap.add_argument(
+        "--forest-action-delta-dot-bins",
+        type=int,
+        default=7,
+        help=(
+            "Forest-only: number of discrete steering-rate (delta_dot) levels for the DQN action table "
+            "(use an odd number to include 0, e.g. 15)."
+        ),
+    )
+    ap.add_argument(
+        "--forest-action-accel-bins",
+        type=int,
+        default=5,
+        help=(
+            "Forest-only: number of discrete acceleration (a) levels for the DQN action table "
+            "(use an odd number to include 0, e.g. 15)."
+        ),
     )
     ap.add_argument("--cell-size", type=float, default=1.0, help="Grid cell size in meters.")
     ap.add_argument(
@@ -947,27 +1061,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--forest-baseline-controller",
-        choices=("discrete", "mpc"),
-        default="discrete",
-        help=(
-            "Forest-only: controller used when --forest-baseline-rollout is enabled. "
-            "'discrete' enumerates the env action_table; "
-            "'mpc' samples continuous (delta_dot,a) and steps via AMRBicycleEnv.step_continuous()."
-        ),
+        choices=("mpc",),
+        default="mpc",
+        help=argparse.SUPPRESS,
     )
     ap.add_argument(
         "--forest-baseline-mpc-candidates",
         type=int,
-        default=256,
-        help="Forest-only: continuous control samples per MPC step (when --forest-baseline-controller=mpc).",
+        default=512,
+        help=(
+            "Forest-only: legacy knob kept for config compatibility. "
+            "With the qpmpc-based tracker, this value is forwarded to OSQP as max_iter (default: 512; <=0 uses solver default)."
+        ),
     )
     ap.add_argument(
         "--forest-baseline-save-traces",
         action=argparse.BooleanOptionalAction,
         default=False,
         help=(
-            "Forest-only: when --forest-baseline-controller=mpc is used, save per-run executed baseline trajectories "
-            "(x,y,theta,v,delta,controls,OD) under <run_dir>/traces/ as CSV."
+            "Forest-only: save per-run executed baseline trajectories (x,y,theta,v,delta,controls,OD) under "
+            "<run_dir>/traces/ as CSV."
+        ),
+    )
+    ap.add_argument(
+        "--forest-policy-save-traces",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Forest-only: save per-run executed policy trajectories (x,y,theta,v,delta,action,OD,flags) under "
+            "<run_dir>/traces/ as CSV."
         ),
     )
     ap.add_argument(
@@ -989,6 +1111,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Forest-only: maximum start→goal cost-to-go (meters) when sampling random pairs (<=0 disables).",
     )
     ap.add_argument(
+        "--rand-edge-margin-m",
+        type=float,
+        default=0.0,
+        help="Forest-only: minimum distance to map boundary (meters) for random start/goal sampling (<=0 disables).",
+    )
+    ap.add_argument(
         "--rand-fixed-prob",
         type=float,
         default=0.0,
@@ -1007,6 +1135,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Forest-only: when --random-start-goal is enabled, resample until Hybrid A* succeeds "
             "(avoids unreachable start/goal pairs in narrow forests and keeps comparisons meaningful)."
+        ),
+    )
+    ap.add_argument(
+        "--rand-reject-policy",
+        type=str,
+        default=None,
+        help=(
+            "Forest-only: when --rand-reject-unreachable is enabled, screen random (start,goal) pairs by rolling out a "
+            "greedy RL policy instead of running Hybrid A*. Example: --rand-reject-policy cnn-pddqn. "
+            "Use 'none' to disable."
         ),
     )
     ap.add_argument(
@@ -1071,6 +1209,11 @@ def main(argv: list[str] | None = None) -> int:
         apply_config_defaults(ap, cfg, strict=True)
 
     args = ap.parse_args(argv)
+    # Baseline path tracking is MPC-only. Keep the arg around for old configs, but force MPC.
+    baseline_ctrl = str(getattr(args, "forest_baseline_controller", "mpc")).lower().strip()
+    if baseline_ctrl != "mpc":
+        print(f"[infer] NOTE: forest baseline controller {baseline_ctrl!r} removed; using 'mpc'.", file=sys.stderr, flush=True)
+    setattr(args, "forest_baseline_controller", "mpc")
     if int(getattr(args, "plot_run_idx", 0)) < 0:
         raise SystemExit("--plot-run-idx must be >= 0")
     forest_envs = set(FOREST_ENV_ORDER)
@@ -1100,6 +1243,41 @@ def main(argv: list[str] | None = None) -> int:
     if not rl_algos:
         raise SystemExit(f"No RL algorithms selected (choose from: {' '.join(canonical_all)}).")
     args.rl_algos = rl_algos
+
+    progress = bool(sys.stderr.isatty()) if getattr(args, "progress", None) is None else bool(args.progress)
+    tqdm = None
+    if progress:
+        try:
+            from tqdm import tqdm as _tqdm  # type: ignore
+        except Exception:
+            tqdm = None
+        else:
+            tqdm = _tqdm
+
+    def progress_write(msg: str) -> None:
+        if not progress:
+            return
+        if tqdm is not None:
+            tqdm.write(str(msg), file=sys.stderr)
+        else:
+            print(str(msg), file=sys.stderr, flush=True)
+
+    rand_reject_policy: str | None = None
+    raw_policy = getattr(args, "rand_reject_policy", None)
+    if raw_policy is not None:
+        raw_policy = str(raw_policy).strip().lower()
+        if raw_policy in {"none", "off", "false", "0", ""}:
+            raw_policy = ""
+    if raw_policy:
+        try:
+            canonical, _arch, _base, _legacy = parse_rl_algo(str(raw_policy))
+        except ValueError as exc:
+            raise SystemExit(
+                f"Unknown --rand-reject-policy value {raw_policy!r}. Choose from: "
+                f"{' '.join(canonical_all)} (or 'none')."
+            ) from exc
+        rand_reject_policy = str(canonical)
+    args.rand_reject_policy = rand_reject_policy
 
     baseline_aliases = {
         "hybrid_astar": "hybrid_astar",
@@ -1181,6 +1359,15 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
+    progress_write(
+        f"[infer] device={device} envs={len(args.envs or [])} runs={int(getattr(args, 'runs', 0))} "
+        f"rl_algos={len(args.rl_algos or [])} baselines={len(baselines)} "
+        f"random_start_goal={bool(getattr(args, 'random_start_goal', False))} "
+        f"rand_two_suites={bool(getattr(args, 'rand_two_suites', False))} "
+        f"rand_reject_unreachable={bool(getattr(args, 'rand_reject_unreachable', False))} "
+        f"rand_reject_policy={getattr(args, 'rand_reject_policy', None)!r}"
+    )
+
     requested_experiment_dir = resolve_experiment_dir(args.out, runs_root=args.runs_root)
     models_dir: Path | None = None
     if not bool(args.skip_rl):
@@ -1236,7 +1423,8 @@ def main(argv: list[str] | None = None) -> int:
     controls_for_plot: dict[tuple[str, int], dict[str, ControlTrace]] = {}
     plot_meta: dict[tuple[str, int], dict[str, float]] = {}
 
-    for env_name in args.envs:
+    total_envs = int(len(args.envs or []))
+    for env_idx, env_name in enumerate(args.envs):
         env_case = str(env_name)
         suite_tag: str | None = None
         env_base = str(env_case)
@@ -1246,6 +1434,7 @@ def main(argv: list[str] | None = None) -> int:
             suite_tag = str(suite_tag_raw).strip() or None
 
         env_label = f"Env. ({env_base})" if suite_tag is None else f"Env. ({env_base})/{suite_tag}"
+        progress_write(f"[infer] {env_label} ({env_idx + 1}/{max(1, total_envs)})")
 
         rand_min_cost_m = float(getattr(args, "rand_min_cost_m", 0.0))
         rand_max_cost_m = float(getattr(args, "rand_max_cost_m", 0.0))
@@ -1265,6 +1454,13 @@ def main(argv: list[str] | None = None) -> int:
                 sensor_range_m=float(args.sensor_range),
                 n_sectors=args.n_sectors,
                 obs_map_size=int(args.obs_map_size),
+                goal_tolerance_m=float(args.goal_tolerance_m),
+                goal_angle_tolerance_deg=float(args.goal_angle_tolerance_deg),
+                goal_stop_speed_m_s=float(args.goal_stop_speed_m_s),
+                goal_stop_delta_deg=float(args.goal_stop_delta_deg),
+                terminate_on_stuck=not bool(getattr(args, "no_terminate_on_stuck", False)),
+                action_delta_dot_bins=int(args.forest_action_delta_dot_bins),
+                action_accel_bins=int(args.forest_action_accel_bins),
             )
             cell_size_m = 0.1
         else:
@@ -1338,7 +1534,70 @@ def main(argv: list[str] | None = None) -> int:
             reset_options_list = []
             reject_unreachable = bool(getattr(args, "rand_reject_unreachable", False))
             max_attempts = max(1, int(getattr(args, "rand_reject_max_attempts", 5000)))
-            if reject_unreachable:
+            reject_policy = getattr(args, "rand_reject_policy", None)
+            use_policy_reject = bool(reject_unreachable) and isinstance(reject_policy, str) and bool(reject_policy)
+
+            if use_policy_reject:
+                progress_write(
+                    f"[infer] Sampling {int(args.runs)} random pairs for {env_label} with policy screening "
+                    f"({reject_policy}, max_attempts={max_attempts})."
+                )
+                if "hybrid_astar" in baselines:
+                    progress_write(
+                        "[infer] Note: --rand-reject-policy screens reachability by an RL policy; "
+                        "Hybrid A* may still fail on some sampled pairs (often due to timeout). "
+                        "Use --rand-reject-policy none to screen with Hybrid A* instead."
+                    )
+            elif reject_unreachable:
+                progress_write(
+                    f"[infer] Sampling {int(args.runs)} random pairs for {env_label} with Hybrid A* screening "
+                    f"(timeout={float(args.baseline_timeout):.2f}s, max_attempts={max_attempts})."
+                )
+            else:
+                progress_write(f"[infer] Sampling {int(args.runs)} random pairs for {env_label} (no screening).")
+
+            policy_reject_agent: DQNFamilyAgent | None = None
+            if use_policy_reject:
+                if bool(args.skip_rl) or models_dir is None:
+                    raise SystemExit("--rand-reject-policy requires RL models (disable --skip-rl and set --models).")
+
+                env_obs_dim = int(env.observation_space.shape[0])
+                n_actions = int(env.action_space.n)
+                agent_cfg = AgentConfig()
+
+                p = models_dir / env_base / f"{reject_policy}.pt"
+                if not p.exists():
+                    legacy = {
+                        "mlp-dqn": "dqn",
+                        "mlp-ddqn": "ddqn",
+                        "mlp-pddqn": "iddqn",
+                        "cnn-pddqn": "cnn-iddqn",
+                    }.get(str(reject_policy))
+                    if legacy is not None:
+                        p_legacy = models_dir / env_base / f"{legacy}.pt"
+                        if p_legacy.exists():
+                            p = p_legacy
+                if not p.exists():
+                    raise FileNotFoundError(f"Missing --rand-reject-policy model: {p}")
+
+                ckpt_obs_dim = infer_checkpoint_obs_dim(p)
+                if int(ckpt_obs_dim) != int(env_obs_dim):
+                    raise RuntimeError(
+                        f"--rand-reject-policy checkpoint expects obs_dim={ckpt_obs_dim} but env provides obs_dim={env_obs_dim} "
+                        f"for {env_base!r}. Re-train models to match the environment observation space."
+                    )
+
+                policy_reject_agent = DQNFamilyAgent(
+                    str(reject_policy),
+                    env_obs_dim,
+                    n_actions,
+                    config=agent_cfg,
+                    seed=int(args.seed),
+                    device=device,
+                )
+                policy_reject_agent.load(p)
+
+            if reject_unreachable and not use_policy_reject:
                 precomputed_hybrid_paths = []
                 grid_map = grid_map_from_obstacles(grid_y0_bottom=grid, cell_size_m=float(cell_size_m))
                 params = default_ackermann_params(
@@ -1350,8 +1609,23 @@ def main(argv: list[str] | None = None) -> int:
                 goal_xy_tol_m = float(env.goal_tolerance_m)
                 goal_theta_tol_rad = float(env.goal_angle_tolerance_rad)
 
+            pair_pbar = None
+            if tqdm is not None:
+                pair_pbar = tqdm(
+                    total=int(args.runs),
+                    desc=f"Sample pairs {env_label}",
+                    unit="pair",
+                    dynamic_ncols=True,
+                    leave=True,
+                )
+
             attempts = 0
             while len(reset_options_list) < int(args.runs) and attempts < max_attempts:
+                if pair_pbar is None and progress and attempts > 0 and (attempts % 50 == 0):
+                    progress_write(
+                        f"[infer] Sampling {env_label}: accepted {len(reset_options_list)}/{int(args.runs)}, "
+                        f"attempts {attempts}/{max_attempts}."
+                    )
                 env.reset(
                     seed=int(args.seed) + 90_000 + int(attempts),
                     options={
@@ -1360,6 +1634,7 @@ def main(argv: list[str] | None = None) -> int:
                         "rand_max_cost_m": rand_max,
                         "rand_fixed_prob": float(args.rand_fixed_prob),
                         "rand_tries": int(args.rand_tries),
+                        "rand_edge_margin_m": float(args.rand_edge_margin_m),
                     },
                 )
 
@@ -1375,27 +1650,55 @@ def main(argv: list[str] | None = None) -> int:
                         int(spec.goal_xy[1]),
                     ):
                         attempts += 1
+                        if pair_pbar is not None and (attempts % 10 == 0):
+                            pair_pbar.set_postfix({"accepted": len(reset_options_list), "attempts": attempts})
                         continue
 
                     cost0 = float(env._cost_to_goal_m[int(start_xy[1]), int(start_xy[0])])
                     if not math.isfinite(cost0):
                         attempts += 1
+                        if pair_pbar is not None and (attempts % 10 == 0):
+                            pair_pbar.set_postfix({"accepted": len(reset_options_list), "attempts": attempts})
                         continue
                     if float(cost0) + 1e-6 < float(rand_min_cost_m):
                         attempts += 1
+                        if pair_pbar is not None and (attempts % 10 == 0):
+                            pair_pbar.set_postfix({"accepted": len(reset_options_list), "attempts": attempts})
                         continue
                     if rand_max is not None and float(rand_max) > 0.0 and float(cost0) - 1e-6 > float(rand_max):
                         attempts += 1
+                        if pair_pbar is not None and (attempts % 10 == 0):
+                            pair_pbar.set_postfix({"accepted": len(reset_options_list), "attempts": attempts})
                         continue
 
-                if reject_unreachable:
+                if policy_reject_agent is not None:
+                    roll = rollout_agent(
+                        env,
+                        policy_reject_agent,
+                        max_steps=int(args.max_steps),
+                        seed=int(args.seed) + 95_000 + int(attempts),
+                        reset_options={"start_xy": start_xy, "goal_xy": goal_xy},
+                        time_mode="rollout",
+                        forest_adm_horizon=int(args.forest_adm_horizon),
+                        forest_topk=int(args.forest_topk),
+                        forest_min_od_m=float(args.forest_min_od_m),
+                        forest_min_progress_m=float(args.forest_min_progress_m),
+                        collect_controls=False,
+                    )
+                    if not bool(roll.reached):
+                        attempts += 1
+                        if pair_pbar is not None and (attempts % 10 == 0):
+                            pair_pbar.set_postfix({"accepted": len(reset_options_list), "attempts": attempts})
+                        continue
+
+                if reject_unreachable and not use_policy_reject:
                     res = plan_hybrid_astar(
                         grid_map=grid_map,
                         footprint=footprint,
                         params=params,
                         start_xy=start_xy,
                         goal_xy=goal_xy,
-                        goal_theta_rad=0.0,
+                        goal_theta_rad=None,
                         start_theta_rad=None,
                         goal_xy_tol_m=goal_xy_tol_m,
                         goal_theta_tol_rad=goal_theta_tol_rad,
@@ -1404,12 +1707,25 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     if not bool(res.success):
                         attempts += 1
+                        if pair_pbar is not None and (attempts % 10 == 0):
+                            pair_pbar.set_postfix({"accepted": len(reset_options_list), "attempts": attempts})
                         continue
                     precomputed_hybrid_paths.append(res)
 
                 opts: dict[str, object] = {"start_xy": start_xy, "goal_xy": goal_xy}
                 reset_options_list.append(opts)
                 attempts += 1
+                if pair_pbar is not None:
+                    pair_pbar.update(1)
+                    pair_pbar.set_postfix({"attempts": attempts})
+                else:
+                    progress_write(
+                        f"[infer] Sampled {len(reset_options_list)}/{int(args.runs)} pairs for {env_label} "
+                        f"(attempts {attempts}/{max_attempts})."
+                    )
+
+            if pair_pbar is not None:
+                pair_pbar.close()
 
             if len(reset_options_list) < int(args.runs):
                 raise RuntimeError(
@@ -1521,7 +1837,21 @@ def main(argv: list[str] | None = None) -> int:
                 algo_kpis: list[KPI] = []
                 algo_times: list[float] = []
                 algo_success = 0
-                for i in range(int(args.runs)):
+                run_iter = range(int(args.runs))
+                if tqdm is not None:
+                    run_iter = tqdm(
+                        run_iter,
+                        desc=f"{env_label} {pretty}",
+                        unit="run",
+                        dynamic_ncols=True,
+                        leave=True,
+                    )
+                for i in run_iter:
+                    if tqdm is None:
+                        progress_write(f"[infer] {env_label} {pretty} run {int(i) + 1}/{int(args.runs)}")
+                    trace_path = None
+                    if bool(getattr(args, "forest_policy_save_traces", False)) and isinstance(env, AMRBicycleEnv):
+                        trace_path = out_dir / "traces" / f"{_safe_slug(env_case)}__{_safe_slug(pretty)}__run{int(i)}.csv"
                     roll = rollout_agent(
                         env,
                         agents[algo_key],
@@ -1535,6 +1865,7 @@ def main(argv: list[str] | None = None) -> int:
                         forest_min_od_m=float(args.forest_min_od_m),
                         forest_min_progress_m=float(args.forest_min_progress_m),
                         collect_controls=bool(int(i) in control_run_indices),
+                        trace_path=trace_path,
                     )
                     algo_times.append(float(roll.compute_time_s))
                     if int(i) in path_run_indices:
@@ -1626,10 +1957,24 @@ def main(argv: list[str] | None = None) -> int:
                 ha_plan_times: list[float] = []
                 ha_track_times: list[float] = []
                 ha_total_times: list[float] = []
+                ha_fail_reasons: dict[str, int] = {}
+                ha_track_fail_reasons: dict[str, int] = {}
                 ha_success = 0
 
                 n_runs = int(args.runs) if use_random_pairs else 1
-                for i in range(n_runs):
+                progress_write(f"[infer] {env_label} baseline Hybrid A* ({n_runs} run(s))")
+                base_iter = range(n_runs)
+                if tqdm is not None:
+                    base_iter = tqdm(
+                        base_iter,
+                        desc=f"{env_label} Hybrid A*",
+                        unit="run",
+                        dynamic_ncols=True,
+                        leave=True,
+                    )
+                for i in base_iter:
+                    if tqdm is None:
+                        progress_write(f"[infer] {env_label} Hybrid A* run {int(i) + 1}/{int(n_runs)}")
                     start_xy, goal_xy, r_opts = pair_for_run(int(i))
                     if precomputed_hybrid_paths is not None and use_random_pairs and int(i) < len(precomputed_hybrid_paths):
                         res = precomputed_hybrid_paths[int(i)]
@@ -1640,62 +1985,65 @@ def main(argv: list[str] | None = None) -> int:
                             params=params,
                             start_xy=start_xy,
                             goal_xy=goal_xy,
-                            goal_theta_rad=0.0,
+                            goal_theta_rad=None,
                             start_theta_rad=start_theta_rad,
                             goal_xy_tol_m=goal_xy_tol_m,
                             goal_theta_tol_rad=goal_theta_tol_rad,
                             timeout_s=float(args.baseline_timeout),
                             max_nodes=int(args.hybrid_max_nodes),
                         )
-                    ha_exec_path = list(res.path_xy_cells)
-                    ha_reached = bool(res.success)
+                    ha_plan_path = list(res.path_xy_cells)
+                    ha_plan_success = bool(res.success)
+                    ha_exec_path = list(ha_plan_path)
+                    ha_reached = bool(ha_plan_success)
                     ha_track_time_s = 0.0
                     ha_path_time_s = float("nan")
-                    if bool(res.success) and isinstance(env, AMRBicycleEnv) and bool(getattr(args, "forest_baseline_rollout", False)):
-                        controller = str(getattr(args, "forest_baseline_controller", "discrete")).lower().strip()
-                        if controller == "mpc":
-                            trace_path = None
-                            if bool(getattr(args, "forest_baseline_save_traces", False)):
-                                trace_path = out_dir / "traces" / f"{_safe_slug(env_case)}__Hybrid_A__run{int(i)}.csv"
-                            roll = rollout_tracked_path_mpc(
-                                env,
-                                ha_exec_path,
-                                max_steps=args.max_steps,
-                                seed=args.seed + 30_000 + i,
-                                reset_options=r_opts,
-                                time_mode=str(getattr(args, "kpi_time_mode", "policy")),
-                                trace_path=trace_path,
-                                n_candidates=int(getattr(args, "forest_baseline_mpc_candidates", 256)),
-                                collect_controls=bool(int(i) in control_run_indices),
-                            )
-                            ha_exec_path = list(roll.path_xy_cells)
-                            ha_track_time_s = float(roll.compute_time_s)
-                            ha_reached = bool(roll.reached)
-                            ha_path_time_s = float(roll.path_time_s)
-                            if int(i) in control_run_indices and roll.controls is not None:
-                                controls_for_plot.setdefault((env_name, int(i)), {})["Hybrid A*"] = roll.controls
-                        else:
-                            roll = rollout_tracked_path(
-                                env,
-                                ha_exec_path,
-                                max_steps=args.max_steps,
-                                seed=args.seed + 30_000 + i,
-                                reset_options=r_opts,
-                                time_mode=str(getattr(args, "kpi_time_mode", "policy")),
-                                collect_controls=bool(int(i) in control_run_indices),
-                            )
-                            ha_exec_path = list(roll.path_xy_cells)
-                            ha_track_time_s = float(roll.compute_time_s)
-                            ha_reached = bool(roll.reached)
-                            ha_path_time_s = float(roll.path_time_s)
-                            if int(i) in control_run_indices and roll.controls is not None:
-                                controls_for_plot.setdefault((env_name, int(i)), {})["Hybrid A*"] = roll.controls
+                    ha_tracked = False
+                    if not bool(ha_plan_success):
+                        reason = res.stats.get("failure_reason", "unknown")
+                        reason = "unknown" if reason is None else str(reason)
+                        ha_fail_reasons[reason] = int(ha_fail_reasons.get(reason, 0)) + 1
+                    if bool(ha_plan_success) and isinstance(env, AMRBicycleEnv) and bool(getattr(args, "forest_baseline_rollout", False)):
+                        trace_path = None
+                        if bool(getattr(args, "forest_baseline_save_traces", False)):
+                            trace_path = out_dir / "traces" / f"{_safe_slug(env_case)}__Hybrid_A__run{int(i)}.csv"
+                        roll = rollout_tracked_path_mpc(
+                            env,
+                            ha_plan_path,
+                            max_steps=args.max_steps,
+                            seed=args.seed + 30_000 + i,
+                            reset_options=r_opts,
+                            time_mode=str(getattr(args, "kpi_time_mode", "policy")),
+                            trace_path=trace_path,
+                            osqp_max_iter=(
+                                int(getattr(args, "forest_baseline_mpc_candidates", 0))
+                                if int(getattr(args, "forest_baseline_mpc_candidates", 0)) > 0
+                                else None
+                            ),
+                            collect_controls=bool(int(i) in control_run_indices),
+                        )
+                        ha_exec_path = list(roll.path_xy_cells)
+                        ha_track_time_s = float(roll.compute_time_s)
+                        ha_reached = bool(roll.reached)
+                        ha_path_time_s = float(roll.path_time_s)
+                        if not bool(ha_reached):
+                            reason = "collision" if bool(roll.collision) else ("timeout" if bool(roll.truncated) else "unknown")
+                            ha_track_fail_reasons[reason] = int(ha_track_fail_reasons.get(reason, 0)) + 1
+                        if int(i) in control_run_indices and roll.controls is not None:
+                            controls_for_plot.setdefault((env_name, int(i)), {})["Hybrid A*-MPC"] = roll.controls
+                        ha_tracked = True
 
                     ha_plan_times.append(float(res.time_s))
                     ha_track_times.append(float(ha_track_time_s))
                     ha_total_times.append(float(res.time_s) + float(ha_track_time_s))
                     if int(i) in path_run_indices:
-                        env_paths_by_run[int(i)]["Hybrid A*"] = PathTrace(path_xy_cells=ha_exec_path, success=bool(ha_reached))
+                        env_paths_by_run[int(i)]["Hybrid A*"] = PathTrace(
+                            path_xy_cells=ha_plan_path, success=bool(ha_plan_success)
+                        )
+                        if bool(ha_tracked):
+                            env_paths_by_run[int(i)]["Hybrid A*-MPC"] = PathTrace(
+                                path_xy_cells=ha_exec_path, success=bool(ha_reached)
+                            )
 
                     raw_corners = float(num_path_corners(ha_exec_path, angle_threshold_deg=13.0))
                     smoothed = smooth_path(ha_exec_path, iterations=2)
@@ -1745,14 +2093,38 @@ def main(argv: list[str] | None = None) -> int:
                         **k_dict,
                     }
                 )
+                if ha_fail_reasons:
+                    items = ", ".join(f"{k}={v}" for k, v in sorted(ha_fail_reasons.items()))
+                    progress_write(
+                        f"[infer] {env_label} Hybrid A* failures: {items} "
+                        f"(timeout={float(args.baseline_timeout):.2f}s, max_nodes={int(args.hybrid_max_nodes)})."
+                    )
+                if bool(getattr(args, "forest_baseline_rollout", False)) and ha_track_fail_reasons:
+                    items = ", ".join(f"{k}={v}" for k, v in sorted(ha_track_fail_reasons.items()))
+                    progress_write(f"[infer] {env_label} Hybrid A*-MPC failures: {items}.")
 
             if "rrt_star" in baselines:
                 rrt_kpis: list[KPI] = []
                 rrt_plan_times: list[float] = []
                 rrt_track_times: list[float] = []
                 rrt_total_times: list[float] = []
+                rrt_fail_reasons: dict[str, int] = {}
+                rrt_track_fail_reasons: dict[str, int] = {}
                 rrt_success = 0
-                for i in range(args.runs):
+                n_runs = int(args.runs)
+                progress_write(f"[infer] {env_label} baseline RRT* ({n_runs} run(s))")
+                base_iter = range(n_runs)
+                if tqdm is not None:
+                    base_iter = tqdm(
+                        base_iter,
+                        desc=f"{env_label} RRT*",
+                        unit="run",
+                        dynamic_ncols=True,
+                        leave=True,
+                    )
+                for i in base_iter:
+                    if tqdm is None:
+                        progress_write(f"[infer] {env_label} RRT* run {int(i) + 1}/{int(n_runs)}")
                     start_xy, goal_xy, r_opts = pair_for_run(int(i))
                     res = plan_rrt_star(
                         grid_map=grid_map,
@@ -1760,7 +2132,7 @@ def main(argv: list[str] | None = None) -> int:
                         params=params,
                         start_xy=start_xy,
                         goal_xy=goal_xy,
-                        goal_theta_rad=0.0,
+                        goal_theta_rad=None,
                         start_theta_rad=start_theta_rad,
                         goal_xy_tol_m=goal_xy_tol_m,
                         goal_theta_tol_rad=goal_theta_tol_rad,
@@ -1768,55 +2140,56 @@ def main(argv: list[str] | None = None) -> int:
                         max_iter=int(args.rrt_max_iter),
                         seed=args.seed + 30_000 + i,
                     )
-                    exec_path = list(res.path_xy_cells)
-                    reached = bool(res.success)
+                    plan_path = list(res.path_xy_cells)
+                    plan_success = bool(res.success)
+                    exec_path = list(plan_path)
+                    reached = bool(plan_success)
                     track_time_s = 0.0
                     path_time_s = float("nan")
-                    if bool(res.success) and isinstance(env, AMRBicycleEnv) and bool(getattr(args, "forest_baseline_rollout", False)):
-                        controller = str(getattr(args, "forest_baseline_controller", "discrete")).lower().strip()
-                        if controller == "mpc":
-                            trace_path = None
-                            if bool(getattr(args, "forest_baseline_save_traces", False)):
-                                trace_path = out_dir / "traces" / f"{_safe_slug(env_case)}__RRT__run{int(i)}.csv"
-                            roll = rollout_tracked_path_mpc(
-                                env,
-                                exec_path,
-                                max_steps=args.max_steps,
-                                seed=args.seed + 40_000 + i,
-                                reset_options=r_opts,
-                                time_mode=str(getattr(args, "kpi_time_mode", "policy")),
-                                trace_path=trace_path,
-                                n_candidates=int(getattr(args, "forest_baseline_mpc_candidates", 256)),
-                                collect_controls=bool(int(i) in control_run_indices),
-                            )
-                            exec_path = list(roll.path_xy_cells)
-                            track_time_s = float(roll.compute_time_s)
-                            reached = bool(roll.reached)
-                            path_time_s = float(roll.path_time_s)
-                            if int(i) in control_run_indices and roll.controls is not None:
-                                controls_for_plot.setdefault((env_name, int(i)), {})["RRT*"] = roll.controls
-                        else:
-                            roll = rollout_tracked_path(
-                                env,
-                                exec_path,
-                                max_steps=args.max_steps,
-                                seed=args.seed + 40_000 + i,
-                                reset_options=r_opts,
-                                time_mode=str(getattr(args, "kpi_time_mode", "policy")),
-                                collect_controls=bool(int(i) in control_run_indices),
-                            )
-                            exec_path = list(roll.path_xy_cells)
-                            track_time_s = float(roll.compute_time_s)
-                            reached = bool(roll.reached)
-                            path_time_s = float(roll.path_time_s)
-                            if int(i) in control_run_indices and roll.controls is not None:
-                                controls_for_plot.setdefault((env_name, int(i)), {})["RRT*"] = roll.controls
+                    rrt_tracked = False
+                    if not bool(plan_success):
+                        reason = res.stats.get("failure_reason", "unknown")
+                        reason = "unknown" if reason is None else str(reason)
+                        rrt_fail_reasons[reason] = int(rrt_fail_reasons.get(reason, 0)) + 1
+                    if bool(plan_success) and isinstance(env, AMRBicycleEnv) and bool(getattr(args, "forest_baseline_rollout", False)):
+                        trace_path = None
+                        if bool(getattr(args, "forest_baseline_save_traces", False)):
+                            trace_path = out_dir / "traces" / f"{_safe_slug(env_case)}__RRT__run{int(i)}.csv"
+                        roll = rollout_tracked_path_mpc(
+                            env,
+                            plan_path,
+                            max_steps=args.max_steps,
+                            seed=args.seed + 40_000 + i,
+                            reset_options=r_opts,
+                            time_mode=str(getattr(args, "kpi_time_mode", "policy")),
+                            trace_path=trace_path,
+                            osqp_max_iter=(
+                                int(getattr(args, "forest_baseline_mpc_candidates", 0))
+                                if int(getattr(args, "forest_baseline_mpc_candidates", 0)) > 0
+                                else None
+                            ),
+                            collect_controls=bool(int(i) in control_run_indices),
+                        )
+                        exec_path = list(roll.path_xy_cells)
+                        track_time_s = float(roll.compute_time_s)
+                        reached = bool(roll.reached)
+                        path_time_s = float(roll.path_time_s)
+                        if not bool(reached):
+                            reason = "collision" if bool(roll.collision) else ("timeout" if bool(roll.truncated) else "unknown")
+                            rrt_track_fail_reasons[reason] = int(rrt_track_fail_reasons.get(reason, 0)) + 1
+                        if int(i) in control_run_indices and roll.controls is not None:
+                            controls_for_plot.setdefault((env_name, int(i)), {})["RRT-MPC"] = roll.controls
+                        rrt_tracked = True
 
                     rrt_plan_times.append(float(res.time_s))
                     rrt_track_times.append(float(track_time_s))
                     rrt_total_times.append(float(res.time_s) + float(track_time_s))
                     if int(i) in path_run_indices:
-                        env_paths_by_run[int(i)]["RRT*"] = PathTrace(path_xy_cells=exec_path, success=bool(reached))
+                        env_paths_by_run[int(i)]["RRT"] = PathTrace(path_xy_cells=plan_path, success=bool(plan_success))
+                        if bool(rrt_tracked):
+                            env_paths_by_run[int(i)]["RRT-MPC"] = PathTrace(
+                                path_xy_cells=exec_path, success=bool(reached)
+                            )
 
                     raw_corners = float(num_path_corners(exec_path, angle_threshold_deg=13.0))
                     smoothed = smooth_path(exec_path, iterations=2)
@@ -1866,6 +2239,15 @@ def main(argv: list[str] | None = None) -> int:
                         **k_dict,
                     }
                 )
+                if rrt_fail_reasons:
+                    items = ", ".join(f"{k}={v}" for k, v in sorted(rrt_fail_reasons.items()))
+                    progress_write(
+                        f"[infer] {env_label} RRT* failures: {items} "
+                        f"(timeout={float(args.baseline_timeout):.2f}s, max_iter={int(args.rrt_max_iter)})."
+                    )
+                if bool(getattr(args, "forest_baseline_rollout", False)) and rrt_track_fail_reasons:
+                    items = ", ".join(f"{k}={v}" for k, v in sorted(rrt_track_fail_reasons.items()))
+                    progress_write(f"[infer] {env_label} RRT-MPC failures: {items}.")
         for run_idx, run_paths in env_paths_by_run.items():
             paths_for_plot[(env_name, int(run_idx))] = dict(run_paths)
 
@@ -2058,7 +2440,12 @@ def main(argv: list[str] | None = None) -> int:
         "DDQN": dict(color="tab:orange", linestyle="-", linewidth=2.0),
         # Baselines.
         "Hybrid A*": dict(color="tab:purple", linestyle="-", linewidth=2.0),
+        "Hybrid A*-MPC": dict(color="tab:purple", linestyle="--", linewidth=2.0),
+        "RRT": dict(color="tab:brown", linestyle="-", linewidth=2.0),
+        "RRT-MPC": dict(color="tab:brown", linestyle="--", linewidth=2.0),
+        # Back-compat labels.
         "RRT*": dict(color="tab:brown", linestyle="-", linewidth=2.0),
+        "RRT*-MPC": dict(color="tab:brown", linestyle="--", linewidth=2.0),
     }
 
     def write_paths_figure(

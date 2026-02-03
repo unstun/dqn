@@ -1,20 +1,16 @@
 {
-  "_comment": "Profile: forest_a_all6_300_cuda (train 300 eps on CUDA; infer vs Hybrid A* + RRT* baselines). Usage: conda run -n ros2py310 python train.py --profile forest_a_all6_300_cuda ; conda run -n ros2py310 python infer.py --profile forest_a_all6_300_cuda",
+  "_comment": "Profile: forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck (cnn-ddqn only; inference includes Hybrid A* + RRT*). Usage: conda run -n ros2py310 python train.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck ; conda run -n ros2py310 python infer.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck",
   "train": {
     "envs": [
       "forest_a"
     ],
-    "out": "forest_a_all6_300_cuda",
+    "out": "forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck",
     "rl_algos": [
-      "mlp-dqn",
-      "mlp-ddqn",
-      "mlp-pddqn",
-      "cnn-dqn",
-      "cnn-ddqn",
-      "cnn-pddqn"
+      "cnn-ddqn"
     ],
     "episodes": 300,
     "max_steps": 600,
+    "no_terminate_on_stuck": true,
     "forest_random_start_goal": true,
     "forest_rand_min_cost_m": 6.0,
     "forest_rand_edge_margin_m": 3.0,
@@ -31,33 +27,39 @@
     "goal_angle_tolerance_deg": 180.0,
     "goal_stop_speed_m_s": 0.1,
     "goal_stop_delta_deg": 3.0,
+    "replay_stratified": true,
+    "replay_frac_demo": 0.1,
+    "replay_frac_goal": 0.2,
+    "replay_frac_stuck": 0.2,
+    "replay_frac_hazard": 0.2,
+    "replay_near_goal_factor": 2.0,
+    "replay_hazard_od_m": 0.4,
     "learning_starts": 5000,
+    "save_ckpt": "final",
     "device": "cuda",
     "cuda_device": 0,
     "seed": 0,
-    "progress": false
+    "progress": true
   },
   "infer": {
     "envs": [
       "forest_a"
     ],
-    "models": "forest_a_all6_300_cuda",
-    "out": "forest_a_all6_300_cuda",
+    "models": "forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck",
+    "out": "forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck",
     "rl_algos": [
-      "mlp-dqn",
-      "mlp-ddqn",
-      "mlp-pddqn",
-      "cnn-dqn",
-      "cnn-ddqn",
-      "cnn-pddqn"
+      "cnn-ddqn"
     ],
     "baselines": [
-      "all"
+      "hybrid_astar",
+      "rrt_star"
     ],
+    "baseline_timeout": 60.0,
     "forest_baseline_rollout": true,
     "random_start_goal": true,
     "rand_two_suites": true,
     "runs": 10,
+    "progress": true,
     "plot_pair_runs": true,
     "plot_pair_runs_max": 10,
     "forest_action_delta_dot_bins": 15,
@@ -68,15 +70,17 @@
     "rand_long_max_cost_m": 0.0,
     "rand_edge_margin_m": 3.0,
     "rand_reject_unreachable": false,
+    "rand_reject_policy": "none",
     "rand_tries": 400,
     "max_steps": 600,
+    "no_terminate_on_stuck": true,
     "goal_tolerance_m": 1.0,
     "goal_angle_tolerance_deg": 180.0,
     "goal_stop_speed_m_s": 0.1,
     "goal_stop_delta_deg": 3.0,
     "kpi_time_mode": "policy",
-    "device": "cuda",
+    "device": "auto",
     "cuda_device": 0,
-    "seed": 0
+    "seed": 33
   }
 }

@@ -22,6 +22,10 @@ conda run -n ros2py310 python infer.py --self-check
 conda run -n ros2py310 python train.py --profile forest_a_all6_300_cuda
 conda run -n ros2py310 python infer.py --profile forest_a_all6_300_cuda
 ```
-
+python train.py --profile forest_a_all6_300_cuda_latest_final_no_stuck
+python infer.py --profile forest_a_all6_300_cuda_latest_final_no_stuck
+only cnn-pddqn
+conda run -n ros2py310 python train.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck
+conda run -n ros2py310 python infer.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck
 更完整的命令示例与参数说明见：`runtxt.md`。
 

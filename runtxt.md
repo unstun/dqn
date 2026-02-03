@@ -114,6 +114,10 @@ Training always runs **both** algorithms (DQN and DDQN) for every env in `--envs
 - `--episodes` (default: `1000`): Episodes per env per algorithm.
   - Increase for more learning; decrease for quick smoke tests.
 - `--max-steps` (default: `600`): Max steps per episode before time-limit truncation.
+- `--goal-tolerance-m` (default: `1.0`): Forest-only positional tolerance (meters) for counting "at goal".
+- `--goal-stop-speed-m-s` (default: `0.05`): Forest-only max `|v|` (m/s) for counting "stopped at goal".
+- `--goal-stop-delta-deg` (default: `1.0`): Forest-only max `|delta|` (degrees) for counting "wheels straight at goal".
+- `--goal-angle-tolerance-deg` (default: `180.0`): Forest-only heading tolerance (degrees) for counting "at goal" (180 disables).
 
 ### A.3 Observation / geometry parameters
 
@@ -208,6 +212,7 @@ These affect the environment observation vector and therefore model checkpoint c
 - `--sensor-range` (default: `6`): Same meaning as training. Must match the training setting for the checkpoints you are loading.
 - `--n-sectors` (default: `36`): Forest-only; must match training.
 - `--cell-size` (default: `1.0`): Ignored for forest envs (kept for backwards compatibility).
+- `--goal-tolerance-m` / `--goal-stop-speed-m-s` / `--goal-stop-delta-deg` / `--goal-angle-tolerance-deg`: Forest-only; must match training if you want comparable success rates/KPIs.
 
 ### B.3 KPI averaging / randomness
 
@@ -233,9 +238,9 @@ These affect the environment observation vector and therefore model checkpoint c
 - `--hybrid-max-nodes` (default: `200000`): Hybrid A* node budget.
 - `--rrt-max-iter` (default: `5000`): RRT* iteration budget.
 - `--forest-baseline-rollout` (default: enabled): Forest-only; roll out a baseline tracking controller on planned paths and include tracking compute in `inference_time_s` (disable with `--no-forest-baseline-rollout`).
-  - `--forest-baseline-controller` (default: `discrete`): `discrete` enumerates the env action table; `mpc` samples continuous controls and steps via `AMRBicycleEnv.step_continuous()`.
-  - `--forest-baseline-mpc-candidates` (default: `256`): MPC samples per control step (when controller is `mpc`).
-  - `--forest-baseline-save-traces` (default: disabled): Save per-run executed baseline trajectories to `<run_dir>/traces/*.csv` (forest-only, MPC controller).
+  - Baseline tracking uses a QP-based MPC via `qpmpc` + OSQP. Install: `pip install qpmpc "qpsolvers[osqp]"`.
+  - `--forest-baseline-mpc-candidates` (default: `512`): Legacy knob kept for configs; forwarded to OSQP as `max_iter` (<=0 uses solver default).
+  - `--forest-baseline-save-traces` (default: disabled): Save per-run executed baseline trajectories to `<run_dir>/traces/*.csv` (forest-only).
 
 ---
 

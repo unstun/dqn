@@ -40,7 +40,7 @@ def main() -> int:
             params=params,
             start_xy=spec.start_xy,
             goal_xy=spec.goal_xy,
-            goal_theta_rad=0.0,
+            goal_theta_rad=None,
             start_theta_rad=None,
             goal_xy_tol_m=0.5,
             goal_theta_tol_rad=float(math.pi),

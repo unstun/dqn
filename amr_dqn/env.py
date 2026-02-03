@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import cv2
-import gym
+try:
+    import gymnasium as gym
+except ImportError:  # pragma: no cover
+    import gym  # type: ignore
 import numpy as np
 
 from amr_dqn.maps import MapSpec
@@ -249,20 +252,49 @@ class BicycleModelParams:
 
 def build_ackermann_action_table_35(*, delta_dot_max_rad_s: float, a_max_m_s2: float) -> np.ndarray:
     """Returns (35, 2) array with columns [delta_dot(rad/s), a(m/s^2)]."""
+    return build_ackermann_action_table(
+        delta_dot_max_rad_s=float(delta_dot_max_rad_s),
+        a_max_m_s2=float(a_max_m_s2),
+        n_delta_dots=7,
+        n_accels=5,
+    )
+
+
+def build_ackermann_action_table(
+    *,
+    delta_dot_max_rad_s: float,
+    a_max_m_s2: float,
+    n_delta_dots: int = 7,
+    n_accels: int = 5,
+) -> np.ndarray:
+    """Return (n_delta_dots*n_accels, 2) array with columns [delta_dot(rad/s), a(m/s^2)]."""
+
+    n_dd = int(n_delta_dots)
+    n_a = int(n_accels)
+    if n_dd < 1:
+        raise ValueError("n_delta_dots must be >= 1")
+    if n_a < 1:
+        raise ValueError("n_accels must be >= 1")
+
     dd = float(delta_dot_max_rad_s)
     aa = float(a_max_m_s2)
-    delta_dots = np.array(
-        [-dd, -(2.0 / 3.0) * dd, -(1.0 / 3.0) * dd, 0.0, (1.0 / 3.0) * dd, (2.0 / 3.0) * dd, dd],
-        dtype=np.float32,
-    )
-    accels = np.array([-aa, -0.5 * aa, 0.0, 0.5 * aa, aa], dtype=np.float32)
-    table = np.zeros((delta_dots.size * accels.size, 2), dtype=np.float32)
-    k = 0
-    for d_dot in delta_dots:
-        for a in accels:
-            table[k, 0] = float(d_dot)
-            table[k, 1] = float(a)
-            k += 1
+    if n_dd == 1:
+        delta_dots = np.array([0.0], dtype=np.float32)
+    elif n_dd == 2:
+        raise ValueError("n_delta_dots=2 cannot include 0 while preserving both +/-; use an odd number >= 3")
+    else:
+        delta_dots = np.linspace(-dd, dd, num=n_dd, dtype=np.float32)
+        delta_dots[int(np.argmin(np.abs(delta_dots)))] = 0.0
+
+    if n_a == 1:
+        accels = np.array([0.0], dtype=np.float32)
+    elif n_a == 2:
+        raise ValueError("n_accels=2 cannot include 0 while preserving both +/-; use an odd number >= 3")
+    else:
+        accels = np.linspace(-aa, aa, num=n_a, dtype=np.float32)
+        accels[int(np.argmin(np.abs(accels)))] = 0.0
+    d_grid, a_grid = np.meshgrid(delta_dots, accels, indexing="ij")
+    table = np.stack([d_grid, a_grid], axis=-1).reshape(-1, 2).astype(np.float32, copy=False)
     return table
 
 
@@ -589,6 +621,9 @@ class AMRBicycleEnv(gym.Env):
         # and short-horizon safety shields (the paper's 0.30m can be hard to hit exactly).
         goal_tolerance_m: float = 1,
         goal_angle_tolerance_deg: float = 180.0,
+        # To count as "reached", require the vehicle to come to a stop and straighten the wheels.
+        goal_stop_speed_m_s: float = 0.05,
+        goal_stop_delta_deg: float = 1.0,
         reward_k_p: float = 12.0,
         reward_k_t: float = 0.1,
         reward_k_delta: float = 1.5,
@@ -598,16 +633,38 @@ class AMRBicycleEnv(gym.Env):
         reward_k_v: float = 2.0,
         reward_k_c: float = 0.0,
         reward_obs_max: float = 10.0,
+        # Goal-alignment shaping: once inside the goal region, make "stop + straighten"
+        # the dominant optimum (prevents "touch goal then dither until timeout").
+        reward_goal_v: float = 0.8,
+        reward_goal_delta: float = 0.8,
+        reward_goal_time: float = 0.4,
+        reward_goal_leave: float = 50.0,
+        # Terminal rewards (additive).
+        reward_reached: float = 1000.0,
+        reward_collision: float = -200.0,
+        terminate_on_stuck: bool = True,
         stuck_steps: int = 20,
         stuck_min_disp_m: float = 0.02,
         stuck_min_speed_m_s: float = 0.05,
         stuck_penalty: float = 300.0,
+        reverse_v_min_m_s: float = 0.10,
+        reverse_risk_od_m: float | None = None,
+        reverse_no_progress_steps: int | None = None,
+        reverse_progress_eps_m: float = 1e-3,
+        action_delta_dot_bins: int = 7,
+        action_accel_bins: int = 5,
     ) -> None:
         super().__init__()
 
         self.map_spec = map_spec
         self._grid = map_spec.obstacle_grid().astype(np.uint8, copy=False)  # (H, W), y=0 bottom
         self._height, self._width = self._grid.shape
+        xs_i = np.arange(self._width, dtype=np.int32).reshape(1, -1)
+        ys_i = np.arange(self._height, dtype=np.int32).reshape(-1, 1)
+        self._edge_dist_cells = np.minimum(
+            np.minimum(xs_i, int(self._width - 1) - xs_i),
+            np.minimum(ys_i, int(self._height - 1) - ys_i),
+        ).astype(np.int32, copy=False)
         self._canonical_start_xy = (int(map_spec.start_xy[0]), int(map_spec.start_xy[1]))
         self._canonical_goal_xy = (int(map_spec.goal_xy[0]), int(map_spec.goal_xy[1]))
         self.start_xy = (int(self._canonical_start_xy[0]), int(self._canonical_start_xy[1]))
@@ -646,6 +703,13 @@ class AMRBicycleEnv(gym.Env):
         self.goal_angle_tolerance_rad = float(math.radians(float(goal_angle_tolerance_deg)))
         if not (0.0 < self.goal_angle_tolerance_rad <= math.pi):
             raise ValueError("goal_angle_tolerance_deg must be in (0, 180]")
+        self.goal_stop_speed_m_s = float(goal_stop_speed_m_s)
+        if self.goal_stop_speed_m_s < 0.0:
+            raise ValueError("goal_stop_speed_m_s must be >= 0")
+        self.goal_stop_delta_rad = float(math.radians(float(goal_stop_delta_deg)))
+        if self.goal_stop_delta_rad < 0.0:
+            raise ValueError("goal_stop_delta_deg must be >= 0")
+        self.goal_stop_delta_rad = min(self.goal_stop_delta_rad, float(self.model.delta_max_rad))
 
         # Precompute EDT + cost-to-go once (forest maps are static).
         self._eps_cell_m = float(math.sqrt(2.0) * 0.5 * self.cell_size_m)
@@ -710,7 +774,14 @@ class AMRBicycleEnv(gym.Env):
         self.reward_k_v = float(reward_k_v)
         self.reward_k_c = float(reward_k_c)
         self.reward_obs_max = float(reward_obs_max)
+        self.reward_goal_v = float(reward_goal_v)
+        self.reward_goal_delta = float(reward_goal_delta)
+        self.reward_goal_time = float(reward_goal_time)
+        self.reward_goal_leave = float(reward_goal_leave)
+        self.reward_reached = float(reward_reached)
+        self.reward_collision = float(reward_collision)
         self.reward_eps = 1e-3
+        self.terminate_on_stuck = bool(terminate_on_stuck)
         self.stuck_steps = int(stuck_steps)
         if self.stuck_steps < 1:
             raise ValueError("stuck_steps must be >= 1")
@@ -724,9 +795,35 @@ class AMRBicycleEnv(gym.Env):
         if not (self.stuck_penalty >= 0.0):
             raise ValueError("stuck_penalty must be >= 0")
 
-        self.action_table = build_ackermann_action_table_35(
+        self.reverse_v_min_m_s = float(reverse_v_min_m_s)
+        if not (self.reverse_v_min_m_s >= 0.0):
+            raise ValueError("reverse_v_min_m_s must be >= 0")
+        if reverse_risk_od_m is None:
+            reverse_risk_od_m = float(self.safe_distance_m)
+        self.reverse_risk_od_m = float(reverse_risk_od_m)
+        if not (self.reverse_risk_od_m >= 0.0):
+            raise ValueError("reverse_risk_od_m must be >= 0")
+        if reverse_no_progress_steps is None:
+            reverse_no_progress_steps = max(3, int(self.stuck_steps) // 2)
+        self.reverse_no_progress_steps = int(reverse_no_progress_steps)
+        if self.reverse_no_progress_steps < 0:
+            raise ValueError("reverse_no_progress_steps must be >= 0")
+        self.reverse_progress_eps_m = float(reverse_progress_eps_m)
+        if not (self.reverse_progress_eps_m >= 0.0):
+            raise ValueError("reverse_progress_eps_m must be >= 0")
+
+        self.action_delta_dot_bins = int(action_delta_dot_bins)
+        if self.action_delta_dot_bins < 1:
+            raise ValueError("action_delta_dot_bins must be >= 1")
+        self.action_accel_bins = int(action_accel_bins)
+        if self.action_accel_bins < 1:
+            raise ValueError("action_accel_bins must be >= 1")
+
+        self.action_table = build_ackermann_action_table(
             delta_dot_max_rad_s=float(model.delta_dot_max_rad_s),
             a_max_m_s2=float(model.a_max_m_s2),
+            n_delta_dots=int(self.action_delta_dot_bins),
+            n_accels=int(self.action_accel_bins),
         )
         self.action_space = gym.spaces.Discrete(int(self.action_table.shape[0]))
 
@@ -757,6 +854,8 @@ class AMRBicycleEnv(gym.Env):
 
         self._rng = np.random.default_rng()
         self._steps = 0
+        self._no_progress_steps = 0
+        self._in_goal_region_prev = False
 
         self._x_m = float(self.start_xy[0]) * self.cell_size_m
         self._y_m = float(self.start_xy[1]) * self.cell_size_m
@@ -768,9 +867,37 @@ class AMRBicycleEnv(gym.Env):
         self._last_od_m = 0.0
         self._last_collision = False
         self._stuck_pos_history: list[tuple[float, float]] = []
+        self._in_goal_region_prev: bool = False
         self._ha_path_cache: dict[tuple[int, int, int, int], list[tuple[float, float]]] = {}
         self._ha_progress_idx: int = 0
         self._ha_start_xy: tuple[int, int] = self.start_xy
+
+    def _goal_pose_reached(self, *, d_goal_m: float, alpha_rad: float) -> bool:
+        return (float(d_goal_m) <= float(self.goal_tolerance_m)) and (
+            abs(float(alpha_rad)) <= float(self.goal_angle_tolerance_rad)
+        )
+
+    def _goal_stop_reached(self, *, v_m_s: float, delta_rad: float) -> bool:
+        return (abs(float(v_m_s)) <= float(self.goal_stop_speed_m_s)) and (
+            abs(float(delta_rad)) <= float(self.goal_stop_delta_rad)
+        )
+
+    def _reverse_unlocked(self, *, min_od_m: float) -> bool:
+        # Avoid opening reverse during the near-goal "stop/straighten" phase.
+        reached_pose = bool(
+            self._goal_pose_reached(
+                d_goal_m=float(self._distance_to_goal_m()),
+                alpha_rad=float(self._goal_relative_angle_rad()),
+            )
+        )
+        if reached_pose:
+            return False
+
+        od_m = float(self._last_od_m)
+        od_thr = max(float(min_od_m), float(self.reverse_risk_od_m))
+        near_obstacle = math.isfinite(od_m) and (od_m >= 0.0) and (od_m < float(od_thr))
+        stagnating = int(self._no_progress_steps) >= int(self.reverse_no_progress_steps)
+        return bool(near_obstacle or stagnating)
 
     @property
     def grid(self) -> np.ndarray:
@@ -860,6 +987,7 @@ class AMRBicycleEnv(gym.Env):
         max_cost_m: float | None,
         fixed_prob: float,
         tries: int,
+        edge_margin_m: float,
     ) -> tuple[tuple[int, int], tuple[int, int]]:
         if self._rand_free_xy.size == 0:
             return self._canonical_start_xy, self._canonical_goal_xy
@@ -873,10 +1001,51 @@ class AMRBicycleEnv(gym.Env):
         min_cost = max(0.0, float(min_cost_m))
         max_cost = None if max_cost_m is None else max(0.0, float(max_cost_m))
         n_tries = max(1, int(tries))
+        edge_margin_cells = 0
+        if float(edge_margin_m) > 0.0:
+            edge_margin_cells = int(math.ceil(float(edge_margin_m) / float(self.cell_size_m)))
+        max_edge_margin = max(0, (min(int(self._width), int(self._height)) // 2) - 1)
+        edge_margin_cells = int(np.clip(int(edge_margin_cells), 0, int(max_edge_margin)))
+
+        # Performance note:
+        # Sampling "very long" start/goal pairs can be extremely expensive if we pick goals uniformly
+        # over the map and then run a full Dijkstra cost-to-go for each rejected goal. This happens
+        # in large forests when `min_cost_m` is close to the maximum achievable cost under the
+        # edge-margin constraint (e.g., long-suite sampling).
+        #
+        # To keep sampling tractable, bias goal sampling toward corner regions (within the allowed
+        # edge margin) when the constraint is tight. This dramatically increases the probability
+        # that a sampled goal has any valid starts with cost>=min_cost.
+        goal_xy_choices = self._rand_free_xy
+        if edge_margin_cells > 0:
+            # `edge_dist_cells` is min distance to any edge; requiring >= edge_margin_cells implies
+            # distance to both x-edges and y-edges is >= edge_margin_cells.
+            edge_ok = self._edge_dist_cells[goal_xy_choices[:, 1], goal_xy_choices[:, 0]] >= int(edge_margin_cells)
+            goal_xy_choices = goal_xy_choices[edge_ok]
+
+        if goal_xy_choices.size > 0 and min_cost > 0.0 and edge_margin_cells > 0:
+            w_eff_cells = max(0, (int(self._width) - 1) - 2 * int(edge_margin_cells))
+            h_eff_cells = max(0, (int(self._height) - 1) - 2 * int(edge_margin_cells))
+            diag_eff_m = float(math.hypot(float(w_eff_cells) * float(self.cell_size_m), float(h_eff_cells) * float(self.cell_size_m)))
+            tight = bool(diag_eff_m > 1e-9 and float(min_cost) >= 0.85 * float(diag_eff_m))
+            if tight:
+                slack_m = max(0.0, float(diag_eff_m) - float(min_cost))
+                # Keep a small minimum band so detour-heavy "long" pairs remain sampleable.
+                band_m = float(min(5.0, float(slack_m) + 2.0))
+                band_cells = int(max(1, int(math.ceil(float(band_m) / float(self.cell_size_m)))))
+                x = goal_xy_choices[:, 0].astype(np.int32, copy=False)
+                y = goal_xy_choices[:, 1].astype(np.int32, copy=False)
+                vx = np.minimum(x, int(self._width - 1) - x)
+                vy = np.minimum(y, int(self._height - 1) - y)
+                corner = (vx <= int(edge_margin_cells) + int(band_cells)) & (vy <= int(edge_margin_cells) + int(band_cells))
+                corner_xy = goal_xy_choices[corner]
+                if corner_xy.size > 0:
+                    goal_xy_choices = corner_xy
 
         for _ in range(n_tries):
-            gi = int(self._rng.integers(0, int(self._rand_free_xy.shape[0])))
-            gx, gy = (int(self._rand_free_xy[gi, 0]), int(self._rand_free_xy[gi, 1]))
+            xy_src = goal_xy_choices if goal_xy_choices.size > 0 else self._rand_free_xy
+            gi = int(self._rng.integers(0, int(xy_src.shape[0])))
+            gx, gy = (int(xy_src[gi, 0]), int(xy_src[gi, 1]))
 
             try:
                 self._set_goal_xy((gx, gy))
@@ -890,6 +1059,8 @@ class AMRBicycleEnv(gym.Env):
                 cand_mask &= costs >= float(min_cost)
             if max_cost is not None and max_cost > 0.0:
                 cand_mask &= costs <= float(max_cost)
+            if edge_margin_cells > 0:
+                cand_mask &= self._edge_dist_cells >= int(edge_margin_cells)
 
             sy, sx = np.where(cand_mask)
             if sx.size == 0:
@@ -943,6 +1114,7 @@ class AMRBicycleEnv(gym.Env):
             self._rng = np.random.default_rng(seed)
 
         self._steps = 0
+        self._no_progress_steps = 0
 
         # Default: canonical fixed start/goal (backwards compatible).
         start_xy = (int(self._canonical_start_xy[0]), int(self._canonical_start_xy[1]))
@@ -955,6 +1127,7 @@ class AMRBicycleEnv(gym.Env):
         rand_max_cost_m: float | None = None
         rand_fixed_prob = 0.0
         rand_tries = 200
+        rand_edge_margin_m = 0.0
 
         if options:
             if options.get("start_xy") is not None:
@@ -969,6 +1142,7 @@ class AMRBicycleEnv(gym.Env):
             rand_max_cost_m = None if max_raw is None else float(max_raw)
             rand_fixed_prob = float(options.get("rand_fixed_prob", 0.0))
             rand_tries = int(options.get("rand_tries", 200))
+            rand_edge_margin_m = float(options.get("rand_edge_margin_m", 0.0))
 
         if goal_override is not None:
             goal_xy = (int(goal_override[0]), int(goal_override[1]))
@@ -979,6 +1153,7 @@ class AMRBicycleEnv(gym.Env):
                 max_cost_m=rand_max_cost_m,
                 fixed_prob=float(rand_fixed_prob),
                 tries=int(rand_tries),
+                edge_margin_m=float(rand_edge_margin_m),
             )
         else:
             # Ensure env goal-dependent fields match the requested goal.
@@ -1136,19 +1311,40 @@ class AMRBicycleEnv(gym.Env):
         cost_after = self._cost_to_goal_pose_m(self._x_m, self._y_m, float(self._psi_rad))
         d_goal_after = self._distance_to_goal_m()
         alpha = self._goal_relative_angle_rad()
-        reached = (d_goal_after <= self.goal_tolerance_m) and (abs(alpha) <= self.goal_angle_tolerance_rad)
+        reached_pose = self._goal_pose_reached(d_goal_m=d_goal_after, alpha_rad=alpha)
+        reached_stop = self._goal_stop_reached(v_m_s=v_next, delta_rad=delta_next)
+        reached = bool(reached_pose and reached_stop)
 
         collision = bool(self._last_collision)
         od_m = float(self._last_od_m)
         truncated = self._steps >= self.max_steps
         terminated = bool(collision or reached)
 
+        # Track goal-region enter/leave transitions for shaping.
+        left_goal_region = bool(self._in_goal_region_prev) and (not bool(reached_pose))
+        self._in_goal_region_prev = bool(reached_pose)
+
+        # Track consecutive no-progress steps (used to unlock reverse actions for recovery).
+        if terminated or truncated or reached_pose:
+            self._no_progress_steps = 0
+        else:
+            if math.isfinite(cost_before) and math.isfinite(cost_after):
+                progress_m = float(cost_before - cost_after)
+            else:
+                progress_m = float(d_goal_before - d_goal_after)
+            if float(progress_m) >= float(self.reverse_progress_eps_m):
+                self._no_progress_steps = 0
+            else:
+                self._no_progress_steps += 1
+
         # Stuck detection (helps prevent in-place steering jitter / stopping forever).
         #
         # Use *windowed* displacement, not per-step displacement: with dt=0.05s the vehicle can
         # legitimately move <2cm per step at low speeds, so per-step thresholds cause false stuck.
         stuck = False
-        if not (terminated or truncated):
+        # When the pose goal is reached but the stop/straighten condition is not yet satisfied,
+        # allow the vehicle to remain in place without triggering the stuck terminator.
+        if not (terminated or truncated or reached_pose):
             self._stuck_pos_history.append((float(self._x_m), float(self._y_m)))
             max_hist = int(self.stuck_steps) + 1
             if len(self._stuck_pos_history) > max_hist:
@@ -1160,7 +1356,8 @@ class AMRBicycleEnv(gym.Env):
                 disp = float(math.hypot(float(x1) - float(x0), float(y1) - float(y0)))
                 if disp < float(self.stuck_min_disp_m):
                     stuck = True
-                    terminated = True
+                    if bool(self.terminate_on_stuck):
+                        terminated = True
 
         reward = 0.0
         # Progress (short)
@@ -1201,11 +1398,25 @@ class AMRBicycleEnv(gym.Env):
                 dv = max(0.0, float(v_next) - float(v_cap))
                 reward -= self.reward_k_c * float(dv) ** 2
 
+        # Goal alignment: once inside the goal region, make "stop + straighten" the dominant optimum.
+        if bool(reached_pose) and (not bool(reached_stop)) and (not bool(collision)):
+            v_thr = max(1e-6, float(self.goal_stop_speed_m_s))
+            d_thr = max(1e-6, float(self.goal_stop_delta_rad))
+            v_ratio2 = (abs(float(v_next)) / float(v_thr)) ** 2
+            d_ratio2 = (abs(float(delta_next)) / float(d_thr)) ** 2
+            reward -= float(self.reward_goal_v) * float(min(100.0, v_ratio2))
+            reward -= float(self.reward_goal_delta) * float(min(100.0, d_ratio2))
+            reward -= float(self.reward_goal_time)
+
+        # Penalize leaving the goal region after having been inside it ("touch then leave").
+        if bool(left_goal_region) and (not bool(collision)):
+            reward -= float(self.reward_goal_leave)
+
         # Terminal
         if collision:
-            reward -= 200.0
+            reward += float(self.reward_collision)
         elif reached:
-            reward += 400.0
+            reward += float(self.reward_reached)
         if stuck:
             reward -= float(self.stuck_penalty)
 
@@ -1219,6 +1430,8 @@ class AMRBicycleEnv(gym.Env):
             "pose_m": (self._x_m, self._y_m, self._psi_rad),
             "collision": bool(collision),
             "reached": bool(reached),
+            "reached_pose": bool(reached_pose),
+            "reached_stop": bool(reached_stop),
             "stuck": bool(stuck),
             "od_m": float(od_m),
             "d_goal_m": float(d_goal_after),
@@ -1280,11 +1493,12 @@ class AMRBicycleEnv(gym.Env):
         d1 = self._dist_at_m(c1[0], c1[1])
         d2 = self._dist_at_m(c2[0], c2[1])
         r = float(self.footprint.radius_m)
-        od_m = min(d1 - r, d2 - r)
-        # Collision when the footprint intersects an obstacle boundary (OD <= 0).
-        # The EDT already returns an approximate boundary distance (center-to-boundary), so adding an
-        # extra eps margin here can be overly conservative and cause false collisions in tight gaps.
-        collision = (d1 <= r) or (d2 <= r)
+        thr = r + float(self._eps_cell_m)
+        od_m = min(d1 - thr, d2 - thr)
+        # Collision when the footprint intersects an occupied grid cell square.
+        # The EDT is computed on the occupancy grid, so we pad by half the cell diagonal to account
+        # for map resolution (circle-vs-cell-square intersection).
+        collision = (d1 <= thr) or (d2 <= thr)
         return float(od_m), bool(collision)
 
     def _od_and_collision_at_pose_m(self, x_m: float, y_m: float, psi_rad: float) -> tuple[float, bool]:
@@ -1301,8 +1515,9 @@ class AMRBicycleEnv(gym.Env):
         d1 = self._dist_at_m(c1x, c1y)
         d2 = self._dist_at_m(c2x, c2y)
         r = float(self.footprint.radius_m)
-        od_m = min(float(d1) - r, float(d2) - r)
-        collision = (float(d1) <= r) or (float(d2) <= r)
+        thr = r + float(self._eps_cell_m)
+        od_m = min(float(d1) - thr, float(d2) - thr)
+        collision = (float(d1) <= thr) or (float(d2) <= thr)
         return float(od_m), bool(collision)
 
     def _od_and_collision_at_pose_m_vec(
@@ -1329,8 +1544,9 @@ class AMRBicycleEnv(gym.Env):
         d1 = self._dist_at_m_vec(c1x, c1y)
         d2 = self._dist_at_m_vec(c2x, c2y)
         r = float(self.footprint.radius_m)
-        od = np.minimum(d1 - r, d2 - r)
-        coll = (d1 <= r) | (d2 <= r)
+        thr = r + float(self._eps_cell_m)
+        od = np.minimum(d1 - thr, d2 - thr)
+        coll = (d1 <= thr) | (d2 <= thr)
 
         od = np.where(in_bounds, od, -float("inf")).astype(np.float64, copy=False)
         coll = np.where(in_bounds, coll, True).astype(np.bool_, copy=False)
@@ -1584,7 +1800,7 @@ class AMRBicycleEnv(gym.Env):
             params=params,
             start_xy=(int(start_xy[0]), int(start_xy[1])),
             goal_xy=(int(self.goal_xy[0]), int(self.goal_xy[1])),
-            goal_theta_rad=0.0,
+            goal_theta_rad=None,
             start_theta_rad=None,
             goal_xy_tol_m=float(self.goal_tolerance_m),
             goal_theta_tol_rad=float(math.pi),
@@ -1772,12 +1988,14 @@ class AMRBicycleEnv(gym.Env):
         if float(cost0 - cost1) >= float(min_progress_m):
             return True
 
-        # Allow backing up / reversing only when no forward-progress actions exist under the same
-        # short-horizon constraints. This avoids the degenerate near-goal behavior where the policy
-        # keeps selecting reverse/stop-like actions and triggers stuck termination.
+        # Reverse is primarily an "escape" maneuver. Besides the original fallback (no forward-progress
+        # actions), also allow safe reverse when clearance is small or the agent has stagnated for
+        # several steps so the policy can learn to back out.
         if bool(allow_reverse):
-            reverse_v_min = 0.10
+            reverse_v_min = float(self.reverse_v_min_m_s)
             if float(v_end) < -float(reverse_v_min):
+                if bool(self._reverse_unlocked(min_od_m=float(min_od_m))):
+                    return True
                 prog_mask = self.admissible_action_mask(
                     horizon_steps=h,
                     min_od_m=float(min_od_m),
@@ -1841,10 +2059,11 @@ class AMRBicycleEnv(gym.Env):
         safe = (~coll) & (min_od >= float(min_od_thr)) & np.isfinite(cost1)
         prog = ((float(cost0) - cost1) >= float(min_prog)) | reached
         out = safe & prog
-        if bool(allow_reverse) and not bool(out.any()):
-            # Only expose reverse actions when no progress actions exist.
-            reverse_v_min = 0.10
-            out = safe & (v_end < -float(reverse_v_min))
+        if bool(allow_reverse):
+            reverse_v_min = float(self.reverse_v_min_m_s)
+            reverse = safe & (v_end < -float(reverse_v_min))
+            if bool(self._reverse_unlocked(min_od_m=float(min_od_m))) or not bool(out.any()):
+                out = out | reverse
 
         # Fallback: if everything is filtered out, keep the collision-safe actions.
         if bool(fallback_to_safe) and not bool(out.any()):

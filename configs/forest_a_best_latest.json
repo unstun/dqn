@@ -20,6 +20,8 @@
     "forest_demo_pretrain_steps": 80000,
     "forest_expert_exploration": true,
     "forest_action_shield": true,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
     "learning_starts": 5000,
     "device": "auto",
     "cuda_device": 0,
@@ -39,7 +41,6 @@
       "all"
     ],
     "forest_baseline_rollout": true,
-    "forest_baseline_controller": "mpc",
     "forest_baseline_mpc_candidates": 256,
     "forest_baseline_save_traces": true,
     "random_start_goal": true,
@@ -54,6 +55,8 @@
     "rand_reject_unreachable": true,
     "kpi_time_mode": "policy",
     "max_steps": 1000,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
     "device": "auto",
     "cuda_device": 0,
     "seed": 22
