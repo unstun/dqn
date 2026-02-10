@@ -1,0 +1,80 @@
+{
+  "_meta": {
+    "title": "Hybrid A* demos, full Cost-to-Go removal, distance-only pipeline",
+    "date": "2026-02-06",
+    "summary": "Remove environment/training/inference cost-to-go chain. Keep Hybrid A* expert only. Use distance-based sampling and new forest observation layout (10 + N^2).",
+    "commands": {
+      "self_check_train": "conda run -n ros2py310 python train.py --self-check",
+      "self_check_infer": "conda run -n ros2py310 python infer.py --self-check",
+      "smoke_train": "conda run -n ros2py310 python train.py --envs forest_a --rl-algos cnn-ddqn --episodes 10 --max-steps 300 --device cpu --forest-random-start-goal --forest-rand-min-dist-m 6.0 --forest-rand-max-dist-m 0.0 --forest-expert auto",
+      "full_eval": "conda run -n ros2py310 python infer.py --envs forest_a forest_b forest_c forest_d --rl-algos cnn-ddqn --baselines hybrid_astar rrt_star --random-start-goal --rand-two-suites --runs 20 --rand-short-min-dist-ratio 0.20 --rand-short-max-dist-ratio 0.40 --rand-long-min-dist-ratio 0.60 --rand-long-max-dist-ratio 0.00 --kpi-time-mode policy"
+    },
+    "evaluation_rule": {
+      "priority": "path_first_time_second",
+      "suite_count": 8,
+      "hard_constraint": "success_rate(RL) >= success_rate(Hybrid A*-MPC)",
+      "primary": "avg_path_length(RL) < avg_path_length(Hybrid A*-MPC)",
+      "tie_break": "if |path diff| <= 1%, require inference_time_s(RL) <= 1.25 * Hybrid A*-MPC",
+      "target": "8/8 suites pass"
+    },
+    "seeds": {
+      "train_seed": 0,
+      "infer_seed": 22
+    }
+  },
+  "train": {
+    "envs": [
+      "forest_a"
+    ],
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "episodes": 300,
+    "max_steps": 600,
+    "forest_expert": "hybrid_astar",
+    "forest_random_start_goal": true,
+    "forest_rand_min_dist_m": 6.0,
+    "forest_rand_max_dist_m": 0.0,
+    "forest_demo_prefill": true,
+    "forest_demo_pretrain_steps": 50000,
+    "forest_demo_pretrain_eval_every": 2000,
+    "forest_demo_pretrain_val_runs": 8,
+    "forest_demo_pretrain_early_stop_sr": 0.75,
+    "forest_demo_pretrain_early_stop_patience": 2,
+    "forest_expert_exploration": true,
+    "forest_expert_prob_start": 0.7,
+    "forest_expert_prob_final": 0.0,
+    "forest_expert_prob_decay": 0.6,
+    "forest_expert_adapt_k": 0.2,
+    "forest_expert_recent_window": 30,
+    "forest_action_shield": true,
+    "device": "cuda",
+    "cuda_device": 0,
+    "seed": 0
+  },
+  "infer": {
+    "envs": [
+      "forest_a",
+      "forest_b",
+      "forest_c",
+      "forest_d"
+    ],
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar",
+      "rrt_star"
+    ],
+    "runs": 20,
+    "random_start_goal": true,
+    "rand_two_suites": true,
+    "rand_short_min_dist_ratio": 0.2,
+    "rand_short_max_dist_ratio": 0.4,
+    "rand_long_min_dist_ratio": 0.6,
+    "rand_long_max_dist_ratio": 0.0,
+    "device": "cuda",
+    "cuda_device": 0,
+    "seed": 22
+  }
+}

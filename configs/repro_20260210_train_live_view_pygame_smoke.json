@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "title": "train.py RL阶段实时显示（pygame小窗口）smoke",
+    "date": "2026-02-10",
+    "summary": "为 train.py 新增 RL 阶段 pygame 实时显示与车体碰撞外框（按航向角旋转）；窗口关闭后自动降级为无显示，训练继续。",
+    "commands": [
+      "conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_pygame_smoke",
+      "SDL_VIDEODRIVER=dummy conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_pygame_smoke --episodes 1"
+    ],
+    "metrics": [
+      "训练过程中窗口按 step 刷新（RL阶段）",
+      "关闭窗口后训练不中断",
+      "未安装 pygame 时给出安装提示并继续训练"
+    ],
+    "change_points": [
+      "新增 --live-view / --live-view-fps / --live-view-window-size / --live-view-trail-len / --live-view-skip-steps",
+      "新增 forest_vehicle_dqn/live_view_pygame.py",
+      "RL 训练循环接入 viewer（不影响 demo collect / demo pretrain）",
+      "新增 live 碰撞检测框（默认开启，可用 --no-live-view-collision-box 关闭）",
+      "碰撞框实现为固定车体外框（OBB），由 pose_m 航向角实时旋转"
+    ],
+    "notes": [
+      "该配置默认开启 live-view，用于训练观察；算法定义与决策路径不变。",
+      "Windows 手动验证建议直接运行第一条命令并关闭窗口观察训练是否继续。"
+    ]
+  },
+  "train": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260210_train_live_view_pygame_smoke",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "demo_mode": "dqfd",
+    "episodes": 3,
+    "max_steps": 600,
+    "device": "auto",
+    "seed": 21,
+    "progress": true,
+    "forest_random_start_goal": true,
+    "forest_train_two_suites": true,
+    "forest_train_short_prob": 0.55,
+    "forest_train_short_prob_ramp": 0.2,
+    "forest_train_short_min_dist_m": 6.0,
+    "forest_train_short_max_dist_m": 14.0,
+    "forest_train_long_min_dist_m": 42.0,
+    "forest_train_long_max_dist_m": 0.0,
+    "forest_rand_min_dist_m": 6.0,
+    "forest_rand_max_dist_m": 0.0,
+    "forest_rand_edge_margin_m": 3.0,
+    "forest_rand_fixed_prob": 0.1,
+    "forest_rand_tries": 200,
+    "forest_demo_prefill": false,
+    "forest_demo_pretrain_steps": 0,
+    "learning_starts": 50,
+    "train_freq": 1,
+    "eval_every": 0,
+    "eval_runs": 2,
+    "live_view": true,
+    "live_view_fps": 0,
+    "live_view_window_size": 900,
+    "live_view_trail_len": 300,
+    "live_view_skip_steps": 1,
+    "live_view_collision_box": true
+  }
+}

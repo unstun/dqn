@@ -1,0 +1,72 @@
+{
+  "_comment": "Profile: repro_20260205_strict_dqfd. Strict DQfD-style demo learning (PER + 1-step TD + n-step TD + margin + L2). Usage: python train.py --profile repro_20260205_strict_dqfd ; python infer.py --profile repro_20260205_strict_dqfd",
+  "_meta": {
+    "date": "2026-02-05",
+    "git_head": "c7054bf312d4e808845494c50ac4516f291dc64a",
+    "papers_dir": "paper/dqfd_refs",
+    "papers": [
+      "1704.03732 (DQfD)",
+      "1511.05952 (PER)",
+      "1509.06461 (DDQN)",
+      "1312.5602 (DQN)",
+      "2511.03565 (IL survey)",
+      "2303.11191 (demonstration learning survey)",
+      "2005.01643 (offline RL tutorial/review)"
+    ],
+    "commands": [
+      "conda run -n ros2py310 python train.py --profile repro_20260205_strict_dqfd",
+      "conda run -n ros2py310 python infer.py --profile repro_20260205_strict_dqfd"
+    ],
+    "notes": "This profile is meant as a quick reproducibility/sanity run for the strict DQfD implementation, not a tuned final benchmark."
+  },
+  "train": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260205_strict_dqfd",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "demo_mode": "dqfd",
+    "dqfd_n_step": 10,
+    "dqfd_lambda_n": 1.0,
+    "dqfd_l2": 1e-05,
+    "per_alpha": 0.4,
+    "per_beta0": 0.6,
+    "per_beta_steps": 0,
+    "per_eps_agent": 0.001,
+    "per_eps_demo": 1.0,
+    "episodes": 20,
+    "max_steps": 600,
+    "forest_demo_prefill": true,
+    "forest_demo_pretrain_steps": 2000,
+    "forest_action_shield": true,
+    "forest_expert": "hybrid_astar",
+    "forest_expert_exploration": false,
+    "learning_starts": 500,
+    "train_freq": 4,
+    "save_ckpt": "final",
+    "device": "cpu",
+    "seed": 0,
+    "progress": true
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "models": "repro_20260205_strict_dqfd",
+    "out": "repro_20260205_strict_dqfd",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [],
+    "runs": 1,
+    "max_steps": 600,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "kpi_time_mode": "policy",
+    "device": "cpu",
+    "seed": 0,
+    "progress": true
+  }
+}

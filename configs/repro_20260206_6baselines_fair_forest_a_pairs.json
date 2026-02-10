@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "source_run": "runs/repro_20260206_random_startgoal_6baselines_forest_a_successrate/20260206_173128",
+  "notes": [
+    "Frozen random start-goal pairs for fair baseline comparisons on forest_a.",
+    "Pairs are extracted from A* rows in table2_kpis_raw.csv of the source run.",
+    "Use with --rand-pairs-json to avoid sample drift between baselines."
+  ],
+  "pairs": [
+    {"env": "forest_a", "run_idx": 0, "start_xy": [59, 159], "goal_xy": [145, 91]},
+    {"env": "forest_a", "run_idx": 1, "start_xy": [350, 77], "goal_xy": [265, 174]},
+    {"env": "forest_a", "run_idx": 2, "start_xy": [133, 190], "goal_xy": [116, 74]},
+    {"env": "forest_a", "run_idx": 3, "start_xy": [332, 213], "goal_xy": [207, 292]},
+    {"env": "forest_a", "run_idx": 4, "start_xy": [268, 81], "goal_xy": [16, 15]},
+    {"env": "forest_a", "run_idx": 5, "start_xy": [172, 317], "goal_xy": [206, 186]},
+    {"env": "forest_a", "run_idx": 6, "start_xy": [300, 84], "goal_xy": [12, 329]},
+    {"env": "forest_a", "run_idx": 7, "start_xy": [239, 56], "goal_xy": [17, 6]},
+    {"env": "forest_a", "run_idx": 8, "start_xy": [282, 340], "goal_xy": [350, 25]},
+    {"env": "forest_a", "run_idx": 9, "start_xy": [65, 31], "goal_xy": [257, 296]},
+    {"env": "forest_a", "run_idx": 10, "start_xy": [206, 318], "goal_xy": [38, 28]},
+    {"env": "forest_a", "run_idx": 11, "start_xy": [53, 120], "goal_xy": [209, 97]},
+    {"env": "forest_a", "run_idx": 12, "start_xy": [229, 73], "goal_xy": [265, 232]},
+    {"env": "forest_a", "run_idx": 13, "start_xy": [167, 121], "goal_xy": [331, 295]},
+    {"env": "forest_a", "run_idx": 14, "start_xy": [77, 137], "goal_xy": [264, 163]},
+    {"env": "forest_a", "run_idx": 15, "start_xy": [348, 328], "goal_xy": [149, 287]},
+    {"env": "forest_a", "run_idx": 16, "start_xy": [42, 97], "goal_xy": [307, 294]},
+    {"env": "forest_a", "run_idx": 17, "start_xy": [267, 92], "goal_xy": [255, 157]},
+    {"env": "forest_a", "run_idx": 18, "start_xy": [333, 208], "goal_xy": [68, 234]},
+    {"env": "forest_a", "run_idx": 19, "start_xy": [332, 276], "goal_xy": [168, 65]},
+    {"env": "forest_a", "run_idx": 20, "start_xy": [249, 167], "goal_xy": [230, 287]},
+    {"env": "forest_a", "run_idx": 21, "start_xy": [124, 205], "goal_xy": [125, 280]},
+    {"env": "forest_a", "run_idx": 22, "start_xy": [244, 50], "goal_xy": [286, 217]},
+    {"env": "forest_a", "run_idx": 23, "start_xy": [260, 250], "goal_xy": [79, 24]},
+    {"env": "forest_a", "run_idx": 24, "start_xy": [222, 266], "goal_xy": [118, 218]},
+    {"env": "forest_a", "run_idx": 25, "start_xy": [286, 106], "goal_xy": [113, 56]},
+    {"env": "forest_a", "run_idx": 26, "start_xy": [263, 36], "goal_xy": [289, 212]},
+    {"env": "forest_a", "run_idx": 27, "start_xy": [241, 206], "goal_xy": [79, 43]},
+    {"env": "forest_a", "run_idx": 28, "start_xy": [189, 17], "goal_xy": [187, 79]},
+    {"env": "forest_a", "run_idx": 29, "start_xy": [201, 233], "goal_xy": [338, 107]}
+  ]
+}

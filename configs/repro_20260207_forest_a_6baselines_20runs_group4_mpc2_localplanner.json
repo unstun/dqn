@@ -1,0 +1,47 @@
+{
+  "_meta": {
+    "title": "forest_a six baselines, 20 runs, grouped figures (MPC2 horizon-local-planner)",
+    "date": "2026-02-07",
+    "summary": "Evaluate A*, A*-MPC2, Hybrid A*, Hybrid A*-MPC2, RRT*, and RRT-MPC2 using horizon-based MPC2 local planning with trajectory-window optimization.",
+    "commands": [
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile repro_20260207_forest_a_6baselines_20runs_group4_mpc2_localplanner --skip-rl"
+    ],
+    "notes": [
+      "MPC2 solver now optimizes a horizon steering sequence over local-replanned trajectory windows instead of one-step steering scoring.",
+      "Collision cost is evaluated across the predicted horizon with the repository two-circle collision interface.",
+      "For strict A/B comparison with historical group4 pairs, pass --rand-pairs-json /tmp/forest_a_pairs20_from_20260207_004053.json."
+    ],
+    "_changes": {
+      "baseline_controller": "mpc2",
+      "mpc2_mode": "horizon_local_planner",
+      "algorithm_labels": [
+        "A*-MPC2",
+        "Hybrid A*-MPC2",
+        "RRT-MPC2"
+      ]
+    }
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260207_forest_a_6baselines_20runs_group4_mpc2_localplanner",
+    "baselines": [
+      "all"
+    ],
+    "skip_rl": true,
+    "runs": 20,
+    "random_start_goal": true,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "hybrid_astar",
+    "max_steps": 600,
+    "device": "cpu",
+    "seed": 42,
+    "plot_run_groups": true,
+    "plot_run_group_size": 4,
+    "plot_run_groups_with_controls": true,
+    "progress": true
+  }
+}

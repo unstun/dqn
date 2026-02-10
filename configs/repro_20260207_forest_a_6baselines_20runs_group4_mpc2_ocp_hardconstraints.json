@@ -1,0 +1,47 @@
+{
+  "_meta": {
+    "title": "forest_a six baselines, 20 runs, grouped figures (MPC2 OCP hard constraints)",
+    "date": "2026-02-07",
+    "summary": "Evaluate A*, A*-MPC2, Hybrid A*, Hybrid A*-MPC2, RRT*, and RRT-MPC2 with MPC2 reformulated as nonlinear OCP and hard collision-clearance constraints.",
+    "commands": [
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile repro_20260207_forest_a_6baselines_20runs_group4_mpc2_ocp_hardconstraints --skip-rl"
+    ],
+    "notes": [
+      "MPC2 now solves a continuous steering-sequence OCP (SLSQP) over a local trajectory horizon.",
+      "Collision handling is hard-constrained via two-circle clearance constraints (od - min_clearance >= 0).",
+      "For strict A/B against historical group4 random pairs, add --rand-pairs-json /tmp/forest_a_pairs20_from_20260207_004053.json."
+    ],
+    "_changes": {
+      "baseline_controller": "mpc2",
+      "mpc2_solver": "nonlinear_ocp_hard_constraints",
+      "algorithm_labels": [
+        "A*-MPC2",
+        "Hybrid A*-MPC2",
+        "RRT-MPC2"
+      ]
+    }
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260207_forest_a_6baselines_20runs_group4_mpc2_ocp_hardconstraints",
+    "baselines": [
+      "all"
+    ],
+    "skip_rl": true,
+    "runs": 20,
+    "random_start_goal": true,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "hybrid_astar",
+    "max_steps": 600,
+    "device": "cpu",
+    "seed": 42,
+    "plot_run_groups": true,
+    "plot_run_group_size": 4,
+    "plot_run_groups_with_controls": true,
+    "progress": true
+  }
+}

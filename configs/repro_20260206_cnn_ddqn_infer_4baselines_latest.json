@@ -1,0 +1,44 @@
+{
+  "_meta": {
+    "title": "Latest inference with four baselines in one run",
+    "date": "2026-02-06",
+    "summary": "Evaluate CNN-DDQN against Hybrid A*, Hybrid A*-MPC, RRT*, and RRT-MPC in a single infer run.",
+    "command": "conda run -n ros2py310 python infer.py --profile repro_20260206_cnn_ddqn_infer_4baselines_latest",
+    "notes": [
+      "Set baselines=[all] and forest_baseline_rollout=true.",
+      "With current infer logic, this emits both planner and MPC rows for each baseline planner."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a",
+      "forest_b",
+      "forest_c",
+      "forest_d"
+    ],
+    "models": "repro_20260206_cnn_ddqn_latest",
+    "out": "repro_20260206_cnn_ddqn_eval_4baselines",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "all"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "rand_two_suites": true,
+    "runs": 20,
+    "rand_short_min_dist_ratio": 0.2,
+    "rand_short_max_dist_ratio": 0.4,
+    "rand_long_min_dist_ratio": 0.6,
+    "rand_long_max_dist_ratio": 0.0,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "none",
+    "max_steps": 600,
+    "kpi_time_mode": "policy",
+    "device": "cuda",
+    "cuda_device": 0,
+    "seed": 22,
+    "progress": true
+  }
+}

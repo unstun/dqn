@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "title": "Random start-goal baseline success-rate comparison (4 baselines)",
+    "date": "2026-02-06",
+    "summary": "Compare Hybrid A*, Hybrid A*-MPC, RRT*, and RRT-MPC under random start-goal evaluation.",
+    "command": "conda run -n ros2py310 python infer.py --profile repro_20260206_random_startgoal_4baselines_successrate",
+    "notes": [
+      "This profile evaluates planner-only baselines (skip_rl=true).",
+      "Pinned to hybrid_astar + rrt_star so historical 4-baseline experiments remain reproducible after adding A* support.",
+      "Outputs include per-run and mean KPI tables with success_rate for each algorithm."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a",
+      "forest_b",
+      "forest_c",
+      "forest_d"
+    ],
+    "out": "repro_20260206_random_startgoal_4baselines_successrate",
+    "baselines": [
+      "hybrid_astar",
+      "rrt_star"
+    ],
+    "skip_rl": true,
+    "random_start_goal": true,
+    "runs": 30,
+    "rand_min_dist_m": 6.0,
+    "rand_max_dist_m": 0.0,
+    "rand_fixed_prob": 0.0,
+    "rand_tries": 200,
+    "rand_reject_unreachable": false,
+    "baseline_timeout": 30.0,
+    "hybrid_max_nodes": 200000,
+    "rrt_max_iter": 5000,
+    "max_steps": 600,
+    "kpi_time_mode": "policy",
+    "device": "cpu",
+    "seed": 42,
+    "progress": true
+  }
+}

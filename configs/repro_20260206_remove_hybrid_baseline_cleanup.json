@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "title": "Remove deprecated hybrid baseline implementation and references",
+    "date": "2026-02-06",
+    "summary": "Repository cleanup that removes deprecated hybrid-baseline code path, CLI flags, docs, and profiles.",
+    "commands": [
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile repro_20260206_remove_hybrid_baseline_cleanup --skip-rl"
+    ],
+    "notes": [
+      "Post-change baseline set is limited to astar / hybrid_astar / rrt_star (plus MPC tracking path rollout when enabled).",
+      "Use fixed random pairs from configs/repro_20260206_6baselines_fair_forest_a_pairs.json for repeatable comparison."
+    ],
+    "changed_scope": [
+      "forest_vehicle_dqn/cli/infer.py",
+      "README.zh-CN.md",
+      "runtxt.md",
+      "configs/repro_20260206_6baselines_fair_forest_a_fixedpairs.json"
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260206_remove_hybrid_baseline_cleanup",
+    "baselines": [
+      "all"
+    ],
+    "skip_rl": true,
+    "random_start_goal": true,
+    "runs": 1,
+    "rand_pairs_json": "configs/repro_20260206_6baselines_fair_forest_a_pairs.json",
+    "baseline_timeout": 30.0,
+    "hybrid_max_nodes": 200000,
+    "rrt_max_iter": 5000,
+    "max_steps": 300,
+    "device": "cpu",
+    "seed": 42,
+    "progress": true
+  }
+}

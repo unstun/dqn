@@ -1,0 +1,87 @@
+{
+  "_comment": "Profile: forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck_long_baselines_tuned (CNN-DDQN; infer on forest_a::long with tuned Hybrid A*/RRT* baselines). Usage: python train.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck_long_baselines_tuned ; python infer.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck_long_baselines_tuned",
+  "train": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck_long_baselines_tuned",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "episodes": 300,
+    "max_steps": 600,
+    "no_terminate_on_stuck": true,
+    "forest_random_start_goal": true,
+    "forest_rand_min_dist_m": 6.0,
+    "forest_rand_edge_margin_m": 3.0,
+    "forest_rand_fixed_prob": 0.0,
+    "forest_rand_tries": 200,
+    "forest_expert": "hybrid_astar",
+    "forest_demo_prefill": true,
+    "forest_demo_pretrain_steps": 40000,
+    "forest_expert_exploration": true,
+    "forest_action_shield": true,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "replay_stratified": true,
+    "replay_frac_demo": 0.1,
+    "replay_frac_goal": 0.2,
+    "replay_frac_stuck": 0.2,
+    "replay_frac_hazard": 0.2,
+    "replay_near_goal_factor": 2.0,
+    "replay_hazard_od_m": 0.4,
+    "learning_starts": 5000,
+    "save_ckpt": "final",
+    "device": "cuda",
+    "cuda_device": 0,
+    "seed": 0,
+    "progress": true
+  },
+  "infer": {
+    "envs": [
+      "forest_a::long"
+    ],
+    "models": "forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck_long_baselines_tuned",
+    "out": "forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck_long_baselines_tuned",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar",
+      "rrt_star"
+    ],
+    "baseline_timeout": 60.0,
+    "forest_baseline_hybrid_collision_padding_m": 0.06,
+    "forest_baseline_rrt_collision_padding_m": 0.04,
+    "random_start_goal": true,
+    "rand_two_suites": false,
+    "runs": 10,
+    "progress": true,
+    "plot_pair_runs": true,
+    "plot_pair_runs_max": 10,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
+    "rand_edge_margin_m": 3.0,
+    "rand_reject_unreachable": false,
+    "rand_reject_policy": "none",
+    "rand_tries": 400,
+    "max_steps": 600,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 33
+  }
+}

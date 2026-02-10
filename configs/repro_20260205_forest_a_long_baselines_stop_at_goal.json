@@ -1,0 +1,40 @@
+{
+  "_meta": {
+    "date": "2026-02-05",
+    "topic": "forest_a::long baselines stop-at-goal (v<=0.01m/s, |delta|<=0.3deg) + 100% success",
+    "env": {
+      "os": "Ubuntu 24.04",
+      "conda_env": "ros2py310"
+    },
+    "commands": [
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck_long_baselines_100pct --skip-rl"
+    ],
+    "acceptance": {
+      "profile": "forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck_long_baselines_100pct",
+      "envs": [
+        "forest_a::long"
+      ],
+      "seed": 33,
+      "runs": 10,
+      "goal_stop_thresholds": {
+        "goal_stop_speed_m_s": 0.01,
+        "goal_stop_delta_deg": 0.3
+      },
+      "expected": {
+        "Hybrid A*-MPC Success rate": 1.0,
+        "RRT-MPC Success rate": 1.0,
+        "baseline_tracking_failures.csv": "no failure rows"
+      },
+      "artifacts": [
+        "<run_dir>/table2_kpis_mean.md",
+        "<run_dir>/baseline_tracking_failures.csv",
+        "<run_dir>/configs/run.json"
+      ]
+    },
+    "change_summary": {
+      "baseline_tracker": "Baseline MPC rollouts no longer stop at reached_pose; success requires reached_pose && reached_stop. Inside goal region it commands v=0 and delta=0 until stop thresholds are satisfied.",
+      "near_goal_speed_cap": "Adds a distance-to-goal speed cap to reduce overshoot and help stop inside the goal region."
+    }
+  }
+}

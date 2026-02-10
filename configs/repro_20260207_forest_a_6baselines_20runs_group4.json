@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "title": "forest_a six baselines, 20 runs, grouped figures (4 per image)",
+    "date": "2026-02-07",
+    "summary": "Evaluate A*, A*-MPC, Hybrid A*, Hybrid A*-MPC, RRT*, and RRT-MPC on forest_a with 20 random runs and grouped path/control figures.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile repro_20260207_forest_a_6baselines_20runs_group4"
+    ],
+    "notes": [
+      "Random start-goal reachability filtering uses Hybrid A* via --rand-reject-policy hybrid_astar.",
+      "Grouped figures are exported in 4-run chunks, expected 5 path groups + 5 control groups for 20 runs."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260207_forest_a_6baselines_20runs_group4",
+    "baselines": [
+      "all"
+    ],
+    "skip_rl": true,
+    "runs": 20,
+    "random_start_goal": true,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "hybrid_astar",
+    "max_steps": 600,
+    "device": "cpu",
+    "seed": 42,
+    "plot_run_groups": true,
+    "plot_run_group_size": 4,
+    "plot_run_groups_with_controls": true,
+    "progress": true
+  }
+}

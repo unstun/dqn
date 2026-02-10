@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "title": "remove mpc/mpc2 planners/controllers",
+    "date": "2026-02-08",
+    "summary": "Hard remove MPC and MPC2 from train/infer/env paths. Forest expert now only supports hybrid_astar (auto=>hybrid_astar). Infer baselines are planner-only (A*, Hybrid A*, RRT*).",
+    "reproduce": [
+      "python3 -m py_compile forest_vehicle_dqn/cli/infer.py forest_vehicle_dqn/cli/train.py forest_vehicle_dqn/env.py",
+      "python3 train.py --self-check",
+      "python3 infer.py --self-check",
+      "rg -n \"local_replan_mpc|baselines\\.mpc2|expert_action_astar_mpc|expert_action_astar_mpc2\" -S forest_vehicle_dqn"
+    ],
+    "metrics_definition": {
+      "success_rate": "fraction of runs with reached=true",
+      "inference_time_s": "mean compute time reported in infer outputs",
+      "planner_scope": "A*/Hybrid A*/RRT* only; no MPC tracking rows"
+    },
+    "notes": [
+      "The self-check commands require local Python deps (matplotlib + gym/gymnasium) in the active environment.",
+      "Legacy config keys related to forest_baseline_mpc* are now ignored in infer config loading."
+    ]
+  },
+  "train": {
+    "forest_expert": "auto"
+  },
+  "infer": {
+    "baselines": [
+      "all"
+    ],
+    "skip_rl": true
+  }
+}

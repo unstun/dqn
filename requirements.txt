@@ -1,0 +1,7 @@
+numpy>=1.23
+pandas>=1.5
+tabulate>=0.9
+matplotlib>=3.7
+gymnasium>=0.28
+opencv-python-headless>=4.8
+tqdm>=4.66

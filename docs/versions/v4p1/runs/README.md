@@ -1,0 +1,24 @@
+# v4p1 - 运行记录
+
+## 代表性运行（当前）
+- run_dir: `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter2_demo4k/train_20260210_135138`
+- run_json: `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter2_demo4k/train_20260210_135138/configs/run.json`
+- kpi: `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter2_demo4k_infer10/20260210_135524/table2_kpis_mean_raw.csv`
+
+## 本版本已知运行
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke/train_20260210_133253`（中止）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_e320_ms600/train_20260210_133728`（中止）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_e300_fast/train_20260210_133947`（中止）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_quick_nodemo/train_20260210_134834`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_quick_nodemo_infer10/20260210_135006`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter2_demo4k/train_20260210_135138`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter2_demo4k_infer10/20260210_135524`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_e120_ms1200_fix/train_20260210_140143`（中止）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter3_dynamicfix/train_20260210_140910`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter3_dynamicfix_infer10/20260210_141327`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter4_pretrain12k/train_20260210_141512`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter4_pretrain12k_infer10/20260210_142121`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter5_ddot9/train_20260210_142313`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter5_ddot9_infer10/20260210_142805`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter6_nodynamic/train_20260210_143158`（完成）
+- `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p1_smoke_iter6_nodynamic_infer10/20260210_143711`（完成）

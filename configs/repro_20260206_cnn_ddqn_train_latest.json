@@ -1,0 +1,47 @@
+{
+  "_meta": {
+    "title": "Latest CNN-DDQN training (Hybrid A* demos, no cost-to-go)",
+    "date": "2026-02-06",
+    "summary": "Train CNN-DDQN on forest_a/b/c/d with Hybrid A* expert demos and distance-based random start-goal sampling.",
+    "command": "conda run -n ros2py310 python train.py --profile repro_20260206_cnn_ddqn_train_latest"
+  },
+  "train": {
+    "envs": [
+      "forest_a",
+      "forest_b",
+      "forest_c",
+      "forest_d"
+    ],
+    "out": "repro_20260206_cnn_ddqn_latest",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "episodes": 300,
+    "max_steps": 600,
+    "forest_expert": "hybrid_astar",
+    "forest_random_start_goal": true,
+    "forest_rand_min_dist_m": 6.0,
+    "forest_rand_max_dist_m": 0.0,
+    "forest_rand_edge_margin_m": 0.0,
+    "forest_rand_fixed_prob": 0.0,
+    "forest_rand_tries": 200,
+    "forest_demo_prefill": true,
+    "forest_demo_pretrain_steps": 50000,
+    "forest_demo_pretrain_eval_every": 2000,
+    "forest_demo_pretrain_val_runs": 8,
+    "forest_demo_pretrain_early_stop_sr": 0.75,
+    "forest_demo_pretrain_early_stop_patience": 2,
+    "forest_expert_exploration": true,
+    "forest_expert_prob_start": 0.7,
+    "forest_expert_prob_final": 0.0,
+    "forest_expert_prob_decay": 0.6,
+    "forest_expert_adapt_k": 0.2,
+    "forest_expert_recent_window": 30,
+    "forest_action_shield": true,
+    "save_ckpt": "auto",
+    "device": "cuda",
+    "cuda_device": 0,
+    "seed": 0,
+    "progress": true
+  }
+}

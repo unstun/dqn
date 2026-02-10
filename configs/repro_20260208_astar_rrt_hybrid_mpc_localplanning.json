@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "title": "A*-MPC / RRT-MPC / Hybrid A*-MPC local planning",
+    "date": "2026-02-08",
+    "summary": "Implements paper-defined MPC local planning with four-term objective and hard dual-circle collision feasibility. Uses planner-path + MPC rolling horizon for three combo baselines.",
+    "reproduce": [
+      "conda run -n ros2py310 python -m py_compile forest_vehicle_dqn/baselines/mpc_local_planner.py forest_vehicle_dqn/cli/infer.py",
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile repro_20260208_astar_rrt_hybrid_mpc_localplanning --skip-rl"
+    ],
+    "metrics_definition": {
+      "planning_time_s": "global planner wall-clock time",
+      "tracking_time_s": "MPC rolling optimization + execution wall-clock time",
+      "inference_time_s": "planning_time_s + tracking_time_s",
+      "success_rate": "fraction of runs with reached=true"
+    }
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "baselines": [
+      "astar_mpc",
+      "hybrid_astar_mpc",
+      "rrt_mpc"
+    ],
+    "skip_rl": true,
+    "runs": 5,
+    "random_start_goal": true,
+    "rand_min_dist_m": 6.0,
+    "rand_max_dist_m": 0.0,
+    "rand_fixed_prob": 0.0,
+    "rand_tries": 300,
+    "rand_reject_unreachable": false,
+    "baseline_timeout": 30.0,
+    "hybrid_max_nodes": 200000,
+    "rrt_max_iter": 5000,
+    "forest_baseline_hybrid_collision_padding_m": 0.02,
+    "forest_baseline_rrt_collision_padding_m": 0.0,
+    "forest_mpc_horizon_steps": 12,
+    "forest_mpc_candidates": 256,
+    "forest_mpc_dt_s": 0.0,
+    "forest_mpc_w_u": 0.05,
+    "forest_mpc_w_du": 0.5,
+    "forest_mpc_w_pos": 6.0,
+    "forest_mpc_w_yaw": 1.2,
+    "forest_mpc_align_dist_m": 1.5,
+    "forest_mpc_collision_padding_m": 0.0,
+    "forest_mpc_goal_lookahead_steps": 2,
+    "max_steps": 600,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "device": "cpu",
+    "seed": 42,
+    "progress": true
+  }
+}

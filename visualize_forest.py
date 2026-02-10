@@ -31,7 +31,7 @@ def main() -> int:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-    from amr_dqn.maps import get_map_spec  # local import after sys.path patch
+    from forest_vehicle_dqn.maps import get_map_spec  # local import after sys.path patch
 
     env_name = str(args.env).strip()
     spec = get_map_spec(env_name)

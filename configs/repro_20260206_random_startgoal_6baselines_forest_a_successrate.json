@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "title": "Random start-goal baseline success-rate comparison (6 baselines, forest_a only)",
+    "date": "2026-02-06",
+    "summary": "Compare A*, A*-MPC, Hybrid A*, Hybrid A*-MPC, RRT*, and RRT-MPC on forest_a under random start-goal evaluation.",
+    "command": "conda run -n ros2py310 python infer.py --profile repro_20260206_random_startgoal_6baselines_forest_a_successrate",
+    "notes": [
+      "Forest-only single-map profile for focused comparison on forest_a.",
+      "Uses --baselines all, which expands to astar + hybrid_astar + rrt_star.",
+      "Outputs include per-run and mean KPI tables with success_rate for six baseline rows (planner + MPC tracking)."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260206_random_startgoal_6baselines_forest_a_successrate",
+    "baselines": [
+      "all"
+    ],
+    "skip_rl": true,
+    "random_start_goal": true,
+    "runs": 30,
+    "rand_min_dist_m": 6.0,
+    "rand_max_dist_m": 0.0,
+    "rand_fixed_prob": 0.0,
+    "rand_tries": 200,
+    "rand_reject_unreachable": false,
+    "baseline_timeout": 30.0,
+    "hybrid_max_nodes": 200000,
+    "rrt_max_iter": 5000,
+    "max_steps": 600,
+    "kpi_time_mode": "policy",
+    "device": "cpu",
+    "seed": 42,
+    "progress": true
+  }
+}

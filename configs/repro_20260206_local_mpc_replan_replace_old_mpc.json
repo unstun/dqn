@@ -1,0 +1,39 @@
+{
+  "_meta": {
+    "title": "Replace old MPC with local-replanning MPC (pure MPC)",
+    "date": "2026-02-06",
+    "summary": "Switch forest baseline/expert MPC from plain path tracking to local-replanning MPC while keeping global A* topology guidance.",
+    "reference_paper": {
+      "title": "Automatic parking planning control method based on improved A* algorithm",
+      "arxiv": "https://arxiv.org/abs/2406.15429",
+      "pdf": "paper/mpc_local_replan_refs/2406.15429_improved_Astar_MPC_autoparking.pdf"
+    },
+    "commands": [
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile repro_20260206_local_mpc_replan_replace_old_mpc"
+    ],
+    "notes": [
+      "Requires optional dependencies: osqp, scipy.",
+      "A* topology is preserved; local horizon is rebuilt with collision-aware lateral offset search before MPC solve.",
+      "Old file forest_vehicle_dqn/baselines/autoware_mpc_lateral.py is removed (replaced by local_replan_mpc.py)."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "run": "latest",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "episodes": 1,
+    "max_steps": 600,
+    "baselines": "all",
+    "kpi_time_mode": "rollout",
+    "progress": true,
+    "seed": 0,
+    "device": "cuda",
+    "cuda_device": 0
+  }
+}

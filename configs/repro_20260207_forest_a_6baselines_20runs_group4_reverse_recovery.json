@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "title": "forest_a six baselines, 20 runs, reverse-recovery MPC",
+    "date": "2026-02-07",
+    "summary": "Evaluate A*, A*-MPC, Hybrid A*, Hybrid A*-MPC, RRT*, and RRT-MPC on forest_a with fixed random pairs and reverse-recovery enabled for MPC tracking.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile repro_20260207_forest_a_6baselines_20runs_group4_reverse_recovery"
+    ],
+    "notes": [
+      "Use --rand-pairs-json /tmp/forest_a_pairs20_from_20260207_004053.json to compare against the original 20-pair benchmark fairly.",
+      "Reverse-recovery is MPC-only and uses conservative triggering: near-obstacle + no-progress + short forward collision prediction.",
+      "Planner fallback to Hybrid A* is disabled by default for strict baseline attribution; enable only for robustness studies."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260207_forest_a_6baselines_20runs_group4_reverse_recovery",
+    "baselines": [
+      "all"
+    ],
+    "skip_rl": true,
+    "runs": 20,
+    "random_start_goal": true,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "hybrid_astar",
+    "max_steps": 600,
+    "device": "cpu",
+    "seed": 42,
+    "plot_run_groups": true,
+    "plot_run_group_size": 4,
+    "plot_run_groups_with_controls": true,
+    "progress": true
+  }
+}

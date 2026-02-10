@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from amr_dqn.cli.benchmark import main
+from forest_vehicle_dqn.cli.benchmark import main
 
 
 if __name__ == "__main__":

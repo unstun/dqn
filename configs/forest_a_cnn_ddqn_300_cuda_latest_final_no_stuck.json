@@ -1,5 +1,5 @@
 {
-  "_comment": "Profile: forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck (cnn-ddqn only; inference includes Hybrid A* + RRT*). Usage: conda run -n ros2py310 python train.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck ; conda run -n ros2py310 python infer.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck",
+  "_comment": "Profile: forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck (cnn-ddqn only; inference includes Hybrid A* + RRT* baselines with tuned forest tracking params). Usage: conda run -n ros2py310 python train.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck ; conda run -n ros2py310 python infer.py --profile forest_a_cnn_ddqn_300_cuda_latest_final_no_stuck",
   "train": {
     "envs": [
       "forest_a"
@@ -12,11 +12,11 @@
     "max_steps": 600,
     "no_terminate_on_stuck": true,
     "forest_random_start_goal": true,
-    "forest_rand_min_cost_m": 6.0,
+    "forest_rand_min_dist_m": 6.0,
     "forest_rand_edge_margin_m": 3.0,
     "forest_rand_fixed_prob": 0.0,
     "forest_rand_tries": 200,
-    "forest_expert": "auto",
+    "forest_expert": "hybrid_astar",
     "forest_demo_prefill": true,
     "forest_demo_pretrain_steps": 40000,
     "forest_expert_exploration": true,
@@ -55,7 +55,8 @@
       "rrt_star"
     ],
     "baseline_timeout": 60.0,
-    "forest_baseline_rollout": true,
+    "forest_baseline_hybrid_collision_padding_m": 0.02,
+    "forest_baseline_rrt_collision_padding_m": 0.0,
     "random_start_goal": true,
     "rand_two_suites": true,
     "runs": 10,
@@ -64,10 +65,10 @@
     "plot_pair_runs_max": 10,
     "forest_action_delta_dot_bins": 15,
     "forest_action_accel_bins": 15,
-    "rand_short_min_cost_m": 6.0,
-    "rand_short_max_cost_m": 14.0,
-    "rand_long_min_cost_m": 42.0,
-    "rand_long_max_cost_m": 0.0,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
     "rand_edge_margin_m": 3.0,
     "rand_reject_unreachable": false,
     "rand_reject_policy": "none",

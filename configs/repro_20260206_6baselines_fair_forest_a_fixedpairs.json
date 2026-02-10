@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "title": "Frozen-pair 6-baseline snapshot (forest_a)",
+    "date": "2026-02-06",
+    "summary": "Run historical six baselines on fixed random start-goal pairs for fair pre-tuning comparison.",
+    "command": "conda run -n ros2py310 python infer.py --profile repro_20260206_6baselines_fair_forest_a_fixedpairs --skip-rl",
+    "notes": [
+      "Baselines are restricted to 'all' (A*, A*-MPC, Hybrid A*, Hybrid A*-MPC, RRT*, RRT-MPC).",
+      "Uses frozen random pairs for fair repeatable comparison."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260206_6baselines_fair_forest_a_fixedpairs",
+    "baselines": [
+      "all"
+    ],
+    "skip_rl": true,
+    "random_start_goal": true,
+    "runs": 30,
+    "rand_pairs_json": "configs/repro_20260206_6baselines_fair_forest_a_pairs.json",
+    "rand_min_dist_m": 6.0,
+    "rand_max_dist_m": 0.0,
+    "rand_fixed_prob": 0.0,
+    "rand_tries": 200,
+    "rand_reject_unreachable": false,
+    "baseline_timeout": 30.0,
+    "hybrid_max_nodes": 200000,
+    "rrt_max_iter": 5000,
+    "max_steps": 600,
+    "kpi_time_mode": "policy",
+    "device": "cpu",
+    "seed": 42,
+    "progress": true
+  }
+}

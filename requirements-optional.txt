@@ -1,0 +1,4 @@
+# Optional dependencies (used by some baseline tracking in infer.py and train live-view)
+osqp>=1.0
+scipy>=1.9
+pygame>=2.5

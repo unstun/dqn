@@ -1,0 +1,43 @@
+{
+  "_meta": {
+    "title": "forest_a random start-goal six baselines (reachability-screened)",
+    "date": "2026-02-08",
+    "summary": "Evaluate A*, Hybrid A*, RRT*, A*-MPC, Hybrid A*-MPC, and RRT-MPC on forest_a with random start-goal pairs and Hybrid A* reachability screening.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile repro_20260208_forest_a_random_startgoal_6baselines",
+      "conda run -n ros2py310 python infer.py --profile repro_20260208_forest_a_random_startgoal_6baselines --runs 1 --max-steps 600 --device cpu --no-progress"
+    ],
+    "notes": [
+      "`--baselines all` expands to: astar, hybrid_astar, rrt_star, astar_mpc, hybrid_astar_mpc, rrt_mpc.",
+      "`rand_reject_unreachable=true` with `rand_reject_policy=hybrid_astar` may increase sampling time.",
+      "This profile is baseline-only (`skip_rl=true`) for fair planner-vs-planner comparison."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "repro_20260208_forest_a_random_startgoal_6baselines",
+    "baselines": [
+      "all"
+    ],
+    "skip_rl": true,
+    "runs": 20,
+    "random_start_goal": true,
+    "rand_min_dist_m": 6.0,
+    "rand_max_dist_m": 0.0,
+    "rand_fixed_prob": 0.0,
+    "rand_tries": 200,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "hybrid_astar",
+    "baseline_timeout": 30.0,
+    "hybrid_max_nodes": 200000,
+    "rrt_max_iter": 5000,
+    "max_steps": 600,
+    "kpi_time_mode": "policy",
+    "device": "cpu",
+    "seed": 42,
+    "progress": true
+  }
+}

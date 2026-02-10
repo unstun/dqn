@@ -1,9 +1,0 @@
-Environment,Algorithm name,Success rate,Average path length (m),Number of path corners,Mini collision to obstacle (m),Inference time (s),Max corner degree (°),Planning cost (m)
-Env. (forest_a),IDDQN,0.0,,,,0.03535,,inf
-Env. (forest_a),DQN,0.0,,,,0.10322,,inf
-Env. (forest_b),IDDQN,0.0,,,,0.04,,inf
-Env. (forest_b),DQN,0.0,,,,0.03317,,inf
-Env. (forest_c),IDDQN,0.0,,,,0.137,,inf
-Env. (forest_c),DQN,0.0,,,,0.15326,,inf
-Env. (forest_d),IDDQN,0.0,,,,0.06071,,inf
-Env. (forest_d),DQN,0.0,,,,0.02872,,inf

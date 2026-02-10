@@ -1,0 +1,12 @@
+# v2 - 运行记录
+
+## 代表性运行
+- run_dir: `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246`
+- kpi: `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246/infer/20260209_083902/table2_kpis_mean_raw.csv`
+- run_json: `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246/configs/run.json`
+
+## 本版本已发现正式运行（版本标签匹配）
+- `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246/infer/20260209_083902/table2_kpis_mean_raw.csv`
+- `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_084511` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_084511/infer/20260209_085139/table2_kpis_mean_raw.csv`
+- `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke_h3_margin/train_20260209_090206` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke_h3_margin/train_20260209_090206/infer/20260209_090759/table2_kpis_mean_raw.csv`
+- `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke_finalckpt/train_20260209_085424` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke_finalckpt/train_20260209_085424/infer/20260209_090032/table2_kpis_mean_raw.csv`
