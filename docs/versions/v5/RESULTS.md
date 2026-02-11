@@ -131,6 +131,93 @@
   - timeout case：`run_idx=19` 的 `path_time_s=120.0`（依然跑满上限仍未到达）
   - Hybrid A*-MPC：SR=`0.90`，failures=`reached=18, collision=1, truncated=1`
 
+### mid 套件补充（14–42m，fixed pairs20）
+
+#### pairgen（baseline-only，用于冻结 mid 样本）
+- command：
+  - `conda run -n ros2py310 python infer.py --envs forest_a::mid --out repro_20260211_pairgen_forest_a_mid20 --baselines hybrid_astar_mpc --skip-rl --random-start-goal --rand-min-dist-m 14 --rand-max-dist-m 42 --rand-edge-margin-m 3 --rand-reject-unreachable --rand-reject-policy none --runs 20 --seed 125 --baseline-timeout 60 --max-steps 1200`
+- run_dir：`runs/repro_20260211_pairgen_forest_a_mid20/20260211_153822`
+- run_json：`runs/repro_20260211_pairgen_forest_a_mid20/20260211_153822/configs/run.json`
+- kpi：`runs/repro_20260211_pairgen_forest_a_mid20/20260211_153822/table2_kpis_mean_raw.csv`
+- 结果要点：
+  - Hybrid A*-MPC：SR=`0.90`，avg_path_length=`21.5796`，path_time_s=`12.9583`，planning_time_s=`2.346`，tracking_time_s=`0.61895`
+  - failure_reason：`reached=18, collision=2`
+  - 样本检查：`pairs=20`，欧氏起终点距离 `min≈14.07m, max≈28.83m`（均在 14–42m 窗口内）
+
+#### strict/hybrid mid smoke（runs=5）
+- strict smoke command：
+  - `conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_strict_mid_pairs20_v1 --runs 5 --out repro_20260211_v5_smoke_strict_mid_pairs5_v1`
+- strict smoke run_dir：`runs/repro_20260211_v5_smoke_strict_mid_pairs5_v1/20260211_154838`
+- strict smoke run_json：`runs/repro_20260211_v5_smoke_strict_mid_pairs5_v1/20260211_154838/configs/run.json`
+- strict smoke kpi：`runs/repro_20260211_v5_smoke_strict_mid_pairs5_v1/20260211_154838/table2_kpis_mean_raw.csv`
+- strict smoke 结果：SR=`0.0`，argmax_inad=`0.462`，planning_time_s=`0.10563`，failure_reason=`collision=5`
+
+- hybrid smoke command：
+  - `conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_hybrid_mid_pairs20_v1 --runs 5 --out repro_20260211_v5_smoke_hybrid_mid_pairs5_v1`
+- hybrid smoke run_dir：`runs/repro_20260211_v5_smoke_hybrid_mid_pairs5_v1/20260211_154851`
+- hybrid smoke run_json：`runs/repro_20260211_v5_smoke_hybrid_mid_pairs5_v1/20260211_154851/configs/run.json`
+- hybrid smoke kpi：`runs/repro_20260211_v5_smoke_hybrid_mid_pairs5_v1/20260211_154851/table2_kpis_mean_raw.csv`
+- hybrid smoke 结果：SR=`0.8`，avg_path_length=`19.8398`，path_time_s=`11.3875`，argmax_inad=`0.271`，failure_reason=`reached=4, timeout=1`
+
+- 说明：该段为 smoke 级别（runs=5）验证；full（runs=20）结果见下文 train300+infer20 复测。
+
+### train=300 + infer=20 复测（short/mid/long，fixed pairs20）
+
+#### train（profile=midcover, episodes=300）
+- command：
+  - `conda run -n ros2py310 python train.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1 --episodes 300 --out repro_20260211_v5_train300_midcover_v1`
+- run_dir：`runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840`
+- run_json：`runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/configs/run.json`
+- train_eval：`runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/training_eval.csv`
+- train_meta：`runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/configs/train_meta_forest_a.json`
+- 结果要点：
+  - 实际完成 `episodes=150/300`（early-stop）
+  - `stop_reason=rl_early_stop_plateau`
+
+#### infer（runs=20，使用新训练模型）
+- short command：
+  - `conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_hybrid_short_pairs20_v1 --models runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/models --baselines hybrid_astar_mpc --out repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1`
+- short run_dir：`runs/repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1/20260211_172605`
+- short run_json：`runs/repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1/20260211_172605/configs/run.json`
+- short kpi：`runs/repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1/20260211_172605/table2_kpis_mean_raw.csv`
+- short raw：`runs/repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1/20260211_172605/table2_kpis_raw.csv`
+- short 指标：
+  - CNN-DDQN：SR=`0.75`，avg_path_length=`15.9082`，path_time_s=`10.4033`，argmax_inad=`0.169`，inference_time_s=`0.33997`
+  - Hybrid A*-MPC：SR=`0.95`，avg_path_length=`15.5982`，path_time_s=`9.2342`，inference_time_s=`1.37227`
+- short failure_reason：
+  - CNN-DDQN：`reached=15, collision=4, timeout=1`
+  - Hybrid A*-MPC：`reached=19, collision=1`
+
+- mid command：
+  - `conda run -n ros2py310 python infer.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1 --models runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/models --runs 20 --out repro_20260211_v5_train300_midcover_infer20_v1`
+- mid run_dir：`runs/repro_20260211_v5_train300_midcover_infer20_v1/20260211_164304`
+- mid run_json：`runs/repro_20260211_v5_train300_midcover_infer20_v1/20260211_164304/configs/run.json`
+- mid kpi：`runs/repro_20260211_v5_train300_midcover_infer20_v1/20260211_164304/table2_kpis_mean_raw.csv`
+- mid raw：`runs/repro_20260211_v5_train300_midcover_infer20_v1/20260211_164304/table2_kpis_raw.csv`
+- mid 指标：
+  - CNN-DDQN：SR=`0.80`，avg_path_length=`25.5886`，path_time_s=`16.9813`，argmax_inad=`0.147`，inference_time_s=`0.60843`
+  - Hybrid A*-MPC：SR=`0.95`，avg_path_length=`21.6854`，path_time_s=`12.6553`，inference_time_s=`2.606`
+- mid failure_reason：
+  - CNN-DDQN：`reached=16, timeout=4`
+  - Hybrid A*-MPC：`reached=19, collision=1`
+
+- long command：
+  - `conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_hybrid_long_pairs20_v1 --models runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/models --baselines hybrid_astar_mpc --out repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1`
+- long run_dir：`runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706`
+- long run_json：`runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706/configs/run.json`
+- long kpi：`runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706/table2_kpis_mean_raw.csv`
+- long raw：`runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706/table2_kpis_raw.csv`
+- long 指标：
+  - CNN-DDQN：SR=`0.65`，avg_path_length=`33.4409`，path_time_s=`19.5192`，argmax_inad=`0.206`，inference_time_s=`0.81727`
+  - Hybrid A*-MPC：SR=`0.90`，avg_path_length=`32.8275`，path_time_s=`17.7861`，inference_time_s=`6.71338`
+- long failure_reason：
+  - CNN-DDQN：`reached=13, collision=1, timeout=6`
+  - Hybrid A*-MPC：`reached=18, collision=1, truncated=1`
+
+- 三套件 SR 汇总（CNN-DDQN）：`short/mid/long = 0.75/0.80/0.65`。
+
 ## 结论
 - `v5` 当前主口径（hybrid/shielded）在同场四基线对照下，仍优于 strict，但 SR 仍低于 `Hybrid A*` / `Hybrid A*-MPC` / `RRT*` / `RRT-MPC`。
+- mid smoke（runs=5）下，`strict=0.0`、`hybrid=0.8`，mid 套件同样呈现 strict/hybrid 性能分化。
+- train300→infer20（short/mid/long）结果：`CNN SR=0.75/0.80/0.65`，均低于同场 `Hybrid A*-MPC SR=0.95/0.95/0.90`；且 `path_time_s` 也均更高。
 - 按最终门槛（对标 `Hybrid A*-MPC` 的三条不等式）仍未通过。

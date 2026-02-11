@@ -17,6 +17,40 @@
 - hybrid long run_json: `runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351/configs/run.json`
 - hybrid long kpi: `runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351/table2_kpis_mean_raw.csv`
 
+## mid 套件运行（14–42m）
+- pairgen run_dir: `runs/repro_20260211_pairgen_forest_a_mid20/20260211_153822`
+- pairgen run_json: `runs/repro_20260211_pairgen_forest_a_mid20/20260211_153822/configs/run.json`
+- pairgen kpi: `runs/repro_20260211_pairgen_forest_a_mid20/20260211_153822/table2_kpis_mean_raw.csv`
+
+- strict mid smoke run_dir: `runs/repro_20260211_v5_smoke_strict_mid_pairs5_v1/20260211_154838`
+- strict mid smoke run_json: `runs/repro_20260211_v5_smoke_strict_mid_pairs5_v1/20260211_154838/configs/run.json`
+- strict mid smoke kpi: `runs/repro_20260211_v5_smoke_strict_mid_pairs5_v1/20260211_154838/table2_kpis_mean_raw.csv`
+
+- hybrid mid smoke run_dir: `runs/repro_20260211_v5_smoke_hybrid_mid_pairs5_v1/20260211_154851`
+- hybrid mid smoke run_json: `runs/repro_20260211_v5_smoke_hybrid_mid_pairs5_v1/20260211_154851/configs/run.json`
+- hybrid mid smoke kpi: `runs/repro_20260211_v5_smoke_hybrid_mid_pairs5_v1/20260211_154851/table2_kpis_mean_raw.csv`
+
+## train300 + infer20 运行（short/mid/long）
+- train run_dir: `runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840`
+- train run_json: `runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/configs/run.json`
+- train eval: `runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/training_eval.csv`
+- train meta: `runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/configs/train_meta_forest_a.json`
+
+- infer short run_dir: `runs/repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1/20260211_172605`
+- infer short run_json: `runs/repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1/20260211_172605/configs/run.json`
+- infer short kpi: `runs/repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1/20260211_172605/table2_kpis_mean_raw.csv`
+- infer short raw: `runs/repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1/20260211_172605/table2_kpis_raw.csv`
+
+- infer mid run_dir: `runs/repro_20260211_v5_train300_midcover_infer20_v1/20260211_164304`
+- infer mid run_json: `runs/repro_20260211_v5_train300_midcover_infer20_v1/20260211_164304/configs/run.json`
+- infer mid kpi: `runs/repro_20260211_v5_train300_midcover_infer20_v1/20260211_164304/table2_kpis_mean_raw.csv`
+- infer mid raw: `runs/repro_20260211_v5_train300_midcover_infer20_v1/20260211_164304/table2_kpis_raw.csv`
+
+- infer long run_dir: `runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706`
+- infer long run_json: `runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706/configs/run.json`
+- infer long kpi: `runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706/table2_kpis_mean_raw.csv`
+- infer long raw: `runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706/table2_kpis_raw.csv`
+
 ## 主模型来源
 - checkpoint models: `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3p11_smoke/train_20260209_200525/models`
 - 说明：v5 主结果固定复用该历史 checkpoint，避免“重训随机性”影响版本口径。
@@ -37,6 +71,13 @@
 - `runs/repro_20260211_v5_compare4_hybrid_short_pairs20_v1/20260211_095220`（四基线同场）
 - `runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351`（四基线同场）
 - `runs/repro_20260211_v5_compare_hybrid_long_pairs20_maxsteps2400_v1/20260211_140420`（max_steps=2400≈120s 诊断复评）
+- `runs/repro_20260211_pairgen_forest_a_mid20/20260211_153822`（mid pairgen）
+- `runs/repro_20260211_v5_smoke_strict_mid_pairs5_v1/20260211_154838`（mid strict smoke）
+- `runs/repro_20260211_v5_smoke_hybrid_mid_pairs5_v1/20260211_154851`（mid hybrid smoke）
+- `runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840`（train300，early-stop at 150）
+- `runs/repro_20260211_v5_train300_midcover_hybrid_short_pairs20_v1/20260211_172605`（train300 后 short infer20）
+- `runs/repro_20260211_v5_train300_midcover_infer20_v1/20260211_164304`（train300 后 mid infer20）
+- `runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706`（train300 后 long infer20）
 
 ## 基线对照路径（fixed pairs20，四基线同场）
 - strict short kpi: `runs/repro_20260211_v5_compare4_strict_short_pairs20_v1/20260211_094538/table2_kpis_mean_raw.csv`
