@@ -64,7 +64,7 @@ python infer.py --profile forest_a_all6_300_cuda
 ### Latest train/infer commands (keep updated)
 
 Last updated: 2026-02-11  
-Current recommended profile: `repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1`
+Current recommended train profile: `repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1`
 
 ```bash
 conda run -n ros2py310 python train.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1
@@ -85,6 +85,14 @@ conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_s
 conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_hybrid_mid_pairs20_v1
 ```
 
+v6 timeout-tuned fixed pairs infer (hybrid/shielded, runs=20; checkpoint pinned in profile):
+
+```bash
+conda run -n ros2py310 python infer.py --profile repro_20260211_v6_timeout_tune_hybrid_short_pairs20_v1
+conda run -n ros2py310 python infer.py --profile repro_20260211_v6_timeout_tune_hybrid_mid_pairs20_v1
+conda run -n ros2py310 python infer.py --profile repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1
+```
+
 ### Train live view (pygame, RL stage only)
 
 Default is off. Enable it explicitly during training:
@@ -98,7 +106,7 @@ conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_
 - If `pygame` is not installed, training continues and prints an install hint.
 - Fixed-size vehicle collision box (oriented by heading from `pose_m`) is ON by default; use `--no-live-view-collision-box` to hide it.
 
-## 版本总索引（v1 → v5）
+## 版本总索引（v1 → v6）
 
 > 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；`v4`~`v8p3` 已于 2026-02-09 清理（误混入本仓库版本链）。
 
@@ -108,7 +116,7 @@ conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v5）
+### 增量版本（v3p1 → v6）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -118,6 +126,7 @@ conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_
 | `v4p3` | `docs/versions/v4p3/` | `configs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3_smoke300.json` | `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3_smoke300_iter1_ep300_aux001_infer10/20260210_155934` | `0.2 / 0.0` | `0.9 / 1.0` | 未通过 |
 | `v4p3p1` | `docs/versions/v4p3p1/` | `configs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3p1_smoke300.json` | `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3p1_smoke300_iter1_sp03_infer10/20260210_164044` | `0.0 / 0.0` | `0.9 / 1.0` | 未通过 |
 | `v5` | `docs/versions/v5/` | `configs/repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1.json` | `runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351` | `0.75 / 0.85` | `0.95 / 0.90` | 未通过 |
+| `v6` | `docs/versions/v6/` | `configs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1/20260211_214602` | `0.90 / 0.70` | `0.95 / 0.90` | 未通过 |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
