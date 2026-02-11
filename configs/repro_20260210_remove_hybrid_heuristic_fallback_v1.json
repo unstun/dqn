@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "title": "remove hybrid heuristic fallback in infer rollout (v1)",
+    "date": "2026-02-10",
+    "summary": "Inference behavior update: in hybrid/shielded regime, remove the last-resort heuristic fallback action; keep strict-argmax unchanged; keep stop-override + top-k/mask replacement unchanged.",
+    "commands": [
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python infer.py --profile repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3p1_smoke300 --baselines --envs forest_a::short --no-rand-two-suites --random-start-goal --runs 20 --rand-pairs-json configs/repro_20260210_forest_a_pairs_short20_v1.json --models runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3p11_smoke/train_20260209_200525/models --out repro_20260210_reval_v3p11_hybrid_short_pairs20_noheur_v1 --no-forest-no-fallback"
+    ],
+    "notes": [
+      "strict-argmax definition is unchanged: pure argmax(Q) at inference.",
+      "hybrid/shielded now includes stop-override + admissibility-gated top-k/mask replacement, but no heuristic fallback rollout takeover.",
+      "This change affects inference-time policy regime semantics and requires separate re-eval logging."
+    ],
+    "changed_files": [
+      "forest_vehicle_dqn/cli/infer.py",
+      "README.md",
+      "README.zh-CN.md",
+      "configs/README.md"
+    ]
+  }
+}

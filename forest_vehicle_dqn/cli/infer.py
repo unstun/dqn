@@ -283,9 +283,8 @@ def rollout_agent(
                             break
 
                     if chosen is None:
-                        # If there are no safe actions that make short-horizon goal-distance progress,
-                        # fall back to a lightweight heuristic rollout instead of picking an arbitrary
-                        # "safe but stalled" action by Q-value (which often collapses to stopping).
+                        # If there are no admissible top-k alternatives, try masked argmax over
+                        # admissible-progress actions. If mask is empty, keep original argmax(a0).
                         prog_mask = env.admissible_action_mask(
                             horizon_steps=adm_h,
                             min_od_m=min_od,
@@ -297,9 +296,6 @@ def rollout_agent(
                             q_masked[torch.from_numpy(~prog_mask).to(q.device)] = torch.finfo(q_masked.dtype).min
                             chosen = int(torch.argmax(q_masked).item())
                             replacement_mask_steps += 1
-                        else:
-                            chosen = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=min_od))
-                            fallback_steps += 1
 
                     if chosen is not None:
                         a = int(chosen)

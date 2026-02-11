@@ -152,7 +152,42 @@ Use `table2_kpis_mean_raw.csv` and compare `CNN-DDQN` against `Hybrid A*-MPC` wi
 
 If any suite fails any condition above, the final gate is considered failed.
 
-Inference regime naming note: this repo distinguishes `strict-argmax` (legacy label: strict no-fallback) vs `shielded/masked/hybrid`. `strict-argmax` means pure `argmax(Q)` inference (no masking/top-k/stop-override/replacement/fallback/planner takeover); masks may be computed for logging only. If any inference-time intervention is enabled, label it `shielded/masked/hybrid` (not `strict-argmax`).
+Inference regime naming note: this repo distinguishes `strict-argmax` (legacy label: strict no-fallback) vs `shielded/masked/hybrid`. `strict-argmax` means pure `argmax(Q)` inference (no masking/top-k/stop-override/replacement/heuristic takeover/planner takeover); masks may be computed for logging only. If any inference-time intervention is enabled, label it `shielded/masked/hybrid` (not `strict-argmax`).
+
+### Strict-argmax vs hybrid re-eval (fixed pairs)
+
+To compare checkpoints fairly without random-pair drift, evaluate on **fixed random pairs** (short/long suites) and report two regimes:
+
+- `strict-argmax`: pass `--forest-no-fallback` (pure `argmax(Q)`).
+- `hybrid/shielded`: pass `--no-forest-no-fallback` (allows stop-override + replacement only; no heuristic fallback).
+
+Fixed pairs (forest_a, short/long suites, 20 each):
+
+- `configs/repro_20260210_forest_a_pairs_short20_v1.json`
+- `configs/repro_20260210_forest_a_pairs_long20_v1.json`
+
+Template (reuse a profile to keep env/action-space settings consistent with the checkpoint):
+
+```bash
+PROFILE=repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3p1_smoke300
+MODELS_DIR="runs/<exp>/<train_timestamp>/models"
+
+# strict-argmax (short)
+conda run -n ros2py310 python infer.py --profile "$PROFILE" --baselines \\
+  --envs forest_a::short --no-rand-two-suites --random-start-goal --runs 20 \\
+  --rand-pairs-json configs/repro_20260210_forest_a_pairs_short20_v1.json \\
+  --models "$MODELS_DIR" --out repro_reval_strict_short_pairs20 \\
+  --forest-no-fallback
+
+# hybrid/shielded (short)
+conda run -n ros2py310 python infer.py --profile "$PROFILE" --baselines \\
+  --envs forest_a::short --no-rand-two-suites --random-start-goal --runs 20 \\
+  --rand-pairs-json configs/repro_20260210_forest_a_pairs_short20_v1.json \\
+  --models "$MODELS_DIR" --out repro_reval_hybrid_short_pairs20 \\
+  --no-forest-no-fallback
+```
+
+For the long suite, replace `forest_a::short` + `pairs_short20` with `forest_a::long` + `pairs_long20`.
 
 ## Demonstrations (DQfD)
 
@@ -195,6 +230,21 @@ Run only MPC-combo baselines:
 ```bash
 conda run -n ros2py310 python infer.py --envs forest_a --out outputs_forest_mpc_baselines --baselines astar_mpc hybrid_astar_mpc rrt_mpc --skip-rl --runs 5 --device cpu
 ```
+
+### Fixed random pairs (fair baseline comparison)
+
+Use the frozen random-pair profile to compare planners on the exact same `(start, goal)` samples:
+
+```bash
+conda run -n ros2py310 python infer.py --profile repro_20260206_6baselines_fair_forest_a_fixedpairs --skip-rl
+```
+
+This profile reads pairs from `configs/repro_20260206_6baselines_fair_forest_a_pairs.json`.
+
+Suite-split fixed pairs (short/long, 20 each):
+
+- `configs/repro_20260210_forest_a_pairs_short20_v1.json`
+- `configs/repro_20260210_forest_a_pairs_long20_v1.json`
 
 Legacy `forest_baseline_mpc_*` profile keys are ignored during infer config loading (deprecated).
 

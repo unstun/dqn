@@ -151,7 +151,42 @@ conda run -n ros2py310 python infer.py --profile repro_20260210_forest_a_cnn_ddq
 
 任一套件未满足任一条件，即视为未通过最终门槛。
 
-推理口径命名说明：本仓库区分 `strict-argmax`（旧称 strict no-fallback）与 `shielded/masked/hybrid`。`strict-argmax` 指推理期纯 `argmax(Q)`（不做 masking/top-k/stop-override/replacement/fallback/接管）；允许计算 mask 仅用于统计/诊断。若推理期启用任何干预，请按 `shielded/masked/hybrid` 命名（不得宣称 `strict-argmax`/strict no-fallback）。
+推理口径命名说明：本仓库区分 `strict-argmax`（旧称 strict no-fallback）与 `shielded/masked/hybrid`。`strict-argmax` 指推理期纯 `argmax(Q)`（不做 masking/top-k/stop-override/replacement/启发式接管/规划器接管）；允许计算 mask 仅用于统计/诊断。若推理期启用任何干预，请按 `shielded/masked/hybrid` 命名（不得宣称 `strict-argmax`/strict no-fallback）。
+
+### strict-argmax vs hybrid（固定 pairs 复评测模板）
+
+为避免 random pair 漂移，建议在**固定随机样本**上同时汇报两套推理口径：
+
+- `strict-argmax`：使用 `--forest-no-fallback`（推理纯 `argmax(Q)`）
+- `hybrid/shielded`：使用 `--no-forest-no-fallback`（允许 stop-override + replacement；不启用启发式 fallback）
+
+固定 pairs（forest_a，short/long 各 20）：
+
+- `configs/repro_20260210_forest_a_pairs_short20_v1.json`
+- `configs/repro_20260210_forest_a_pairs_long20_v1.json`
+
+模板（复用 profile 以保证与 checkpoint 的 env/action-space 参数一致）：
+
+```bash
+PROFILE=repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3p1_smoke300
+MODELS_DIR="runs/<exp>/<train_timestamp>/models"
+
+# strict-argmax（short）
+conda run -n ros2py310 python infer.py --profile "$PROFILE" --baselines \\
+  --envs forest_a::short --no-rand-two-suites --random-start-goal --runs 20 \\
+  --rand-pairs-json configs/repro_20260210_forest_a_pairs_short20_v1.json \\
+  --models "$MODELS_DIR" --out repro_reval_strict_short_pairs20 \\
+  --forest-no-fallback
+
+# hybrid/shielded（short）
+conda run -n ros2py310 python infer.py --profile "$PROFILE" --baselines \\
+  --envs forest_a::short --no-rand-two-suites --random-start-goal --runs 20 \\
+  --rand-pairs-json configs/repro_20260210_forest_a_pairs_short20_v1.json \\
+  --models "$MODELS_DIR" --out repro_reval_hybrid_short_pairs20 \\
+  --no-forest-no-fallback
+```
+
+long 套件同理：把 `forest_a::short` 与 `pairs_short20` 改为 `forest_a::long` 与 `pairs_long20`。
 
 ## 示教数据（DQfD）
 
@@ -208,6 +243,7 @@ conda run -n ros2py310 python infer.py --profile repro_20260206_6baselines_fair_
 该 profile 使用固定 start-goal 样本文件：
 
 - `configs/repro_20260206_6baselines_fair_forest_a_pairs.json`
+- （short/long 分套件固定样本）`configs/repro_20260210_forest_a_pairs_short20_v1.json`、`configs/repro_20260210_forest_a_pairs_long20_v1.json`
 
 ## 成功判定
 
