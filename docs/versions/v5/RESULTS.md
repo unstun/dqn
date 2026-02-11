@@ -120,6 +120,17 @@
 - hybrid long run_json：`runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351/configs/run.json`
 - hybrid long kpi：`runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351/table2_kpis_mean_raw.csv`
 
+### max_steps=2400（120s）诊断复评（hybrid long，固定 pairs20）
+- command:
+  - `conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_hybrid_long_pairs20_v1 --baselines hybrid_astar_mpc --out repro_20260211_v5_compare_hybrid_long_pairs20_maxsteps2400_v1 --max-steps 2400`
+- run_dir：`runs/repro_20260211_v5_compare_hybrid_long_pairs20_maxsteps2400_v1/20260211_140420`
+- run_json：`runs/repro_20260211_v5_compare_hybrid_long_pairs20_maxsteps2400_v1/20260211_140420/configs/run.json`
+- kpi：`runs/repro_20260211_v5_compare_hybrid_long_pairs20_maxsteps2400_v1/20260211_140420/table2_kpis_mean_raw.csv`
+- 结果要点：
+  - CNN：SR=`0.85`（未提升），failures=`reached=17, collision=2, timeout=1`
+  - timeout case：`run_idx=19` 的 `path_time_s=120.0`（依然跑满上限仍未到达）
+  - Hybrid A*-MPC：SR=`0.90`，failures=`reached=18, collision=1, truncated=1`
+
 ## 结论
 - `v5` 当前主口径（hybrid/shielded）在同场四基线对照下，仍优于 strict，但 SR 仍低于 `Hybrid A*` / `Hybrid A*-MPC` / `RRT*` / `RRT-MPC`。
 - 按最终门槛（对标 `Hybrid A*-MPC` 的三条不等式）仍未通过。

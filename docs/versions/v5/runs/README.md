@@ -36,6 +36,7 @@
 - `runs/repro_20260211_v5_compare4_strict_long_pairs20_v1/20260211_094712`（四基线同场）
 - `runs/repro_20260211_v5_compare4_hybrid_short_pairs20_v1/20260211_095220`（四基线同场）
 - `runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351`（四基线同场）
+- `runs/repro_20260211_v5_compare_hybrid_long_pairs20_maxsteps2400_v1/20260211_140420`（max_steps=2400≈120s 诊断复评）
 
 ## 基线对照路径（fixed pairs20，四基线同场）
 - strict short kpi: `runs/repro_20260211_v5_compare4_strict_short_pairs20_v1/20260211_094538/table2_kpis_mean_raw.csv`

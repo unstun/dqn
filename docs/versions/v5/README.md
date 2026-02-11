@@ -33,6 +33,8 @@
   - `conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_strict_long_pairs20_v1 --baselines hybrid_astar hybrid_astar_mpc rrt_star rrt_mpc --out repro_20260211_v5_compare4_strict_long_pairs20_v1`
   - `conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_hybrid_short_pairs20_v1 --baselines hybrid_astar hybrid_astar_mpc rrt_star rrt_mpc --out repro_20260211_v5_compare4_hybrid_short_pairs20_v1`
   - `conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_hybrid_long_pairs20_v1 --baselines hybrid_astar hybrid_astar_mpc rrt_star rrt_mpc --out repro_20260211_v5_compare4_hybrid_long_pairs20_v1`
+- 诊断（仅 long，max_steps=2400≈120s，Hybrid A*-MPC 同场）：
+  - `conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_hybrid_long_pairs20_v1 --baselines hybrid_astar_mpc --out repro_20260211_v5_compare_hybrid_long_pairs20_maxsteps2400_v1 --max-steps 2400`
 
 ## 代表性运行
 - 主模型来源（历史 checkpoint）：`runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3p11_smoke/train_20260209_200525/models`
@@ -40,6 +42,7 @@
 - v5 strict+4baseline long：`runs/repro_20260211_v5_compare4_strict_long_pairs20_v1/20260211_094712`
 - v5 hybrid+4baseline short：`runs/repro_20260211_v5_compare4_hybrid_short_pairs20_v1/20260211_095220`
 - v5 hybrid+4baseline long：`runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351`
+- v5 hybrid long max_steps=2400 诊断：`runs/repro_20260211_v5_compare_hybrid_long_pairs20_maxsteps2400_v1/20260211_140420`
 
 ## 结论
 - 本版确认：`v3p11` 在 `hybrid/shielded` 下仍显著强于 strict。
