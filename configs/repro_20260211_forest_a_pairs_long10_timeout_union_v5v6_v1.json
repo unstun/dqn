@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "date": "2026-02-11",
+  "env": "forest_a",
+  "suite": "long",
+  "runs": 10,
+  "seed": 124,
+  "source_pairs_json": "configs/repro_20260210_forest_a_pairs_long20_v1.json",
+  "notes": [
+    "Fixed (start,goal) subset for quick long-suite smoke focused on timeout migration.",
+    "Constructed as the union of long timeout pairs from:",
+    "  - v5 baseline: runs/repro_20260211_v5_train300_midcover_hybrid_long_pairs20_v1/20260211_172706 (timeout run_idx=[7,10,11,15,16,18])",
+    "  - v6 tuned: runs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1/20260211_214602 (timeout run_idx=[0,2,14,15,19])",
+    "Union (src_run_idx in long20): [0,2,7,10,11,14,15,16,18,19].",
+    "IMPORTANT: This file uses sequential run_idx=0..9 for trace/run indexing; the original long20 index is stored in src_run_idx."
+  ],
+  "pairs": [
+    {"env": "forest_a", "run_idx": 0, "src_run_idx": 0, "start_xy": [324, 317], "goal_xy": [91, 112]},
+    {"env": "forest_a", "run_idx": 1, "src_run_idx": 2, "start_xy": [93, 266], "goal_xy": [330, 37]},
+    {"env": "forest_a", "run_idx": 2, "src_run_idx": 7, "start_xy": [128, 335], "goal_xy": [353, 91]},
+    {"env": "forest_a", "run_idx": 3, "src_run_idx": 10, "start_xy": [337, 346], "goal_xy": [80, 173]},
+    {"env": "forest_a", "run_idx": 4, "src_run_idx": 11, "start_xy": [329, 42], "goal_xy": [110, 283]},
+    {"env": "forest_a", "run_idx": 5, "src_run_idx": 14, "start_xy": [19, 349], "goal_xy": [281, 124]},
+    {"env": "forest_a", "run_idx": 6, "src_run_idx": 15, "start_xy": [215, 321], "goal_xy": [334, 14]},
+    {"env": "forest_a", "run_idx": 7, "src_run_idx": 16, "start_xy": [58, 73], "goal_xy": [242, 328]},
+    {"env": "forest_a", "run_idx": 8, "src_run_idx": 18, "start_xy": [21, 347], "goal_xy": [227, 122]},
+    {"env": "forest_a", "run_idx": 9, "src_run_idx": 19, "start_xy": [282, 314], "goal_xy": [183, 22]}
+  ]
+}

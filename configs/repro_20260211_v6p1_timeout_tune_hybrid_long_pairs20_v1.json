@@ -1,0 +1,71 @@
+{
+  "_meta": {
+    "title": "v6p1 timeout tune: hybrid long pairs20 v1 (train300 midcover checkpoint)",
+    "date": "2026-02-11",
+    "summary": "Follow-up on v6: reduce long-suite timeout without changing RL code by tuning admissible-action gating; params selected via timeout-union10 smoke sweep.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1"
+    ],
+    "notes": [
+      "hybrid/shielded regime: allows stop-override and admissibility-gated replacement (not strict-argmax).",
+      "Checkpoint pinned to v5 train300 midcover to isolate inference-time effects.",
+      "Selected via union-of-timeouts smoke: configs/repro_20260211_forest_a_pairs_long10_timeout_union_v5v6_v1.json.",
+      "Key tuning (vs v6 long): forest_adm_horizon=30->35, forest_min_od_m=0.02->0.002, forest_min_progress_m stays 0.01."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::long"
+    ],
+    "models": "runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/models",
+    "out": "repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "rand_two_suites": false,
+    "runs": 20,
+    "progress": true,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 35,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.002,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "forest_mpc_horizon_steps": 12,
+    "forest_mpc_candidates": 256,
+    "forest_mpc_dt_s": 0.0,
+    "forest_mpc_w_u": 0.05,
+    "forest_mpc_w_du": 0.5,
+    "forest_mpc_w_pos": 6.0,
+    "forest_mpc_w_yaw": 1.2,
+    "forest_mpc_align_dist_m": 1.5,
+    "forest_mpc_collision_padding_m": 0.0,
+    "forest_mpc_goal_lookahead_steps": 2,
+    "forest_astar_opt_enable": false,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
+    "rand_edge_margin_m": 3.0,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "none",
+    "rand_pairs_json": "configs/repro_20260210_forest_a_pairs_long20_v1.json",
+    "rand_tries": 400,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 43,
+    "forest_goal_admissible_relax_factor": 2.5
+  }
+}

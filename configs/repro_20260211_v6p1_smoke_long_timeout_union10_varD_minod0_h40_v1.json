@@ -1,0 +1,70 @@
+{
+  "_meta": {
+    "title": "v6p1 smoke: long timeout-union10, varD min_od=0.00 + adm_horizon=40 (train300 midcover checkpoint)",
+    "date": "2026-02-11",
+    "summary": "Variant D for long timeout-union10 smoke: keep min_od=0.00 but extend horizon (30 -> 40) to catch longer-horizon collisions while preserving relaxed clearance; traces enabled.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260211_v6p1_smoke_long_timeout_union10_varD_minod0_h40_v1"
+    ],
+    "notes": [
+      "Delta vs varA: forest_adm_horizon=30 -> 40 (min_od=0.00, min_progress=0.01 unchanged).",
+      "Traces enabled: <run_dir>/traces/*.csv."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::long"
+    ],
+    "models": "runs/repro_20260211_v5_train300_midcover_v1/train_20260211_162840/models",
+    "out": "repro_20260211_v6p1_smoke_long_timeout_union10_varD_minod0_h40_v1",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "rand_two_suites": false,
+    "runs": 10,
+    "progress": true,
+    "forest_no_fallback": false,
+    "forest_policy_save_traces": true,
+    "forest_adm_horizon": 40,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.0,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "forest_mpc_horizon_steps": 12,
+    "forest_mpc_candidates": 256,
+    "forest_mpc_dt_s": 0.0,
+    "forest_mpc_w_u": 0.05,
+    "forest_mpc_w_du": 0.5,
+    "forest_mpc_w_pos": 6.0,
+    "forest_mpc_w_yaw": 1.2,
+    "forest_mpc_align_dist_m": 1.5,
+    "forest_mpc_collision_padding_m": 0.0,
+    "forest_mpc_goal_lookahead_steps": 2,
+    "forest_astar_opt_enable": false,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
+    "rand_edge_margin_m": 3.0,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "none",
+    "rand_pairs_json": "configs/repro_20260211_forest_a_pairs_long10_timeout_union_v5v6_v1.json",
+    "rand_tries": 400,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 43,
+    "forest_goal_admissible_relax_factor": 2.5
+  }
+}

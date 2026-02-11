@@ -84,12 +84,13 @@ conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_s
 conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_hybrid_mid_pairs20_v1
 ```
 
-v6 timeout-tune 固定 pairs 推理命令（hybrid/shielded，runs=20；profile 内已固定 checkpoint）：
+v6p1 timeout-tune 固定 pairs 推理命令（hybrid/shielded，runs=20；profile 内已固定 checkpoint）：
 
 ```bash
+# NOTE: v6p1 的 long/mid gating 会让 short 回退；short 仍沿用 v6。
 conda run -n ros2py310 python infer.py --profile repro_20260211_v6_timeout_tune_hybrid_short_pairs20_v1
-conda run -n ros2py310 python infer.py --profile repro_20260211_v6_timeout_tune_hybrid_mid_pairs20_v1
-conda run -n ros2py310 python infer.py --profile repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1
+conda run -n ros2py310 python infer.py --profile repro_20260211_v6p1_timeout_tune_hybrid_mid_pairs20_v1
+conda run -n ros2py310 python infer.py --profile repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1
 ```
 
 ### 训练实时显示（pygame，仅 RL 阶段）
@@ -105,7 +106,7 @@ conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_
 - 若未安装 `pygame`，训练继续执行，并打印安装提示。
 - 碰撞检测框默认开启（固定车体外框，按 `pose_m` 航向角旋转）；可用 `--no-live-view-collision-box` 关闭显示。
 
-## 版本总索引（v1 → v6）
+## 版本总索引（v1 → v6p1）
 
 > 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；`v4`~`v8p3` 已于 2026-02-09 清理（误混入本仓库版本链）。
 
@@ -115,7 +116,7 @@ conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v6）
+### 增量版本（v3p1 → v6p1）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -126,6 +127,7 @@ conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_
 | `v4p3p1` | `docs/versions/v4p3p1/` | `configs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3p1_smoke300.json` | `runs/repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3p1_smoke300_iter1_sp03_infer10/20260210_164044` | `0.0 / 0.0` | `0.9 / 1.0` | 未通过 |
 | `v5` | `docs/versions/v5/` | `configs/repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1.json` | `runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351` | `0.75 / 0.85` | `0.95 / 0.90` | 未通过 |
 | `v6` | `docs/versions/v6/` | `configs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1/20260211_214602` | `0.90 / 0.70` | `0.95 / 0.90` | 未通过 |
+| `v6p1` | `docs/versions/v6p1/` | `configs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1/20260212_003414` | `0.70 / 0.95` | `0.95 / 0.90` | 未通过 |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
