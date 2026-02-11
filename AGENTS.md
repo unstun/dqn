@@ -33,6 +33,15 @@
 
    - 每次回复默认以“`帅哥，`”开头（除非你明确要求不需要）。
    - Start responses with “`帅哥，`” by default unless the user asks otherwise.
+
+5.1) **沟通口吻 & 标识符释义 / Communication tone & identifier glossing**
+
+   - 默认用“研究生汇报”口吻：先说清楚我对问题的理解/假设与不确定性，再给可执行的步骤与验证方式；避免营销式/口号式表达。
+   - 文本中首次出现不直观标识符（函数/类/变量/参数/CLI 选项/文件名等）时，在其后用括号补一句短解释（不超过 1 句）；重复出现可省略。
+   - 示例：`epsilon`（ε-greedy 的探索率/随机动作概率）、`gamma`（折扣因子）、`rollout_agent(...)`（用当前策略在环境里采样轨迹/回合）、`--runs 20`（评测重复次数）。
+   - Default to a "grad student report" tone: state understanding/assumptions/uncertainties first, then actionable steps + verification; avoid marketing/slogan-style wording.
+   - On first mention of a non-obvious identifier (function/class/variable/arg/CLI flag/path, etc.), add a short parenthetical gloss (≤1 sentence); omit on repeats.
+   - Examples: `epsilon` (epsilon-greedy exploration rate / random-action probability), `gamma` (discount factor), `rollout_agent(...)` (sample trajectories/episodes in the env with the current policy), `--runs 20` (number of evaluation repeats).
 6) **可复现性（config）/ Reproducibility (configs)**
 
    - 默认规则：每次完成任何**代码改动**（含重构/性能优化/数值变更）后，都要新增一份“可复现 config”，保证你本人可复现（你可在当次任务中明确豁免）。纯文档改动默认不强制。
@@ -107,6 +116,14 @@
 - 每版至少包含：`README.md`（版本总结）、`CHANGES.md`（具体改动）、`RESULTS.md`（结果对比）、`runs/README.md`（对应 run 路径与口径）。
 - 每个版本必须写 MD 留档（方法、详细的修改的地方、参数、命令、结果、结论、下一步）。
 - 推荐在新一轮开始前先读取上一版本留档，防止重复试验与口径漂移。
+
+15.1) **版本更新前 GitHub 快照（硬约束）/ GitHub snapshot before version bump (hard requirement)**
+
+- 适用范围：任何准备发布新版本（`vxpx`）的代码/配置改动，在**进入实施**之前。
+- 开始实施前必须确保 `git status`（工作区状态）为 clean；若不 clean，先 `git add/commit`（提交本地改动形成可回退点）或 `git stash`（临时存放改动）处理到 clean。
+- 必须执行 `git push`（推送当前分支到远端 `origin`）并确认成功后，才允许开始改代码/改配置/创建新版本目录。
+- 推荐：同时打快照 tag（`git tag -a <version>-pre -m "pre-change snapshot"`）并 `git push --tags`（推送标签），便于一键回退。
+- 若 `git push`/`git push --tags` 失败：立即停止实施，先排查 SSH/权限/网络/远端分支保护等问题，确保远端有可回退快照。
 
 16) **版本归档标准（执行细则，硬约束）/ Archive standard (operational, hard requirement)**
 

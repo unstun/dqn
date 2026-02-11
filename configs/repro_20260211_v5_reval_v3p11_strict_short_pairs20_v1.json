@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "title": "v5 re-eval v3p11 strict short pairs20 v1",
+    "date": "2026-02-11",
+    "summary": "v5 strict-argmax evaluation on fixed short pairs20 using v3p11 checkpoint.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_strict_short_pairs20_v1"
+    ],
+    "notes": [
+      "strict-argmax regime: pure argmax(Q) at inference.",
+      "Fixed pairs20 for fair and repeatable comparison.",
+      "Models pinned to v3p11 historical checkpoint."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::short"
+    ],
+    "models": "runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3p11_smoke/train_20260209_200525/models",
+    "out": "repro_20260211_v5_reval_v3p11_strict_short_pairs20_v1",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [],
+    "forest_astar_opt_enable": false,
+    "forest_mpc_horizon_steps": 12,
+    "forest_mpc_candidates": 256,
+    "forest_mpc_dt_s": 0.0,
+    "forest_mpc_w_u": 0.05,
+    "forest_mpc_w_du": 0.5,
+    "forest_mpc_w_pos": 6.0,
+    "forest_mpc_w_yaw": 1.2,
+    "forest_mpc_align_dist_m": 1.5,
+    "forest_mpc_collision_padding_m": 0.0,
+    "forest_mpc_goal_lookahead_steps": 2,
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "rand_two_suites": false,
+    "runs": 20,
+    "progress": true,
+    "forest_no_fallback": true,
+    "forest_adm_horizon": 20,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
+    "rand_edge_margin_m": 3.0,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "none",
+    "rand_pairs_json": "configs/repro_20260210_forest_a_pairs_short20_v1.json",
+    "rand_tries": 400,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 43,
+    "forest_goal_admissible_relax_factor": 2.5,
+    "forest_min_progress_m": -0.02
+  }
+}
