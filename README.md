@@ -107,6 +107,17 @@ conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_
 - If `pygame` is not installed, training continues and prints an install hint.
 - Fixed-size vehicle collision box (oriented by heading from `pose_m`) is ON by default; use `--no-live-view-collision-box` to hide it.
 
+### Interactive goal-click game (pygame)
+
+Left-click a goal on the map, pick a planner, and let `mpc` track the planned path.
+
+```bash
+conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_forest_a_v1
+```
+
+Planner hotkeys: `1`=hybrid A*, `2`=RRT*, `3`=grid A*, `4`=cnn-ddqn (requires `--rl-checkpoint <path>`).  
+Other: `R` reset, `SPACE` pause, `P` replan.
+
 ## 版本总索引（v1 → v6p1）
 
 > 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；`v4`~`v8p3` 已于 2026-02-09 清理（误混入本仓库版本链）。

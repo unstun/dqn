@@ -1,0 +1,39 @@
+{
+  "_meta": {
+    "date": "2026-02-12",
+    "topic": "Interactive pygame goal-click demo (forest bicycle env)",
+    "commands": [
+      "conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_forest_a_v1",
+      "conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_forest_a_v1 --self-check",
+      "conda run -n ros2py310 python -m pip install -r requirements-optional.txt"
+    ],
+    "notes": [
+      "Left-click sets goal; planner runs in a background thread; MPC tracks the planned path.",
+      "Planner choices: hybrid_astar / rrt_star / grid_astar / cnn_ddqn (cnn_ddqn requires --rl-checkpoint).",
+      "If planning feels slow on forest_a, try forest_d or reduce planner timeouts/max nodes."
+    ]
+  },
+  "game": {
+    "env": "forest_a",
+    "planner": "hybrid_astar",
+    "controller": "mpc",
+    "seed": 0,
+    "max_steps": 600,
+    "window_size": 900,
+    "fps": 60,
+    "trail_len": 300,
+    "planner_timeout_s": 1.0,
+    "hybrid_max_nodes": 200000,
+    "rrt_max_iter": 5000,
+    "astar_max_expanded": 1000000,
+    "astar_curve_opt": false,
+    "collision_padding_m": 0.0,
+    "mpc_horizon_steps": 12,
+    "mpc_candidates": 256,
+    "mpc_w_pos": 6.0,
+    "mpc_w_yaw": 1.2,
+    "rl_device": "cpu",
+    "rl_max_steps": 600
+  }
+}
+

@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "date": "2026-02-12",
+    "topic": "Interactive pygame game: Chinese HUD + unpause-on-new-goal",
+    "commands": [
+      "conda run -n ros2py310 python -m pip install -r requirements-optional.txt",
+      "conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_ui_cn_v1",
+      "conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_ui_cn_v1 --self-check"
+    ],
+    "notes": [
+      "HUD uses Chinese text and draws a semi-transparent panel so text remains readable over the map.",
+      "After reaching the goal, left-clicking a new goal automatically resumes motion (paused=false)."
+    ]
+  },
+  "game": {
+    "env": "forest_a",
+    "planner": "hybrid_astar",
+    "controller": "mpc",
+    "seed": 0,
+    "max_steps": 600,
+    "window_size": 900,
+    "fps": 60,
+    "trail_len": 300,
+    "planner_timeout_s": 1.0,
+    "hybrid_max_nodes": 200000,
+    "rrt_max_iter": 5000,
+    "astar_max_expanded": 1000000,
+    "astar_curve_opt": false,
+    "collision_padding_m": 0.0,
+    "mpc_horizon_steps": 12,
+    "mpc_candidates": 256,
+    "mpc_w_pos": 6.0,
+    "mpc_w_yaw": 1.2,
+    "rl_device": "cpu",
+    "rl_max_steps": 600
+  }
+}
+

@@ -106,6 +106,17 @@ conda run -n ros2py310 python train.py --profile repro_20260210_train_live_view_
 - 若未安装 `pygame`，训练继续执行，并打印安装提示。
 - 碰撞检测框默认开启（固定车体外框，按 `pose_m` 航向角旋转）；可用 `--no-live-view-collision-box` 关闭显示。
 
+### 交互式点目标 game（pygame）
+
+在地图上鼠标左键点 goal（目标点），选择规划器，然后用 `mpc` 跟踪规划路径。
+
+```bash
+conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_forest_a_v1
+```
+
+规划器快捷键：`1`=hybrid A*，`2`=RRT*，`3`=grid A*，`4`=cnn-ddqn（需要 `--rl-checkpoint <path>`）。  
+其他：`R` 重置，`SPACE` 暂停，`P` 重新规划。
+
 ## 版本总索引（v1 → v6p1）
 
 > 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；`v4`~`v8p3` 已于 2026-02-09 清理（误混入本仓库版本链）。
