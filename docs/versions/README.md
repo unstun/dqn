@@ -1,4 +1,4 @@
-# 版本留档索引（v1 → v6p1）
+# 版本留档索引（v1 → v6p2）
 
 - 归档入口：仓库根目录 `README.md` 的“版本总索引（v1 → v6p1）”。
 - 本文件保留为 `docs/versions/` 内部快速导航，与根 README 保持同一口径。
@@ -23,6 +23,7 @@
 | `v5` | `v5` | `docs/versions/v5/` | `configs/repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1.json` | `runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351` | `0.75` / `0.85` | `0.95` / `0.90` | 未通过 |
 | `v6` | `v6` | `docs/versions/v6/` | `configs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1/20260211_214602` | `0.90` / `0.70` | `0.95` / `0.90` | 未通过 |
 | `v6p1` | `v6p1` | `docs/versions/v6p1/` | `configs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1/20260212_003414` | `0.70` / `0.95` | `0.95` / `0.90` | 未通过 |
+| `v6p2` | `v6p2` | `docs/versions/v6p2/` | `configs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1/20260212_003414` | `0.70` / `0.95` | `0.95` / `0.90` | 未通过 |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。

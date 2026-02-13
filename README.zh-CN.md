@@ -121,7 +121,7 @@ conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_
 规划器快捷键：`1`=hybrid A*，`2`=RRT*，`3`=grid A*，`4`=cnn-ddqn（需要 `--rl-checkpoint <path>`）。  
 其他：`R` 重置，`SPACE` 暂停，`P` 重新规划。
 
-## 版本总索引（v1 → v6p1）
+## 版本总索引（v1 → v6p2）
 
 > 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；`v4`~`v8p3` 已于 2026-02-09 清理（误混入本仓库版本链）。
 
@@ -143,6 +143,7 @@ conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_
 | `v5` | `docs/versions/v5/` | `configs/repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1.json` | `runs/repro_20260211_v5_compare4_hybrid_long_pairs20_v1/20260211_095351` | `0.75 / 0.85` | `0.95 / 0.90` | 未通过 |
 | `v6` | `docs/versions/v6/` | `configs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1/20260211_214602` | `0.90 / 0.70` | `0.95 / 0.90` | 未通过 |
 | `v6p1` | `docs/versions/v6p1/` | `configs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1/20260212_003414` | `0.70 / 0.95` | `0.95 / 0.90` | 未通过 |
+| `v6p2` | `docs/versions/v6p2/` | `configs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1/20260212_003414` | `0.70 / 0.95` | `0.95 / 0.90` | 未通过 |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
