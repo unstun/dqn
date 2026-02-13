@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "date": "2026-02-13",
+    "topic": "Repo normalization: one-shot self-check + static doctor",
+    "commands": [
+      "bash scripts/self_check.sh",
+      "conda run -n ros2py310 python scripts/repo_doctor.py",
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python game.py --self-check"
+    ],
+    "checks": [
+      "Required paths exist (train.py/infer.py/game.py/configs/paper/docs/versions).",
+      "README.md and README.zh-CN.md alignment (last-updated + recommended profile).",
+      "Profiles/pairs referenced by READMEs exist (warn-only unless --strict).",
+      "Version archives have the 4-file kit (README/CHANGES/RESULTS/runs/README)."
+    ],
+    "notes": [
+      "This file is a reproducibility record only; it is NOT a train/infer/game profile."
+    ]
+  }
+}
+

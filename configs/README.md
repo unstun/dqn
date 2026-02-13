@@ -4,7 +4,7 @@
 
 1) **profile 配置**：`configs/*.json`
    - 通过 `--profile <name>` 加载（`<name>` 为不带 `.json` 的文件名）。
-   - `train.py` 读取 `train` 段；`infer.py` 读取 `infer` 段。
+   - `train.py` 读取 `train` 段；`infer.py` 读取 `infer` 段；`game.py` 读取 `game` 段（交互式 demo）。
 
 2) **固定随机样本 pairs**：`configs/*pairs*.json`
    - 不是 profile；通过 `infer.py --rand-pairs-json <path>` 加载。
@@ -20,6 +20,20 @@
 conda run -n ros2py310 python train.py --profile repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3p1_smoke300
 conda run -n ros2py310 python infer.py  --profile repro_20260210_forest_a_cnn_ddqn_strict_no_fallback_v4p3p1_smoke300
 ```
+
+---
+
+## 1.5) 用 profile 跑交互式 game（pygame）
+
+`game.py` 会从 profile 的 `game` 段读取参数（如地图、planner、MPC 参数、窗口大小等）：
+
+```bash
+conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_forest_a_v1
+```
+
+> `--self-check` 不依赖 pygame 渲染窗口，用于快速检查规划+MPC 链路是否能跑通：
+>
+> `conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_forest_a_v1 --self-check`
 
 ---
 

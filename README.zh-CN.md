@@ -22,8 +22,12 @@ cd /home/sun/phdproject/dqn/dqn
 自检（快速检查依赖导入/设备配置）：
 
 ```bash
+bash scripts/self_check.sh
+
+#（等价的显式命令）
 conda run -n ros2py310 python train.py --self-check
 conda run -n ros2py310 python infer.py --self-check
+conda run -n ros2py310 python game.py --self-check
 ```
 
 可选依赖（训练实时窗口）：

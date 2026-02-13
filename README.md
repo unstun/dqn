@@ -23,8 +23,12 @@ Two ways to run commands:
 Self-check (fast sanity check of imports/device):
 
 ```bash
+bash scripts/self_check.sh
+
+# (equivalent explicit commands)
 conda run -n ros2py310 python train.py --self-check
 conda run -n ros2py310 python infer.py --self-check
+conda run -n ros2py310 python game.py --self-check
 ```
 
 Optional extras (for live training window):
