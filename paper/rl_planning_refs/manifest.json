@@ -1,0 +1,1112 @@
+{
+  "_meta": {
+    "generated_at_utc": "2026-02-16T18:04:29Z",
+    "count": 56,
+    "source": "arXiv API + manual tags/notes"
+  },
+  "papers": [
+    {
+      "arxiv_id": "1105.1186",
+      "title": "Sampling-based Algorithms for Optimal Motion Planning",
+      "authors": [
+        "Sertac Karaman",
+        "Emilio Frazzoli"
+      ],
+      "published": "2011-05-05T22:25:22Z",
+      "year": 2011,
+      "primary_class": "cs.RO",
+      "abstract": "During the last decade, sampling-based path planning algorithms, such as Probabilistic RoadMaps (PRM) and Rapidly-exploring Random Trees (RRT), have been shown to work well in practice and possess theoretical guarantees such as probabilistic completeness. However, little effort has been devoted to the formal analysis of the quality of the solution returned by such algorithms, e.g., as a function of the number of samples. The purpose of this paper is to fill this gap, by rigorously analyzing the asymptotic behavior of the cost of the solution returned by stochastic sampling-based algorithms as the number of samples increases. A number of negative results are provided, characterizing existing algorithms, e.g., showing that, under mild technical conditions, the cost of the solution returned by broadly used sampling-based algorithms converges almost surely to a non-optimal value. The main contribution of the paper is the introduction of new algorithms, namely, PRM* and RRT*, which are provably asymptotically optimal, i.e., such that the cost of the returned solution converges almost surely to the optimum. Moreover, it is shown that the computational complexity of the new algorithms is within a constant factor of that of their probabilistically complete (but not asymptotically optimal) counterparts. The analysis in this paper hinges on novel connections between stochastic sampling-based path planning algorithms and the theory of random geometric graphs.",
+      "abs_url": "https://arxiv.org/abs/1105.1186",
+      "pdf_url": "https://arxiv.org/pdf/1105.1186.pdf",
+      "pdf_file": "arxiv_1105.1186_rrt_star_optimal_motion_planning.pdf",
+      "group": "classical_planning",
+      "note": "RRT* 的原始最优性证明与对比基线口径（采样规划）。"
+    },
+    {
+      "arxiv_id": "1312.5602",
+      "title": "Playing Atari with Deep Reinforcement Learning",
+      "authors": [
+        "Volodymyr Mnih",
+        "Koray Kavukcuoglu",
+        "David Silver",
+        "Alex Graves",
+        "Ioannis Antonoglou",
+        "Daan Wierstra",
+        "Martin Riedmiller"
+      ],
+      "published": "2013-12-19T16:00:08Z",
+      "year": 2013,
+      "primary_class": "cs.LG",
+      "abstract": "We present the first deep learning model to successfully learn control policies directly from high-dimensional sensory input using reinforcement learning. The model is a convolutional neural network, trained with a variant of Q-learning, whose input is raw pixels and whose output is a value function estimating future rewards. We apply our method to seven Atari 2600 games from the Arcade Learning Environment, with no adjustment of the architecture or learning algorithm. We find that it outperforms all previous approaches on six of the games and surpasses a human expert on three of them.",
+      "abs_url": "https://arxiv.org/abs/1312.5602",
+      "pdf_url": "https://arxiv.org/pdf/1312.5602.pdf",
+      "pdf_file": "arxiv_1312.5602_dqn_atari.pdf",
+      "group": "dqn_family",
+      "note": "DQN 的核心组件：replay + target network（你当前 CNN-DDQN 的理论起点）。"
+    },
+    {
+      "arxiv_id": "1509.06461",
+      "title": "Deep Reinforcement Learning with Double Q-learning",
+      "authors": [
+        "Hado van Hasselt",
+        "Arthur Guez",
+        "David Silver"
+      ],
+      "published": "2015-09-22T04:40:22Z",
+      "year": 2015,
+      "primary_class": "cs.LG",
+      "abstract": "The popular Q-learning algorithm is known to overestimate action values under certain conditions. It was not previously known whether, in practice, such overestimations are common, whether they harm performance, and whether they can generally be prevented. In this paper, we answer all these questions affirmatively. In particular, we first show that the recent DQN algorithm, which combines Q-learning with a deep neural network, suffers from substantial overestimations in some games in the Atari 2600 domain. We then show that the idea behind the Double Q-learning algorithm, which was introduced in a tabular setting, can be generalized to work with large-scale function approximation. We propose a specific adaptation to the DQN algorithm and show that the resulting algorithm not only reduces the observed overestimations, as hypothesized, but that this also leads to much better performance on several games.",
+      "abs_url": "https://arxiv.org/abs/1509.06461",
+      "pdf_url": "https://arxiv.org/pdf/1509.06461.pdf",
+      "pdf_file": "arxiv_1509.06461_double_dqn.pdf",
+      "group": "dqn_family",
+      "note": "Double Q-learning 缓解 Q 过估计（对应“DDQN”的学术定义）。"
+    },
+    {
+      "arxiv_id": "1511.05952",
+      "title": "Prioritized Experience Replay",
+      "authors": [
+        "Tom Schaul",
+        "John Quan",
+        "Ioannis Antonoglou",
+        "David Silver"
+      ],
+      "published": "2015-11-18T20:54:44Z",
+      "year": 2015,
+      "primary_class": "cs.LG",
+      "abstract": "Experience replay lets online reinforcement learning agents remember and reuse experiences from the past. In prior work, experience transitions were uniformly sampled from a replay memory. However, this approach simply replays transitions at the same frequency that they were originally experienced, regardless of their significance. In this paper we develop a framework for prioritizing experience, so as to replay important transitions more frequently, and therefore learn more efficiently. We use prioritized experience replay in Deep Q-Networks (DQN), a reinforcement learning algorithm that achieved human-level performance across many Atari games. DQN with prioritized experience replay achieves a new state-of-the-art, outperforming DQN with uniform replay on 41 out of 49 games.",
+      "abs_url": "https://arxiv.org/abs/1511.05952",
+      "pdf_url": "https://arxiv.org/pdf/1511.05952.pdf",
+      "pdf_file": "arxiv_1511.05952_prioritized_replay.pdf",
+      "group": "dqn_family",
+      "note": "Prioritized replay 提升样本效率（对稀疏成功/失败样本更关键）。"
+    },
+    {
+      "arxiv_id": "1511.06581",
+      "title": "Dueling Network Architectures for Deep Reinforcement Learning",
+      "authors": [
+        "Ziyu Wang",
+        "Tom Schaul",
+        "Matteo Hessel",
+        "Hado van Hasselt",
+        "Marc Lanctot",
+        "Nando de Freitas"
+      ],
+      "published": "2015-11-20T13:07:54Z",
+      "year": 2015,
+      "primary_class": "cs.LG",
+      "abstract": "In recent years there have been many successes of using deep representations in reinforcement learning. Still, many of these applications use conventional architectures, such as convolutional networks, LSTMs, or auto-encoders. In this paper, we present a new neural network architecture for model-free reinforcement learning. Our dueling network represents two separate estimators: one for the state value function and one for the state-dependent action advantage function. The main benefit of this factoring is to generalize learning across actions without imposing any change to the underlying reinforcement learning algorithm. Our results show that this architecture leads to better policy evaluation in the presence of many similar-valued actions. Moreover, the dueling architecture enables our RL agent to outperform the state-of-the-art on the Atari 2600 domain.",
+      "abs_url": "https://arxiv.org/abs/1511.06581",
+      "pdf_url": "https://arxiv.org/pdf/1511.06581.pdf",
+      "pdf_file": "arxiv_1511.06581_dueling_dqn.pdf",
+      "group": "dqn_family",
+      "note": "Dueling 结构将 V/A 分离（在导航/规划这类稠密状态上常更稳）。"
+    },
+    {
+      "arxiv_id": "1602.02867",
+      "title": "Value Iteration Networks",
+      "authors": [
+        "Aviv Tamar",
+        "Yi Wu",
+        "Garrett Thomas",
+        "Sergey Levine",
+        "Pieter Abbeel"
+      ],
+      "published": "2016-02-09T05:44:36Z",
+      "year": 2016,
+      "primary_class": "cs.AI",
+      "abstract": "We introduce the value iteration network (VIN): a fully differentiable neural network with a `planning module' embedded within. VINs can learn to plan, and are suitable for predicting outcomes that involve planning-based reasoning, such as policies for reinforcement learning. Key to our approach is a novel differentiable approximation of the value-iteration algorithm, which can be represented as a convolutional neural network, and trained end-to-end using standard backpropagation. We evaluate VIN based policies on discrete and continuous path-planning domains, and on a natural-language based search task. We show that by learning an explicit planning computation, VIN policies generalize better to new, unseen domains.",
+      "abs_url": "https://arxiv.org/abs/1602.02867",
+      "pdf_url": "https://arxiv.org/pdf/1602.02867.pdf",
+      "pdf_file": "arxiv_1602.02867_value_iteration_networks.pdf",
+      "group": "neural_planning",
+      "note": "VIN：把 value iteration 变成可学习模块（占据图→规划 的典型叙事）。"
+    },
+    {
+      "arxiv_id": "1609.07845",
+      "title": "Decentralized Non-communicating Multiagent Collision Avoidance with Deep Reinforcement Learning",
+      "authors": [
+        "Yu Fan Chen",
+        "Miao Liu",
+        "Michael Everett",
+        "Jonathan P. How"
+      ],
+      "published": "2016-09-26T04:49:41Z",
+      "year": 2016,
+      "primary_class": "cs.MA",
+      "abstract": "Finding feasible, collision-free paths for multiagent systems can be challenging, particularly in non-communicating scenarios where each agent's intent (e.g. goal) is unobservable to the others. In particular, finding time efficient paths often requires anticipating interaction with neighboring agents, the process of which can be computationally prohibitive. This work presents a decentralized multiagent collision avoidance algorithm based on a novel application of deep reinforcement learning, which effectively offloads the online computation (for predicting interaction patterns) to an offline learning procedure. Specifically, the proposed approach develops a value network that encodes the estimated time to the goal given an agent's joint configuration (positions and velocities) with its neighbors. Use of the value network not only admits efficient (i.e., real-time implementable) queries for finding a collision-free velocity vector, but also considers the uncertainty in the other agents' motion. Simulation results show more than 26 percent improvement in paths quality (i.e., time to reach the goal) when compared with optimal reciprocal collision avoidance (ORCA), a state-of-the-art collision avoidance strategy.",
+      "abs_url": "https://arxiv.org/abs/1609.07845",
+      "pdf_url": "https://arxiv.org/pdf/1609.07845.pdf",
+      "pdf_file": "arxiv_1609.07845_multiagent_collision_avoidance_drl.pdf",
+      "group": "rl_navigation",
+      "note": "多智能体避碰 DRL：强调反应式策略与低延迟（可写“实时性/动态障碍”优势来源）。"
+    },
+    {
+      "arxiv_id": "1611.03673",
+      "title": "Learning to Navigate in Complex Environments",
+      "authors": [
+        "Piotr Mirowski",
+        "Razvan Pascanu",
+        "Fabio Viola",
+        "Hubert Soyer",
+        "Andrew J. Ballard",
+        "Andrea Banino",
+        "Misha Denil",
+        "Ross Goroshin",
+        "Laurent Sifre",
+        "Koray Kavukcuoglu",
+        "Dharshan Kumaran",
+        "Raia Hadsell"
+      ],
+      "published": "2016-11-11T12:14:45Z",
+      "year": 2016,
+      "primary_class": "cs.AI",
+      "abstract": "Learning to navigate in complex environments with dynamic elements is an important milestone in developing AI agents. In this work we formulate the navigation question as a reinforcement learning problem and show that data efficiency and task performance can be dramatically improved by relying on additional auxiliary tasks leveraging multimodal sensory inputs. In particular we consider jointly learning the goal-driven reinforcement learning problem with auxiliary depth prediction and loop closure classification tasks. This approach can learn to navigate from raw sensory input in complicated 3D mazes, approaching human-level performance even under conditions where the goal location changes frequently. We provide detailed analysis of the agent behaviour, its ability to localise, and its network activity dynamics, showing that the agent implicitly learns key navigation abilities.",
+      "abs_url": "https://arxiv.org/abs/1611.03673",
+      "pdf_url": "https://arxiv.org/pdf/1611.03673.pdf",
+      "pdf_file": "arxiv_1611.03673_learning_to_navigate_complex_environments.pdf",
+      "group": "rl_navigation",
+      "note": "复杂环境导航 DRL：端到端/记忆模块对长时导航的价值（Related Work）。"
+    },
+    {
+      "arxiv_id": "1704.03732",
+      "title": "Deep Q-learning from Demonstrations",
+      "authors": [
+        "Todd Hester",
+        "Matej Vecerik",
+        "Olivier Pietquin",
+        "Marc Lanctot",
+        "Tom Schaul",
+        "Bilal Piot",
+        "Dan Horgan",
+        "John Quan",
+        "Andrew Sendonaris",
+        "Gabriel Dulac-Arnold",
+        "Ian Osband",
+        "John Agapiou",
+        "Joel Z. Leibo",
+        "Audrunas Gruslys"
+      ],
+      "published": "2017-04-12T12:44:37Z",
+      "year": 2017,
+      "primary_class": "cs.AI",
+      "abstract": "Deep reinforcement learning (RL) has achieved several high profile successes in difficult decision-making problems. However, these algorithms typically require a huge amount of data before they reach reasonable performance. In fact, their performance during learning can be extremely poor. This may be acceptable for a simulator, but it severely limits the applicability of deep RL to many real-world tasks, where the agent must learn in the real environment. In this paper we study a setting where the agent may access data from previous control of the system. We present an algorithm, Deep Q-learning from Demonstrations (DQfD), that leverages small sets of demonstration data to massively accelerate the learning process even from relatively small amounts of demonstration data and is able to automatically assess the necessary ratio of demonstration data while learning thanks to a prioritized replay mechanism. DQfD works by combining temporal difference updates with supervised classification of the demonstrator's actions. We show that DQfD has better initial performance than Prioritized Dueling Double Deep Q-Networks (PDD DQN) as it starts with better scores on the first million steps on 41 of 42 games and on average it takes PDD DQN 83 million steps to catch up to DQfD's performance. DQfD learns to out-perform the best demonstration given in 14 of 42 games. In addition, DQfD leverages human demonstrations to achieve state-of-the-art results for 11 games. Finally, we show that DQfD performs better than three related algorithms for incorporating demonstration data into DQN.",
+      "abs_url": "https://arxiv.org/abs/1704.03732",
+      "pdf_url": "https://arxiv.org/pdf/1704.03732.pdf",
+      "pdf_file": "arxiv_1704.03732_dqfd.pdf",
+      "group": "dqn_family",
+      "note": "DQfD：用专家演示加速并稳定 DQN 学习（非常适合“追强基线”的现实需求）。"
+    },
+    {
+      "arxiv_id": "1705.10528",
+      "title": "Constrained Policy Optimization",
+      "authors": [
+        "Joshua Achiam",
+        "David Held",
+        "Aviv Tamar",
+        "Pieter Abbeel"
+      ],
+      "published": "2017-05-30T10:07:31Z",
+      "year": 2017,
+      "primary_class": "cs.LG",
+      "abstract": "For many applications of reinforcement learning it can be more convenient to specify both a reward function and constraints, rather than trying to design behavior through the reward function. For example, systems that physically interact with or around humans should satisfy safety constraints. Recent advances in policy search algorithms (Mnih et al., 2016, Schulman et al., 2015, Lillicrap et al., 2016, Levine et al., 2016) have enabled new capabilities in high-dimensional control, but do not consider the constrained setting. We propose Constrained Policy Optimization (CPO), the first general-purpose policy search algorithm for constrained reinforcement learning with guarantees for near-constraint satisfaction at each iteration. Our method allows us to train neural network policies for high-dimensional control while making guarantees about policy behavior all throughout training. Our guarantees are based on a new theoretical result, which is of independent interest: we prove a bound relating the expected returns of two policies to an average divergence between them. We demonstrate the effectiveness of our approach on simulated robot locomotion tasks where the agent must satisfy constraints motivated by safety.",
+      "abs_url": "https://arxiv.org/abs/1705.10528",
+      "pdf_url": "https://arxiv.org/pdf/1705.10528.pdf",
+      "pdf_file": "arxiv_1705.10528_constrained_policy_optimization.pdf",
+      "group": "safe_rl_constraints",
+      "note": "CPO：约束强化学习的经典算法（把碰撞/越界写成约束的 baseline 参考）。"
+    },
+    {
+      "arxiv_id": "1707.03034",
+      "title": "Learning Heuristic Search via Imitation",
+      "authors": [
+        "Mohak Bhardwaj",
+        "Sanjiban Choudhury",
+        "Sebastian Scherer"
+      ],
+      "published": "2017-07-10T19:36:14Z",
+      "year": 2017,
+      "primary_class": "cs.RO",
+      "abstract": "Robotic motion planning problems are typically solved by constructing a search tree of valid maneuvers from a start to a goal configuration. Limited onboard computation and real-time planning constraints impose a limit on how large this search tree can grow. Heuristics play a crucial role in such situations by guiding the search towards potentially good directions and consequently minimizing search effort. Moreover, it must infer such directions in an efficient manner using only the information uncovered by the search up until that time. However, state of the art methods do not address the problem of computing a heuristic that explicitly minimizes search effort. In this paper, we do so by training a heuristic policy that maps the partial information from the search to decide which node of the search tree to expand. Unfortunately, naively training such policies leads to slow convergence and poor local minima. We present SaIL, an efficient algorithm that trains heuristic policies by imitating \"clairvoyant oracles\" - oracles that have full information about the world and demonstrate decisions that minimize search effort. We leverage the fact that such oracles can be efficiently computed using dynamic programming and derive performance guarantees for the learnt heuristic. We validate the approach on a spectrum of environments which show that SaIL consistently outperforms state of the art algorithms. Our approach paves the way forward for learning heuristics that demonstrate an anytime nature - finding feasible solutions quickly and incrementally refining it over time.",
+      "abs_url": "https://arxiv.org/abs/1707.03034",
+      "pdf_url": "https://arxiv.org/pdf/1707.03034.pdf",
+      "pdf_file": "arxiv_1707.03034_learning_heuristic_search_via_imitation.pdf",
+      "group": "learning_motion_planning",
+      "note": "用模仿学习学搜索策略/启发式（往往比纯 RL 更可复现、也更容易赢时间）。"
+    },
+    {
+      "arxiv_id": "1708.08611",
+      "title": "Safe Reinforcement Learning via Shielding",
+      "authors": [
+        "Mohammed Alshiekh",
+        "Roderick Bloem",
+        "Ruediger Ehlers",
+        "Bettina Könighofer",
+        "Scott Niekum",
+        "Ufuk Topcu"
+      ],
+      "published": "2017-08-29T07:16:54Z",
+      "year": 2017,
+      "primary_class": "cs.LO",
+      "abstract": "Reinforcement learning algorithms discover policies that maximize reward, but do not necessarily guarantee safety during learning or execution phases. We introduce a new approach to learn optimal policies while enforcing properties expressed in temporal logic. To this end, given the temporal logic specification that is to be obeyed by the learning system, we propose to synthesize a reactive system called a shield. The shield is introduced in the traditional learning process in two alternative ways, depending on the location at which the shield is implemented. In the first one, the shield acts each time the learning agent is about to make a decision and provides a list of safe actions. In the second way, the shield is introduced after the learning agent. The shield monitors the actions from the learner and corrects them only if the chosen action causes a violation of the specification. We discuss which requirements a shield must meet to preserve the convergence guarantees of the learner. Finally, we demonstrate the versatility of our approach on several challenging reinforcement learning scenarios.",
+      "abs_url": "https://arxiv.org/abs/1708.08611",
+      "pdf_url": "https://arxiv.org/pdf/1708.08611.pdf",
+      "pdf_file": "arxiv_1708.08611_safe_rl_via_shielding.pdf",
+      "group": "shielding",
+      "note": "Shielding：在策略外加“安全盾”过滤/替换动作（对应你的 `shielded/masked/hybrid` 口径）。"
+    },
+    {
+      "arxiv_id": "1709.05448",
+      "title": "Learning Sampling Distributions for Robot Motion Planning",
+      "authors": [
+        "Brian Ichter",
+        "James Harrison",
+        "Marco Pavone"
+      ],
+      "published": "2017-09-16T03:08:04Z",
+      "year": 2017,
+      "primary_class": "cs.RO",
+      "abstract": "A defining feature of sampling-based motion planning is the reliance on an implicit representation of the state space, which is enabled by a set of probing samples. Traditionally, these samples are drawn either probabilistically or deterministically to uniformly cover the state space. Yet, the motion of many robotic systems is often restricted to \"small\" regions of the state space, due to, for example, differential constraints or collision-avoidance constraints. To accelerate the planning process, it is thus desirable to devise non-uniform sampling strategies that favor sampling in those regions where an optimal solution might lie. This paper proposes a methodology for non-uniform sampling, whereby a sampling distribution is learned from demonstrations, and then used to bias sampling. The sampling distribution is computed through a conditional variational autoencoder, allowing sample generation from the latent space conditioned on the specific planning problem. This methodology is general, can be used in combination with any sampling-based planner, and can effectively exploit the underlying structure of a planning problem while maintaining the theoretical guarantees of sampling-based approaches. Specifically, on several planning problems, the proposed methodology is shown to effectively learn representations for the relevant regions of the state space, resulting in an order of magnitude improvement in terms of success rate and convergence to the optimal cost.",
+      "abs_url": "https://arxiv.org/abs/1709.05448",
+      "pdf_url": "https://arxiv.org/pdf/1709.05448.pdf",
+      "pdf_file": "arxiv_1709.05448_learning_sampling_distributions_motion_planning.pdf",
+      "group": "learning_motion_planning",
+      "note": "学习 RRT 的采样分布：提高窄通道/复杂障碍下的采样效率。"
+    },
+    {
+      "arxiv_id": "1709.10082",
+      "title": "Towards Optimally Decentralized Multi-Robot Collision Avoidance via Deep Reinforcement Learning",
+      "authors": [
+        "Pinxin Long",
+        "Tingxiang Fan",
+        "Xinyi Liao",
+        "Wenxi Liu",
+        "Hao Zhang",
+        "Jia Pan"
+      ],
+      "published": "2017-09-28T17:44:09Z",
+      "year": 2017,
+      "primary_class": "cs.RO",
+      "abstract": "Developing a safe and efficient collision avoidance policy for multiple robots is challenging in the decentralized scenarios where each robot generate its paths without observing other robots' states and intents. While other distributed multi-robot collision avoidance systems exist, they often require extracting agent-level features to plan a local collision-free action, which can be computationally prohibitive and not robust. More importantly, in practice the performance of these methods are much lower than their centralized counterparts. We present a decentralized sensor-level collision avoidance policy for multi-robot systems, which directly maps raw sensor measurements to an agent's steering commands in terms of movement velocity. As a first step toward reducing the performance gap between decentralized and centralized methods, we present a multi-scenario multi-stage training framework to find an optimal policy which is trained over a large number of robots on rich, complex environments simultaneously using a policy gradient based reinforcement learning algorithm. We validate the learned sensor-level collision avoidance policy in a variety of simulated scenarios with thorough performance evaluations and show that the final learned policy is able to find time efficient, collision-free paths for a large-scale robot system. We also demonstrate that the learned policy can be well generalized to new scenarios that do not appear in the entire training period, including navigating a heterogeneous group of robots and a large-scale scenario with 100 robots. Videos are available at https://sites.google.com/view/drlmaca",
+      "abs_url": "https://arxiv.org/abs/1709.10082",
+      "pdf_url": "https://arxiv.org/pdf/1709.10082.pdf",
+      "pdf_file": "arxiv_1709.10082_decentralized_multirobot_collision_avoidance.pdf",
+      "group": "rl_navigation",
+      "note": "去中心化多机器人避碰：同样强调实时与泛化（可写“RL vs 规划”优势）。"
+    },
+    {
+      "arxiv_id": "1710.02298",
+      "title": "Rainbow: Combining Improvements in Deep Reinforcement Learning",
+      "authors": [
+        "Matteo Hessel",
+        "Joseph Modayil",
+        "Hado van Hasselt",
+        "Tom Schaul",
+        "Georg Ostrovski",
+        "Will Dabney",
+        "Dan Horgan",
+        "Bilal Piot",
+        "Mohammad Azar",
+        "David Silver"
+      ],
+      "published": "2017-10-06T07:45:46Z",
+      "year": 2017,
+      "primary_class": "cs.AI",
+      "abstract": "The deep reinforcement learning community has made several independent improvements to the DQN algorithm. However, it is unclear which of these extensions are complementary and can be fruitfully combined. This paper examines six extensions to the DQN algorithm and empirically studies their combination. Our experiments show that the combination provides state-of-the-art performance on the Atari 2600 benchmark, both in terms of data efficiency and final performance. We also provide results from a detailed ablation study that shows the contribution of each component to overall performance.",
+      "abs_url": "https://arxiv.org/abs/1710.02298",
+      "pdf_url": "https://arxiv.org/pdf/1710.02298.pdf",
+      "pdf_file": "arxiv_1710.02298_rainbow.pdf",
+      "group": "dqn_family",
+      "note": "Rainbow：DQN trick 的组合基线（写 Related Work 时可解释你启用/未启用哪些组件）。"
+    },
+    {
+      "arxiv_id": "1710.03937",
+      "title": "PRM-RL: Long-range Robotic Navigation Tasks by Combining Reinforcement Learning and Sampling-based Planning",
+      "authors": [
+        "Aleksandra Faust",
+        "Oscar Ramirez",
+        "Marek Fiser",
+        "Kenneth Oslund",
+        "Anthony Francis",
+        "James Davidson",
+        "Lydia Tapia"
+      ],
+      "published": "2017-10-11T07:19:17Z",
+      "year": 2017,
+      "primary_class": "cs.AI",
+      "abstract": "We present PRM-RL, a hierarchical method for long-range navigation task completion that combines sampling based path planning with reinforcement learning (RL). The RL agents learn short-range, point-to-point navigation policies that capture robot dynamics and task constraints without knowledge of the large-scale topology. Next, the sampling-based planners provide roadmaps which connect robot configurations that can be successfully navigated by the RL agent. The same RL agents are used to control the robot under the direction of the planning, enabling long-range navigation. We use the Probabilistic Roadmaps (PRMs) for the sampling-based planner. The RL agents are constructed using feature-based and deep neural net policies in continuous state and action spaces. We evaluate PRM-RL, both in simulation and on-robot, on two navigation tasks with non-trivial robot dynamics: end-to-end differential drive indoor navigation in office environments, and aerial cargo delivery in urban environments with load displacement constraints. Our results show improvement in task completion over both RL agents on their own and traditional sampling-based planners. In the indoor navigation task, PRM-RL successfully completes up to 215 m long trajectories under noisy sensor conditions, and the aerial cargo delivery completes flights over 1000 m without violating the task constraints in an environment 63 million times larger than used in training.",
+      "abs_url": "https://arxiv.org/abs/1710.03937",
+      "pdf_url": "https://arxiv.org/pdf/1710.03937.pdf",
+      "pdf_file": "arxiv_1710.03937_prm_rl.pdf",
+      "group": "learning_motion_planning",
+      "note": "PRM-RL：全局 PRM + 局部 RL 控制器（RL 负责动力学可行性/鲁棒性叙事）。"
+    },
+    {
+      "arxiv_id": "1806.01968",
+      "title": "Learning Implicit Sampling Distributions for Motion Planning",
+      "authors": [
+        "Clark Zhang",
+        "Jinwook Huh",
+        "Daniel D. Lee"
+      ],
+      "published": "2018-06-06T00:23:54Z",
+      "year": 2018,
+      "primary_class": "cs.RO",
+      "abstract": "Sampling-based motion planners have experienced much success due to their ability to efficiently and evenly explore the state space. However, for many tasks, it may be more efficient to not uniformly explore the state space, especially when there is prior information about its structure. Previous methods have attempted to modify the sampling distribution using hand selected heuristics that can work well for specific environments but not universally. In this paper, a policy- search based method is presented as an adaptive way to learn implicit sampling distributions for different environments. It utilizes information from past searches in similar environments to generate better distributions in novel environments, thus reducing overall computational cost. Our method can be incor- porated with a variety of sampling-based planners to improve performance. Our approach is validated on a number of tasks, including a 7DOF robot arm, showing marked improvement in number of collision checks as well as number of nodes expanded compared with baseline methods.",
+      "abs_url": "https://arxiv.org/abs/1806.01968",
+      "pdf_url": "https://arxiv.org/pdf/1806.01968.pdf",
+      "pdf_file": "arxiv_1806.01968_learning_implicit_sampling_distributions_motion_planning.pdf",
+      "group": "learning_motion_planning",
+      "note": "隐式采样分布：把“采样更像在走可行通道里”做成可学习模块。"
+    },
+    {
+      "arxiv_id": "1806.05767",
+      "title": "Motion Planning Networks",
+      "authors": [
+        "Ahmed H. Qureshi",
+        "Anthony Simeonov",
+        "Mayur J. Bency",
+        "Michael C. Yip"
+      ],
+      "published": "2018-06-14T23:48:08Z",
+      "year": 2018,
+      "primary_class": "cs.RO",
+      "abstract": "Fast and efficient motion planning algorithms are crucial for many state-of-the-art robotics applications such as self-driving cars. Existing motion planning methods become ineffective as their computational complexity increases exponentially with the dimensionality of the motion planning problem. To address this issue, we present Motion Planning Networks (MPNet), a neural network-based novel planning algorithm. The proposed method encodes the given workspaces directly from a point cloud measurement and generates the end-to-end collision-free paths for the given start and goal configurations. We evaluate MPNet on various 2D and 3D environments including the planning of a 7 DOF Baxter robot manipulator. The results show that MPNet is not only consistently computationally efficient in all environments but also generalizes to completely unseen environments. The results also show that the computation time of MPNet consistently remains less than 1 second in all presented experiments, which is significantly lower than existing state-of-the-art motion planning algorithms.",
+      "abs_url": "https://arxiv.org/abs/1806.05767",
+      "pdf_url": "https://arxiv.org/pdf/1806.05767.pdf",
+      "pdf_file": "arxiv_1806.05767_mpnet_motion_planning_networks.pdf",
+      "group": "learning_motion_planning",
+      "note": "MPNet：学习到可行路径/连接器，加速传统规划管线。"
+    },
+    {
+      "arxiv_id": "1806.06408",
+      "title": "Gated Path Planning Networks",
+      "authors": [
+        "Lisa Lee",
+        "Emilio Parisotto",
+        "Devendra Singh Chaplot",
+        "Eric Xing",
+        "Ruslan Salakhutdinov"
+      ],
+      "published": "2018-06-17T16:32:52Z",
+      "year": 2018,
+      "primary_class": "cs.LG",
+      "abstract": "Value Iteration Networks (VINs) are effective differentiable path planning modules that can be used by agents to perform navigation while still maintaining end-to-end differentiability of the entire architecture. Despite their effectiveness, they suffer from several disadvantages including training instability, random seed sensitivity, and other optimization problems. In this work, we reframe VINs as recurrent-convolutional networks which demonstrates that VINs couple recurrent convolutions with an unconventional max-pooling activation. From this perspective, we argue that standard gated recurrent update equations could potentially alleviate the optimization issues plaguing VIN. The resulting architecture, which we call the Gated Path Planning Network, is shown to empirically outperform VIN on a variety of metrics such as learning speed, hyperparameter sensitivity, iteration count, and even generalization. Furthermore, we show that this performance gap is consistent across different maze transition types, maze sizes and even show success on a challenging 3D environment, where the planner is only provided with first-person RGB images.",
+      "abs_url": "https://arxiv.org/abs/1806.06408",
+      "pdf_url": "https://arxiv.org/pdf/1806.06408.pdf",
+      "pdf_file": "arxiv_1806.06408_gated_path_planning_networks.pdf",
+      "group": "neural_planning",
+      "note": "GPPN：RNN 形式的可微规划网络（常被用来讨论 VIN 的训练稳定性）。"
+    },
+    {
+      "arxiv_id": "1812.05506",
+      "title": "A predictive safety filter for learning-based control of constrained nonlinear dynamical systems",
+      "authors": [
+        "Kim P. Wabersich",
+        "Melanie N. Zeilinger"
+      ],
+      "published": "2018-12-13T16:31:39Z",
+      "year": 2018,
+      "primary_class": "eess.SY",
+      "abstract": "The transfer of reinforcement learning (RL) techniques into real-world applications is challenged by safety requirements in the presence of physical limitations. Most RL methods, in particular the most popular algorithms, do not support explicit consideration of state and input constraints. In this paper, we address this problem for nonlinear systems with continuous state and input spaces by introducing a predictive safety filter, which is able to turn a constrained dynamical system into an unconstrained safe system and to which any RL algorithm can be applied `out-of-the-box'. The predictive safety filter receives the proposed control input and decides, based on the current system state, if it can be safely applied to the real system, or if it has to be modified otherwise. Safety is thereby established by a continuously updated safety policy, which is based on a model predictive control formulation using a data-driven system model and considering state and input dependent uncertainties.",
+      "abs_url": "https://arxiv.org/abs/1812.05506",
+      "pdf_url": "https://arxiv.org/pdf/1812.05506.pdf",
+      "pdf_file": "arxiv_1812.05506_a_predictive_safety_filter_for_learning_based_control_of_constrained_n.pdf",
+      "group": "safety_filters",
+      "note": "Predictive Safety Filter：把约束满足做成模块化安全过滤层（可视为 MPC/QP 风格的外层）。"
+    },
+    {
+      "arxiv_id": "1902.04118",
+      "title": "WiseMove: A Framework for Safe Deep Reinforcement Learning for Autonomous Driving",
+      "authors": [
+        "Jaeyoung Lee",
+        "Aravind Balakrishnan",
+        "Ashish Gaurav",
+        "Krzysztof Czarnecki",
+        "Sean Sedwards"
+      ],
+      "published": "2019-02-11T19:59:23Z",
+      "year": 2019,
+      "primary_class": "cs.LG",
+      "abstract": "Machine learning can provide efficient solutions to the complex problems encountered in autonomous driving, but ensuring their safety remains a challenge. A number of authors have attempted to address this issue, but there are few publicly-available tools to adequately explore the trade-offs between functionality, scalability, and safety. We thus present WiseMove, a software framework to investigate safe deep reinforcement learning in the context of motion planning for autonomous driving. WiseMove adopts a modular learning architecture that suits our current research questions and can be adapted to new technologies and new questions. We present the details of WiseMove, demonstrate its use on a common traffic scenario, and describe how we use it in our ongoing safe learning research.",
+      "abs_url": "https://arxiv.org/abs/1902.04118",
+      "pdf_url": "https://arxiv.org/pdf/1902.04118.pdf",
+      "pdf_file": "arxiv_1902.04118_wisemove_a_framework_for_safe_deep_reinforcement_learning_for_autonomo.pdf",
+      "group": "safe_driving",
+      "note": "WiseMove：安全深度 RL 框架（可借鉴安全约束/舒适性指标口径）。"
+    },
+    {
+      "arxiv_id": "1903.09885",
+      "title": "Temporal Logic Guided Safe Reinforcement Learning Using Control Barrier Functions",
+      "authors": [
+        "Xiao Li",
+        "Calin Belta"
+      ],
+      "published": "2019-03-23T21:29:49Z",
+      "year": 2019,
+      "primary_class": "cs.LG",
+      "abstract": "Using reinforcement learning to learn control policies is a challenge when the task is complex with potentially long horizons. Ensuring adequate but safe exploration is also crucial for controlling physical systems. In this paper, we use temporal logic to facilitate specification and learning of complex tasks. We combine temporal logic with control Lyapunov functions to improve exploration. We incorporate control barrier functions to safeguard the exploration and deployment process. We develop a flexible and learnable system that allows users to specify task objectives and constraints in different forms and at various levels. The framework is also able to take advantage of known system dynamics and handle unknown environmental dynamics by integrating model-free learning with model-based planning.",
+      "abs_url": "https://arxiv.org/abs/1903.09885",
+      "pdf_url": "https://arxiv.org/pdf/1903.09885.pdf",
+      "pdf_file": "arxiv_1903.09885_temporal_logic_guided_safe_reinforcement_learning_using_control_barrie.pdf",
+      "group": "cbf_clf",
+      "note": "Temporal-logic + CBF：把安全规格写成可验证的逻辑约束，再用 CBF 落地。"
+    },
+    {
+      "arxiv_id": "1906.12189",
+      "title": "Learning-based Model Predictive Control for Safe Exploration and Reinforcement Learning",
+      "authors": [
+        "Torsten Koller",
+        "Felix Berkenkamp",
+        "Matteo Turchetta",
+        "Joschka Boedecker",
+        "Andreas Krause"
+      ],
+      "published": "2019-06-27T11:37:49Z",
+      "year": 2019,
+      "primary_class": "eess.SY",
+      "abstract": "Reinforcement learning has been successfully used to solve difficult tasks in complex unknown environments. However, these methods typically do not provide any safety guarantees during the learning process. This is particularly problematic, since reinforcement learning agent actively explore their environment. This prevents their use in safety-critical, real-world applications. In this paper, we present a learning-based model predictive control scheme that provides high-probability safety guarantees throughout the learning process. Based on a reliable statistical model, we construct provably accurate confidence intervals on predicted trajectories. Unlike previous approaches, we allow for input-dependent uncertainties. Based on these reliable predictions, we guarantee that trajectories satisfy safety constraints. Moreover, we use a terminal set constraint to recursively guarantee the existence of safe control actions at every iteration. We evaluate the resulting algorithm to safely explore the dynamics of an inverted pendulum and to solve a reinforcement learning task on a cart-pole system with safety constraints.",
+      "abs_url": "https://arxiv.org/abs/1906.12189",
+      "pdf_url": "https://arxiv.org/pdf/1906.12189.pdf",
+      "pdf_file": "arxiv_1906.12189_learning_based_model_predictive_control_for_safe_exploration_and_reinf.pdf",
+      "group": "mpc_rl_hybrid",
+      "note": "Learning-based MPC：用 MPC 支持安全探索/训练（可视为“训练期的强盾+数据采集器”）。"
+    },
+    {
+      "arxiv_id": "1907.04799",
+      "title": "RL-RRT: Kinodynamic Motion Planning via Learning Reachability Estimators from RL Policies",
+      "authors": [
+        "Hao-Tien Lewis Chiang",
+        "Jasmine Hsu",
+        "Marek Fiser",
+        "Lydia Tapia",
+        "Aleksandra Faust"
+      ],
+      "published": "2019-07-10T15:36:03Z",
+      "year": 2019,
+      "primary_class": "cs.RO",
+      "abstract": "This paper addresses two challenges facing sampling-based kinodynamic motion planning: a way to identify good candidate states for local transitions and the subsequent computationally intractable steering between these candidate states. Through the combination of sampling-based planning, a Rapidly Exploring Randomized Tree (RRT) and an efficient kinodynamic motion planner through machine learning, we propose an efficient solution to long-range planning for kinodynamic motion planning. First, we use deep reinforcement learning to learn an obstacle-avoiding policy that maps a robot's sensor observations to actions, which is used as a local planner during planning and as a controller during execution. Second, we train a reachability estimator in a supervised manner, which predicts the RL policy's time to reach a state in the presence of obstacles. Lastly, we introduce RL-RRT that uses the RL policy as a local planner, and the reachability estimator as the distance function to bias tree-growth towards promising regions. We evaluate our method on three kinodynamic systems, including physical robot experiments. Results across all three robots tested indicate that RL-RRT outperforms state of the art kinodynamic planners in efficiency, and also provides a shorter path finish time than a steering function free method. The learned local planner policy and accompanying reachability estimator demonstrate transferability to the previously unseen experimental environments, making RL-RRT fast because the expensive computations are replaced with simple neural network inference. Video: https://youtu.be/dDMVMTOI8KY",
+      "abs_url": "https://arxiv.org/abs/1907.04799",
+      "pdf_url": "https://arxiv.org/pdf/1907.04799.pdf",
+      "pdf_file": "arxiv_1907.04799_rl_rrt_kinodynamic_motion_planning_via_learning_reachability_estimator.pdf",
+      "group": "rl_motion_planning",
+      "note": "RL-RRT：用 RL 学可达性估计器来加速 kinodynamic 规划（贴近自行车动力学）。"
+    },
+    {
+      "arxiv_id": "1908.00177",
+      "title": "Learning When to Drive in Intersections by Combining Reinforcement Learning and Model Predictive Control",
+      "authors": [
+        "Tommy Tram",
+        "Ivo Batkovic",
+        "Mohammad Ali",
+        "Jonas Sjöberg"
+      ],
+      "published": "2019-08-01T02:00:49Z",
+      "year": 2019,
+      "primary_class": "cs.RO",
+      "abstract": "In this paper, we propose a decision making algorithm intended for automated vehicles that negotiate with other possibly non-automated vehicles in intersections. The decision algorithm is separated into two parts: a high-level decision module based on reinforcement learning, and a low-level planning module based on model predictive control. Traffic is simulated with numerous predefined driver behaviors and intentions, and the performance of the proposed decision algorithm was evaluated against another controller. The results show that the proposed decision algorithm yields shorter training episodes and an increased performance in success rate compared to the other controller.",
+      "abs_url": "https://arxiv.org/abs/1908.00177",
+      "pdf_url": "https://arxiv.org/pdf/1908.00177.pdf",
+      "pdf_file": "arxiv_1908.00177_learning_when_to_drive_in_intersections_by_combining_reinforcement_lea.pdf",
+      "group": "mpc_rl_hybrid",
+      "note": "交叉口驾驶：RL 决策 + MPC 约束执行/安全（“高层策略+低层安全”范式）。"
+    },
+    {
+      "arxiv_id": "2004.07584",
+      "title": "Reinforcement Learning for Safety-Critical Control under Model Uncertainty, using Control Lyapunov Functions and Control Barrier Functions",
+      "authors": [
+        "Jason Choi",
+        "Fernando Castañeda",
+        "Claire J. Tomlin",
+        "Koushil Sreenath"
+      ],
+      "published": "2020-04-16T10:51:33Z",
+      "year": 2020,
+      "primary_class": "eess.SY",
+      "abstract": "In this paper, the issue of model uncertainty in safety-critical control is addressed with a data-driven approach. For this purpose, we utilize the structure of an input-ouput linearization controller based on a nominal model along with a Control Barrier Function and Control Lyapunov Function based Quadratic Program (CBF-CLF-QP). Specifically, we propose a novel reinforcement learning framework which learns the model uncertainty present in the CBF and CLF constraints, as well as other control-affine dynamic constraints in the quadratic program. The trained policy is combined with the nominal model-based CBF-CLF-QP, resulting in the Reinforcement Learning-based CBF-CLF-QP (RL-CBF-CLF-QP), which addresses the problem of model uncertainty in the safety constraints. The performance of the proposed method is validated by testing it on an underactuated nonlinear bipedal robot walking on randomly spaced stepping stones with one step preview, obtaining stable and safe walking under model uncertainty.",
+      "abs_url": "https://arxiv.org/abs/2004.07584",
+      "pdf_url": "https://arxiv.org/pdf/2004.07584.pdf",
+      "pdf_file": "arxiv_2004.07584_reinforcement_learning_for_safety_critical_control_under_model_uncerta.pdf",
+      "group": "cbf_clf",
+      "note": "CLF/CBF + RL：统一稳定性与安全性（适合解释“到点必须停稳/回正”这类终止条件）。"
+    },
+    {
+      "arxiv_id": "2006.14171",
+      "title": "A Closer Look at Invalid Action Masking in Policy Gradient Algorithms",
+      "authors": [
+        "Shengyi Huang",
+        "Santiago Ontañón"
+      ],
+      "published": "2020-06-25T04:47:09Z",
+      "year": 2020,
+      "primary_class": "cs.LG",
+      "abstract": "In recent years, Deep Reinforcement Learning (DRL) algorithms have achieved state-of-the-art performance in many challenging strategy games. Because these games have complicated rules, an action sampled from the full discrete action distribution predicted by the learned policy is likely to be invalid according to the game rules (e.g., walking into a wall). The usual approach to deal with this problem in policy gradient algorithms is to \"mask out\" invalid actions and just sample from the set of valid actions. The implications of this process, however, remain under-investigated. In this paper, we 1) show theoretical justification for such a practice, 2) empirically demonstrate its importance as the space of invalid actions grows, and 3) provide further insights by evaluating different action masking regimes, such as removing masking after an agent has been trained using masking. The source code can be found at https://github.com/vwxyzjn/invalid-action-masking",
+      "abs_url": "https://arxiv.org/abs/2006.14171",
+      "pdf_url": "https://arxiv.org/pdf/2006.14171.pdf",
+      "pdf_file": "arxiv_2006.14171_a_closer_look_at_invalid_action_masking_in_policy_gradient_algorithms.pdf",
+      "group": "action_masking",
+      "note": "无效 action masking 会改变策略梯度并引入偏差（写论文时要说明 mask 的数学口径）。"
+    },
+    {
+      "arxiv_id": "2009.07476",
+      "title": "Path Planning using Neural A* Search",
+      "authors": [
+        "Ryo Yonetani",
+        "Tatsunori Taniai",
+        "Mohammadamin Barekatain",
+        "Mai Nishimura",
+        "Asako Kanezaki"
+      ],
+      "published": "2020-09-16T05:22:44Z",
+      "year": 2020,
+      "primary_class": "cs.LG",
+      "abstract": "We present Neural A*, a novel data-driven search method for path planning problems. Despite the recent increasing attention to data-driven path planning, machine learning approaches to search-based planning are still challenging due to the discrete nature of search algorithms. In this work, we reformulate a canonical A* search algorithm to be differentiable and couple it with a convolutional encoder to form an end-to-end trainable neural network planner. Neural A* solves a path planning problem by encoding a problem instance to a guidance map and then performing the differentiable A* search with the guidance map. By learning to match the search results with ground-truth paths provided by experts, Neural A* can produce a path consistent with the ground truth accurately and efficiently. Our extensive experiments confirmed that Neural A* outperformed state-of-the-art data-driven planners in terms of the search optimality and efficiency trade-off. Furthermore, Neural A* successfully predicted realistic human trajectories by directly performing search-based planning on natural image inputs. Project page: https://omron-sinicx.github.io/neural-astar/",
+      "abs_url": "https://arxiv.org/abs/2009.07476",
+      "pdf_url": "https://arxiv.org/pdf/2009.07476.pdf",
+      "pdf_file": "arxiv_2009.07476_neural_a_star_search.pdf",
+      "group": "neural_planning",
+      "note": "Neural A*：把 A* 融入可微框架（适合“学习启发式/代价图”路线）。"
+    },
+    {
+      "arxiv_id": "2101.06798",
+      "title": "MPC-MPNet: Model-Predictive Motion Planning Networks for Fast, Near-Optimal Planning under Kinodynamic Constraints",
+      "authors": [
+        "Linjun Li",
+        "Yinglong Miao",
+        "Ahmed H. Qureshi",
+        "Michael C. Yip"
+      ],
+      "published": "2021-01-17T23:07:04Z",
+      "year": 2021,
+      "primary_class": "cs.RO",
+      "abstract": "Kinodynamic Motion Planning (KMP) is to find a robot motion subject to concurrent kinematics and dynamics constraints. To date, quite a few methods solve KMP problems and those that exist struggle to find near-optimal solutions and exhibit high computational complexity as the planning space dimensionality increases. To address these challenges, we present a scalable, imitation learning-based, Model-Predictive Motion Planning Networks framework that quickly finds near-optimal path solutions with worst-case theoretical guarantees under kinodynamic constraints for practical underactuated systems. Our framework introduces two algorithms built on a neural generator, discriminator, and a parallelizable Model Predictive Controller (MPC). The generator outputs various informed states towards the given target, and the discriminator selects the best possible subset from them for the extension. The MPC locally connects the selected informed states while satisfying the given constraints leading to feasible, near-optimal solutions. We evaluate our algorithms on a range of cluttered, kinodynamically constrained, and underactuated planning problems with results indicating significant improvements in computation times, path qualities, and success rates over existing methods.",
+      "abs_url": "https://arxiv.org/abs/2101.06798",
+      "pdf_url": "https://arxiv.org/pdf/2101.06798.pdf",
+      "pdf_file": "arxiv_2101.06798_mpc_mpnet.pdf",
+      "group": "learning_motion_planning",
+      "note": "MPC-MPNet：学习规划 + MPC（与你仓库 Hybrid A*/MPC baseline 结构高度相似）。"
+    },
+    {
+      "arxiv_id": "2102.11122",
+      "title": "Reinforcement Learning of the Prediction Horizon in Model Predictive Control",
+      "authors": [
+        "Eivind Bøhn",
+        "Sebastien Gros",
+        "Signe Moe",
+        "Tor Arne Johansen"
+      ],
+      "published": "2021-02-22T15:52:32Z",
+      "year": 2021,
+      "primary_class": "eess.SY",
+      "abstract": "Model predictive control (MPC) is a powerful trajectory optimization control technique capable of controlling complex nonlinear systems while respecting system constraints and ensuring safe operation. The MPC's capabilities come at the cost of a high online computational complexity, the requirement of an accurate model of the system dynamics, and the necessity of tuning its parameters to the specific control application. The main tunable parameter affecting the computational complexity is the prediction horizon length, controlling how far into the future the MPC predicts the system response and thus evaluates the optimality of its computed trajectory. A longer horizon generally increases the control performance, but requires an increasingly powerful computing platform, excluding certain control applications.The performance sensitivity to the prediction horizon length varies over the state space, and this motivated the adaptive horizon model predictive control (AHMPC), which adapts the prediction horizon according to some criteria. In this paper we propose to learn the optimal prediction horizon as a function of the state using reinforcement learning (RL). We show how the RL learning problem can be formulated and test our method on two control tasks, showing clear improvements over the fixed horizon MPC scheme, while requiring only minutes of learning.",
+      "abs_url": "https://arxiv.org/abs/2102.11122",
+      "pdf_url": "https://arxiv.org/pdf/2102.11122.pdf",
+      "pdf_file": "arxiv_2102.11122_reinforcement_learning_of_the_prediction_horizon_in_model_predictive_c.pdf",
+      "group": "mpc_rl_hybrid",
+      "note": "用 RL 学 MPC 预测时域（horizon）等超参：把“调 MPC”变成学习问题。"
+    },
+    {
+      "arxiv_id": "2103.01556",
+      "title": "Model-based Constrained Reinforcement Learning using Generalized Control Barrier Function",
+      "authors": [
+        "Haitong Ma",
+        "Jianyu Chen",
+        "Shengbo Eben Li",
+        "Ziyu Lin",
+        "Yang Guan",
+        "Yangang Ren",
+        "Sifa Zheng"
+      ],
+      "published": "2021-03-02T08:17:38Z",
+      "year": 2021,
+      "primary_class": "cs.RO",
+      "abstract": "Model information can be used to predict future trajectories, so it has huge potential to avoid dangerous region when implementing reinforcement learning (RL) on real-world tasks, like autonomous driving. However, existing studies mostly use model-free constrained RL, which causes inevitable constraint violations. This paper proposes a model-based feasibility enhancement technique of constrained RL, which enhances the feasibility of policy using generalized control barrier function (GCBF) defined on the distance to constraint boundary. By using the model information, the policy can be optimized safely without violating actual safety constraints, and the sample efficiency is increased. The major difficulty of infeasibility in solving the constrained policy gradient is handled by an adaptive coefficient mechanism. We evaluate the proposed method in both simulations and real vehicle experiments in a complex autonomous driving collision avoidance task. The proposed method achieves up to four times fewer constraint violations and converges 3.36 times faster than baseline constrained RL approaches.",
+      "abs_url": "https://arxiv.org/abs/2103.01556",
+      "pdf_url": "https://arxiv.org/pdf/2103.01556.pdf",
+      "pdf_file": "arxiv_2103.01556_model_based_constrained_reinforcement_learning_using_generalized_contr.pdf",
+      "group": "cbf_clf",
+      "note": "Generalized CBF + model-based constrained RL：约束 RL 的一条清晰路线（可做方法对照）。"
+    },
+    {
+      "arxiv_id": "2105.01480",
+      "title": "Neural Weighted A*: Learning Graph Costs and Heuristics with Differentiable Anytime A*",
+      "authors": [
+        "Alberto Archetti",
+        "Marco Cannici",
+        "Matteo Matteucci"
+      ],
+      "published": "2021-05-04T13:17:30Z",
+      "year": 2021,
+      "primary_class": "cs.LG",
+      "abstract": "Recently, the trend of incorporating differentiable algorithms into deep learning architectures arose in machine learning research, as the fusion of neural layers and algorithmic layers has been beneficial for handling combinatorial data, such as shortest paths on graphs. Recent works related to data-driven planning aim at learning either cost functions or heuristic functions, but not both. We propose Neural Weighted A*, a differentiable anytime planner able to produce improved representations of planar maps as graph costs and heuristics. Training occurs end-to-end on raw images with direct supervision on planning examples, thanks to a differentiable A* solver integrated into the architecture. More importantly, the user can trade off planning accuracy for efficiency at run-time, using a single, real-valued parameter. The solution suboptimality is constrained within a linear bound equal to the optimal path cost multiplied by the tradeoff parameter. We experimentally show the validity of our claims by testing Neural Weighted A* against several baselines, introducing a novel, tile-based navigation dataset. We outperform similar architectures in planning accuracy and efficiency.",
+      "abs_url": "https://arxiv.org/abs/2105.01480",
+      "pdf_url": "https://arxiv.org/pdf/2105.01480.pdf",
+      "pdf_file": "arxiv_2105.01480_neural_weighted_a_star.pdf",
+      "group": "neural_planning",
+      "note": "Neural Weighted A*：学习代价/启发式并用加权 A* 做 anytime 折中。"
+    },
+    {
+      "arxiv_id": "2106.08050",
+      "title": "Residual Reinforcement Learning from Demonstrations",
+      "authors": [
+        "Minttu Alakuijala",
+        "Gabriel Dulac-Arnold",
+        "Julien Mairal",
+        "Jean Ponce",
+        "Cordelia Schmid"
+      ],
+      "published": "2021-06-15T11:16:49Z",
+      "year": 2021,
+      "primary_class": "cs.LG",
+      "abstract": "Residual reinforcement learning (RL) has been proposed as a way to solve challenging robotic tasks by adapting control actions from a conventional feedback controller to maximize a reward signal. We extend the residual formulation to learn from visual inputs and sparse rewards using demonstrations. Learning from images, proprioceptive inputs and a sparse task-completion reward relaxes the requirement of accessing full state features, such as object and target positions. In addition, replacing the base controller with a policy learned from demonstrations removes the dependency on a hand-engineered controller in favour of a dataset of demonstrations, which can be provided by non-experts. Our experimental evaluation on simulated manipulation tasks on a 6-DoF UR5 arm and a 28-DoF dexterous hand demonstrates that residual RL from demonstrations is able to generalize to unseen environment conditions more flexibly than either behavioral cloning or RL fine-tuning, and is capable of solving high-dimensional, sparse-reward tasks out of reach for RL from scratch.",
+      "abs_url": "https://arxiv.org/abs/2106.08050",
+      "pdf_url": "https://arxiv.org/pdf/2106.08050.pdf",
+      "pdf_file": "arxiv_2106.08050_residual_reinforcement_learning_from_demonstrations.pdf",
+      "group": "residual_rl",
+      "note": "Residual RL + demos：以专家/控制器为 nominal，RL 学 residual（很适合“planner/MPC 作为底座”）。"
+    },
+    {
+      "arxiv_id": "2110.05415",
+      "title": "Safe Reinforcement Learning Using Robust Control Barrier Functions",
+      "authors": [
+        "Yousef Emam",
+        "Gennaro Notomista",
+        "Paul Glotfelter",
+        "Zsolt Kira",
+        "Magnus Egerstedt"
+      ],
+      "published": "2021-10-11T17:00:45Z",
+      "year": 2021,
+      "primary_class": "eess.SY",
+      "abstract": "Reinforcement Learning (RL) has been shown to be effective in many scenarios. However, it typically requires the exploration of a sufficiently large number of state-action pairs, some of which may be unsafe. Consequently, its application to safety-critical systems remains a challenge. An increasingly common approach to address safety involves the addition of a safety layer that projects the RL actions onto a safe set of actions. In turn, a difficulty for such frameworks is how to effectively couple RL with the safety layer to improve the learning performance. In this paper, we frame safety as a differentiable robust-control-barrier-function layer in a model-based RL framework. Moreover, we also propose an approach to modularly learn the underlying reward-driven task, independent of safety constraints. We demonstrate that this approach both ensures safety and effectively guides exploration during training in a range of experiments, including zero-shot transfer when the reward is learned in a modular way.",
+      "abs_url": "https://arxiv.org/abs/2110.05415",
+      "pdf_url": "https://arxiv.org/pdf/2110.05415.pdf",
+      "pdf_file": "arxiv_2110.05415_safe_reinforcement_learning_using_robust_control_barrier_functions.pdf",
+      "group": "cbf_clf",
+      "note": "Robust CBF：把模型误差/扰动显式纳入安全保证（适合解释“long suite”退化）。"
+    },
+    {
+      "arxiv_id": "2110.07067",
+      "title": "Offline Reinforcement Learning for Autonomous Driving with Safety and Exploration Enhancement",
+      "authors": [
+        "Tianyu Shi",
+        "Dong Chen",
+        "Kaian Chen",
+        "Zhaojian Li"
+      ],
+      "published": "2021-10-13T22:36:40Z",
+      "year": 2021,
+      "primary_class": "cs.RO",
+      "abstract": "Reinforcement learning (RL) is a powerful data-driven control method that has been largely explored in autonomous driving tasks. However, conventional RL approaches learn control policies through trial-and-error interactions with the environment and therefore may cause disastrous consequences such as collisions when testing in real-world traffic. Offline RL has recently emerged as a promising framework to learn effective policies from previously-collected, static datasets without the requirement of active interactions, making it especially appealing for autonomous driving applications. Despite promising, existing offline RL algorithms such as Batch-Constrained deep Q-learning (BCQ) generally lead to rather conservative policies with limited exploration efficiency. To address such issues, this paper presents an enhanced BCQ algorithm by employing a learnable parameter noise scheme in the perturbation model to increase the diversity of observed actions. In addition, a Lyapunov-based safety enhancement strategy is incorporated to constrain the explorable state space within a safe region. Experimental results in highway and parking traffic scenarios show that our approach outperforms the conventional RL method, as well as state-of-the-art offline RL algorithms.",
+      "abs_url": "https://arxiv.org/abs/2110.07067",
+      "pdf_url": "https://arxiv.org/pdf/2110.07067.pdf",
+      "pdf_file": "arxiv_2110.07067_offline_reinforcement_learning_for_autonomous_driving_with_safety_and.pdf",
+      "group": "safe_driving",
+      "note": "自动驾驶 offline RL：用离线数据训练并强化安全/探索（适合“先用 baseline 造数据”）。"
+    },
+    {
+      "arxiv_id": "2112.11490",
+      "title": "Do Androids Dream of Electric Fences? Safety-Aware Reinforcement Learning with Latent Shielding",
+      "authors": [
+        "Chloe He",
+        "Borja G. Leon",
+        "Francesco Belardinelli"
+      ],
+      "published": "2021-12-21T19:11:34Z",
+      "year": 2021,
+      "primary_class": "cs.LG",
+      "abstract": "The growing trend of fledgling reinforcement learning systems making their way into real-world applications has been accompanied by growing concerns for their safety and robustness. In recent years, a variety of approaches have been put forward to address the challenges of safety-aware reinforcement learning; however, these methods often either require a handcrafted model of the environment to be provided beforehand, or that the environment is relatively simple and low-dimensional. We present a novel approach to safety-aware deep reinforcement learning in high-dimensional environments called latent shielding. Latent shielding leverages internal representations of the environment learnt by model-based agents to \"imagine\" future trajectories and avoid those deemed unsafe. We experimentally demonstrate that this approach leads to improved adherence to formally-defined safety specifications.",
+      "abs_url": "https://arxiv.org/abs/2112.11490",
+      "pdf_url": "https://arxiv.org/pdf/2112.11490.pdf",
+      "pdf_file": "arxiv_2112.11490_do_androids_dream_of_electric_fences_safety_aware_reinforcement_learni.pdf",
+      "group": "shielding",
+      "note": "Latent shielding：在隐空间学习安全约束（可作为“学习到的 mask/屏蔽器”参考）。"
+    },
+    {
+      "arxiv_id": "2112.13941",
+      "title": "Safe Reinforcement Learning with Chance-constrained Model Predictive Control",
+      "authors": [
+        "Samuel Pfrommer",
+        "Tanmay Gautam",
+        "Alec Zhou",
+        "Somayeh Sojoudi"
+      ],
+      "published": "2021-12-27T23:47:45Z",
+      "year": 2021,
+      "primary_class": "cs.LG",
+      "abstract": "Real-world reinforcement learning (RL) problems often demand that agents behave safely by obeying a set of designed constraints. We address the challenge of safe RL by coupling a safety guide based on model predictive control (MPC) with a modified policy gradient framework in a linear setting with continuous actions. The guide enforces safe operation of the system by embedding safety requirements as chance constraints in the MPC formulation. The policy gradient training step then includes a safety penalty which trains the base policy to behave safely. We show theoretically that this penalty allows for a provably safe optimal base policy and illustrate our method with a simulated linearized quadrotor experiment.",
+      "abs_url": "https://arxiv.org/abs/2112.13941",
+      "pdf_url": "https://arxiv.org/pdf/2112.13941.pdf",
+      "pdf_file": "arxiv_2112.13941_safe_reinforcement_learning_with_chance_constrained_model_predictive_c.pdf",
+      "group": "mpc_rl_hybrid",
+      "note": "Chance-constrained MPC + RL：把不确定性用概率约束写进 MPC 安全层。"
+    },
+    {
+      "arxiv_id": "2204.00755",
+      "title": "Safe Reinforcement Learning via Shielding under Partial Observability",
+      "authors": [
+        "Steven Carr",
+        "Nils Jansen",
+        "Sebastian Junges",
+        "Ufuk Topcu"
+      ],
+      "published": "2022-04-02T03:51:55Z",
+      "year": 2022,
+      "primary_class": "cs.AI",
+      "abstract": "Safe exploration is a common problem in reinforcement learning (RL) that aims to prevent agents from making disastrous decisions while exploring their environment. A family of approaches to this problem assume domain knowledge in the form of a (partial) model of this environment to decide upon the safety of an action. A so-called shield forces the RL agent to select only safe actions. However, for adoption in various applications, one must look beyond enforcing safety and also ensure the applicability of RL with good performance. We extend the applicability of shields via tight integration with state-of-the-art deep RL, and provide an extensive, empirical study in challenging, sparse-reward environments under partial observability. We show that a carefully integrated shield ensures safety and can improve the convergence rate and final performance of RL agents. We furthermore show that a shield can be used to bootstrap state-of-the-art RL agents: they remain safe after initial learning in a shielded setting, allowing us to disable a potentially too conservative shield eventually.",
+      "abs_url": "https://arxiv.org/abs/2204.00755",
+      "pdf_url": "https://arxiv.org/pdf/2204.00755.pdf",
+      "pdf_file": "arxiv_2204.00755_shielding_under_partial_observability.pdf",
+      "group": "shielding",
+      "note": "部分可观测下的 shielding：把不确定性也纳入安全干预分析。"
+    },
+    {
+      "arxiv_id": "2206.08528",
+      "title": "SafeRL-Kit: Evaluating Efficient Reinforcement Learning Methods for Safe Autonomous Driving",
+      "authors": [
+        "Linrui Zhang",
+        "Qin Zhang",
+        "Li Shen",
+        "Bo Yuan",
+        "Xueqian Wang"
+      ],
+      "published": "2022-06-17T03:23:51Z",
+      "year": 2022,
+      "primary_class": "cs.LG",
+      "abstract": "Safe reinforcement learning (RL) has achieved significant success on risk-sensitive tasks and shown promise in autonomous driving (AD) as well. Considering the distinctiveness of this community, efficient and reproducible baselines are still lacking for safe AD. In this paper, we release SafeRL-Kit to benchmark safe RL methods for AD-oriented tasks. Concretely, SafeRL-Kit contains several latest algorithms specific to zero-constraint-violation tasks, including Safety Layer, Recovery RL, off-policy Lagrangian method, and Feasible Actor-Critic. In addition to existing approaches, we propose a novel first-order method named Exact Penalty Optimization (EPO) and sufficiently demonstrate its capability in safe AD. All algorithms in SafeRL-Kit are implemented (i) under the off-policy setting, which improves sample efficiency and can better leverage past logs; (ii) with a unified learning framework, providing off-the-shelf interfaces for researchers to incorporate their domain-specific knowledge into fundamental safe RL methods. Conclusively, we conduct a comparative evaluation of the above algorithms in SafeRL-Kit and shed light on their efficacy for safe autonomous driving. The source code is available at \\href{ https://github.com/zlr20/saferl_kit}{this https URL}.",
+      "abs_url": "https://arxiv.org/abs/2206.08528",
+      "pdf_url": "https://arxiv.org/pdf/2206.08528.pdf",
+      "pdf_file": "arxiv_2206.08528_saferl_kit_evaluating_efficient_reinforcement_learning_methods_for_saf.pdf",
+      "group": "safe_driving",
+      "note": "SafeRL-Kit：安全自动驾驶 RL 的评测工具/基准（可参考指标与场景划分）。"
+    },
+    {
+      "arxiv_id": "2207.13446",
+      "title": "Dynamic Shielding for Reinforcement Learning in Black-Box Environments",
+      "authors": [
+        "Masaki Waga",
+        "Ezequiel Castellano",
+        "Sasinee Pruekprasert",
+        "Stefan Klikovits",
+        "Toru Takisaka",
+        "Ichiro Hasuo"
+      ],
+      "published": "2022-07-27T10:54:05Z",
+      "year": 2022,
+      "primary_class": "cs.LG",
+      "abstract": "It is challenging to use reinforcement learning (RL) in cyber-physical systems due to the lack of safety guarantees during learning. Although there have been various proposals to reduce undesired behaviors during learning, most of these techniques require prior system knowledge, and their applicability is limited. This paper aims to reduce undesired behaviors during learning without requiring any prior system knowledge. We propose dynamic shielding: an extension of a model-based safe RL technique called shielding using automata learning. The dynamic shielding technique constructs an approximate system model in parallel with RL using a variant of the RPNI algorithm and suppresses undesired explorations due to the shield constructed from the learned model. Through this combination, potentially unsafe actions can be foreseen before the agent experiences them. Experiments show that our dynamic shield significantly decreases the number of undesired events during training.",
+      "abs_url": "https://arxiv.org/abs/2207.13446",
+      "pdf_url": "https://arxiv.org/pdf/2207.13446.pdf",
+      "pdf_file": "arxiv_2207.13446_dynamic_shielding_for_reinforcement_learning_in_black_box_environments.pdf",
+      "group": "shielding",
+      "note": "Dynamic shielding：黑箱环境下自适应安全盾（强调无需精确动力学模型）。"
+    },
+    {
+      "arxiv_id": "2209.05206",
+      "title": "A Differentiable Loss Function for Learning Heuristics in A*",
+      "authors": [
+        "Leah Chrestien",
+        "Tomas Pevny",
+        "Antonin Komenda",
+        "Stefan Edelkamp"
+      ],
+      "published": "2022-09-12T12:43:05Z",
+      "year": 2022,
+      "primary_class": "cs.LG",
+      "abstract": "Optimization of heuristic functions for the A* algorithm, realized by deep neural networks, is usually done by minimizing square root loss of estimate of the cost to goal values. This paper argues that this does not necessarily lead to a faster search of A* algorithm since its execution relies on relative values instead of absolute ones. As a mitigation, we propose a L* loss, which upper-bounds the number of excessively expanded states inside the A* search. The L* loss, when used in the optimization of state-of-the-art deep neural networks for automated planning in maze domains like Sokoban and maze with teleports, significantly improves the fraction of solved problems, the quality of founded plans, and reduces the number of expanded states to approximately 50%",
+      "abs_url": "https://arxiv.org/abs/2209.05206",
+      "pdf_url": "https://arxiv.org/pdf/2209.05206.pdf",
+      "pdf_file": "arxiv_2209.05206_diff_loss_learning_heuristics_astar.pdf",
+      "group": "neural_planning",
+      "note": "可微损失学启发式：直接优化搜索轨迹/扩展节点（对齐你想赢的时间指标）。"
+    },
+    {
+      "arxiv_id": "2212.01861",
+      "title": "Online Shielding for Reinforcement Learning",
+      "authors": [
+        "Bettina Könighofer",
+        "Julian Rudolf",
+        "Alexander Palmisano",
+        "Martin Tappler",
+        "Roderick Bloem"
+      ],
+      "published": "2022-12-04T16:00:29Z",
+      "year": 2022,
+      "primary_class": "cs.LG",
+      "abstract": "Besides the recent impressive results on reinforcement learning (RL), safety is still one of the major research challenges in RL. RL is a machine-learning approach to determine near-optimal policies in Markov decision processes (MDPs). In this paper, we consider the setting where the safety-relevant fragment of the MDP together with a temporal logic safety specification is given and many safety violations can be avoided by planning ahead a short time into the future. We propose an approach for online safety shielding of RL agents. During runtime, the shield analyses the safety of each available action. For any action, the shield computes the maximal probability to not violate the safety specification within the next $k$ steps when executing this action. Based on this probability and a given threshold, the shield decides whether to block an action from the agent. Existing offline shielding approaches compute exhaustively the safety of all state-action combinations ahead of time, resulting in huge computation times and large memory consumption. The intuition behind online shielding is to compute at runtime the set of all states that could be reached in the near future. For each of these states, the safety of all available actions is analysed and used for shielding as soon as one of the considered states is reached. Our approach is well suited for high-level planning problems where the time between decisions can be used for safety computations and it is sustainable for the agent to wait until these computations are finished. For our evaluation, we selected a 2-player version of the classical computer game SNAKE. The game represents a high-level planning problem that requires fast decisions and the multiplayer setting induces a large state space, which is computationally expensive to analyse exhaustively.",
+      "abs_url": "https://arxiv.org/abs/2212.01861",
+      "pdf_url": "https://arxiv.org/pdf/2212.01861.pdf",
+      "pdf_file": "arxiv_2212.01861_online_shielding_for_reinforcement_learning.pdf",
+      "group": "shielding",
+      "note": "Online shielding：盾可在线更新（适合“训练中/部署中逐步完善规则”）。"
+    },
+    {
+      "arxiv_id": "2301.00884",
+      "title": "Safety Filtering for Reinforcement Learning-based Adaptive Cruise Control",
+      "authors": [
+        "Habtamu Hailemichael",
+        "Beshah Ayalew",
+        "Lindsey Kerbel",
+        "Andrej Ivanco",
+        "Keith Loiselle"
+      ],
+      "published": "2023-01-02T21:50:05Z",
+      "year": 2023,
+      "primary_class": "eess.SY",
+      "abstract": "Reinforcement learning (RL)-based adaptive cruise control systems (ACC) that learn and adapt to road, traffic and vehicle conditions are attractive for enhancing vehicle energy efficiency and traffic flow. However, the application of RL in safety critical systems such as ACC requires strong safety guarantees which are difficult to achieve with learning agents that have a fundamental need to explore. In this paper, we derive control barrier functions as safety filters that allow an RL-based ACC controller to explore freely within a collision safe set. Specifically, we derive control barrier functions for high relative degree nonlinear systems to take into account inertia effects relevant to commercial vehicles. We also outline an algorithm for accommodating actuation saturation with these barrier functions. While any RL algorithm can be used as the performance ACC controller together with these filters, we implement the Maximum A Posteriori Policy Optimization (MPO) algorithm with a hybrid action space that learns fuel optimal gear selection and torque control policies. The safety filtering RL approach is contrasted with a reward shaping RL approach that only learns to avoid collisions after sufficient training. Evaluations on different drive cycles demonstrate significant improvements in fuel economy with the proposed approach compared to baseline ACC algorithms.",
+      "abs_url": "https://arxiv.org/abs/2301.00884",
+      "pdf_url": "https://arxiv.org/pdf/2301.00884.pdf",
+      "pdf_file": "arxiv_2301.00884_safety_filtering_for_reinforcement_learning_based_adaptive_cruise_cont.pdf",
+      "group": "safety_filters",
+      "note": "ACC 场景的 safety filtering：展示“RL 决策 + 外层安全修正”的工程范式。"
+    },
+    {
+      "arxiv_id": "2303.03226",
+      "title": "Safe Reinforcement Learning via Probabilistic Logic Shields",
+      "authors": [
+        "Wen-Chi Yang",
+        "Giuseppe Marra",
+        "Gavin Rens",
+        "Luc De Raedt"
+      ],
+      "published": "2023-03-06T15:43:41Z",
+      "year": 2023,
+      "primary_class": "cs.AI",
+      "abstract": "Safe Reinforcement learning (Safe RL) aims at learning optimal policies while staying safe. A popular solution to Safe RL is shielding, which uses a logical safety specification to prevent an RL agent from taking unsafe actions. However, traditional shielding techniques are difficult to integrate with continuous, end-to-end deep RL methods. To this end, we introduce Probabilistic Logic Policy Gradient (PLPG). PLPG is a model-based Safe RL technique that uses probabilistic logic programming to model logical safety constraints as differentiable functions. Therefore, PLPG can be seamlessly applied to any policy gradient algorithm while still providing the same convergence guarantees. In our experiments, we show that PLPG learns safer and more rewarding policies compared to other state-of-the-art shielding techniques.",
+      "abs_url": "https://arxiv.org/abs/2303.03226",
+      "pdf_url": "https://arxiv.org/pdf/2303.03226.pdf",
+      "pdf_file": "arxiv_2303.03226_safe_reinforcement_learning_via_probabilistic_logic_shields.pdf",
+      "group": "shielding",
+      "note": "Probabilistic logic shields：用概率逻辑表达/组合安全规则（利于论文写清楚）。"
+    },
+    {
+      "arxiv_id": "2306.02551",
+      "title": "Conformal Predictive Safety Filter for RL Controllers in Dynamic Environments",
+      "authors": [
+        "Kegan J. Strawn",
+        "Nora Ayanian",
+        "Lars Lindemann"
+      ],
+      "published": "2023-06-05T02:55:17Z",
+      "year": 2023,
+      "primary_class": "cs.RO",
+      "abstract": "The interest in using reinforcement learning (RL) controllers in safety-critical applications such as robot navigation around pedestrians motivates the development of additional safety mechanisms. Running RL-enabled systems among uncertain dynamic agents may result in high counts of collisions and failures to reach the goal. The system could be safer if the pre-trained RL policy was uncertainty-informed. For that reason, we propose conformal predictive safety filters that: 1) predict the other agents' trajectories, 2) use statistical techniques to provide uncertainty intervals around these predictions, and 3) learn an additional safety filter that closely follows the RL controller but avoids the uncertainty intervals. We use conformal prediction to learn uncertainty-informed predictive safety filters, which make no assumptions about the agents' distribution. The framework is modular and outperforms the existing controllers in simulation. We demonstrate our approach with multiple experiments in a collision avoidance gym environment and show that our approach minimizes the number of collisions without making overly-conservative predictions.",
+      "abs_url": "https://arxiv.org/abs/2306.02551",
+      "pdf_url": "https://arxiv.org/pdf/2306.02551.pdf",
+      "pdf_file": "arxiv_2306.02551_conformal_predictive_safety_filter_for_rl_controllers_in_dynamic_envir.pdf",
+      "group": "safety_filters",
+      "note": "Conformal safety filter：给过滤器引入统计校准/置信度口径（适合“长尾失败”讨论）。"
+    },
+    {
+      "arxiv_id": "2308.00707",
+      "title": "Approximate Model-Based Shielding for Safe Reinforcement Learning",
+      "authors": [
+        "Alexander W. Goodall",
+        "Francesco Belardinelli"
+      ],
+      "published": "2023-07-27T15:19:45Z",
+      "year": 2023,
+      "primary_class": "cs.LG",
+      "abstract": "Reinforcement learning (RL) has shown great potential for solving complex tasks in a variety of domains. However, applying RL to safety-critical systems in the real-world is not easy as many algorithms are sample-inefficient and maximising the standard RL objective comes with no guarantees on worst-case performance. In this paper we propose approximate model-based shielding (AMBS), a principled look-ahead shielding algorithm for verifying the performance of learned RL policies w.r.t. a set of given safety constraints. Our algorithm differs from other shielding approaches in that it does not require prior knowledge of the safety-relevant dynamics of the system. We provide a strong theoretical justification for AMBS and demonstrate superior performance to other safety-aware approaches on a set of Atari games with state-dependent safety-labels.",
+      "abs_url": "https://arxiv.org/abs/2308.00707",
+      "pdf_url": "https://arxiv.org/pdf/2308.00707.pdf",
+      "pdf_file": "arxiv_2308.00707_approximate_model_based_shielding_for_safe_reinforcement_learning.pdf",
+      "group": "shielding",
+      "note": "近似模型的 shielding：用近似模型降低盾开销（适合实时推理）。"
+    },
+    {
+      "arxiv_id": "2308.14424",
+      "title": "Shielded Reinforcement Learning for Hybrid Systems",
+      "authors": [
+        "Asger Horn Brorholt",
+        "Peter Gjøl Jensen",
+        "Kim Guldstrand Larsen",
+        "Florian Lorber",
+        "Christian Schilling"
+      ],
+      "published": "2023-08-28T09:04:52Z",
+      "year": 2023,
+      "primary_class": "cs.LO",
+      "abstract": "Safe and optimal controller synthesis for switched-controlled hybrid systems, which combine differential equations and discrete changes of the system's state, is known to be intricately hard. Reinforcement learning has been leveraged to construct near-optimal controllers, but their behavior is not guaranteed to be safe, even when it is encouraged by reward engineering. One way of imposing safety to a learned controller is to use a shield, which is correct by design. However, obtaining a shield for non-linear and hybrid environments is itself intractable. In this paper, we propose the construction of a shield using the so-called barbaric method, where an approximate finite representation of an underlying partition-based two-player safety game is extracted via systematically picked samples of the true transition function. While hard safety guarantees are out of reach, we experimentally demonstrate strong statistical safety guarantees with a prototype implementation and UPPAAL STRATEGO. Furthermore, we study the impact of the synthesized shield when applied as either a pre-shield (applied before learning a controller) or a post-shield (only applied after learning a controller). We experimentally demonstrate superiority of the pre-shielding approach. We apply our technique on a range of case studies, including two industrial examples, and further study post-optimization of the post-shielding approach.",
+      "abs_url": "https://arxiv.org/abs/2308.14424",
+      "pdf_url": "https://arxiv.org/pdf/2308.14424.pdf",
+      "pdf_file": "arxiv_2308.14424_shielded_reinforcement_learning_for_hybrid_systems.pdf",
+      "group": "shielding",
+      "note": "Hybrid systems 的 shielded RL：离散-连续混合系统下的安全干预（更贴近车辆控制）。"
+    },
+    {
+      "arxiv_id": "2404.16879",
+      "title": "Learning Control Barrier Functions and their application in Reinforcement Learning: A Survey",
+      "authors": [
+        "Maeva Guerrier",
+        "Hassan Fouad",
+        "Giovanni Beltrame"
+      ],
+      "published": "2024-04-22T22:52:14Z",
+      "year": 2024,
+      "primary_class": "cs.LG",
+      "abstract": "Reinforcement learning is a powerful technique for developing new robot behaviors. However, typical lack of safety guarantees constitutes a hurdle for its practical application on real robots. To address this issue, safe reinforcement learning aims to incorporate safety considerations, enabling faster transfer to real robots and facilitating lifelong learning. One promising approach within safe reinforcement learning is the use of control barrier functions. These functions provide a framework to ensure that the system remains in a safe state during the learning process. However, synthesizing control barrier functions is not straightforward and often requires ample domain knowledge. This challenge motivates the exploration of data-driven methods for automatically defining control barrier functions, which is highly appealing. We conduct a comprehensive review of the existing literature on safe reinforcement learning using control barrier functions. Additionally, we investigate various techniques for automatically learning the Control Barrier Functions, aiming to enhance the safety and efficacy of Reinforcement Learning in practical robot applications.",
+      "abs_url": "https://arxiv.org/abs/2404.16879",
+      "pdf_url": "https://arxiv.org/pdf/2404.16879.pdf",
+      "pdf_file": "arxiv_2404.16879_learning_control_barrier_functions_and_their_application_in_reinforcem.pdf",
+      "group": "cbf_clf",
+      "note": "CBF+RL 综述：系统整理 barrier function 如何接入 RL（写 Related Work 最省力）。"
+    },
+    {
+      "arxiv_id": "2406.06507",
+      "title": "Verification-Guided Shielding for Deep Reinforcement Learning",
+      "authors": [
+        "Davide Corsi",
+        "Guy Amir",
+        "Andoni Rodriguez",
+        "Cesar Sanchez",
+        "Guy Katz",
+        "Roy Fox"
+      ],
+      "published": "2024-06-10T17:44:59Z",
+      "year": 2024,
+      "primary_class": "cs.LG",
+      "abstract": "In recent years, Deep Reinforcement Learning (DRL) has emerged as an effective approach to solving real-world tasks. However, despite their successes, DRL-based policies suffer from poor reliability, which limits their deployment in safety-critical domains. Various methods have been put forth to address this issue by providing formal safety guarantees. Two main approaches include shielding and verification. While shielding ensures the safe behavior of the policy by employing an external online component (i.e., a ``shield'') that overrides potentially dangerous actions, this approach has a significant computational cost as the shield must be invoked at runtime to validate every decision. On the other hand, verification is an offline process that can identify policies that are unsafe, prior to their deployment, yet, without providing alternative actions when such a policy is deemed unsafe. In this work, we present verification-guided shielding -- a novel approach that bridges the DRL reliability gap by integrating these two methods. Our approach combines both formal and probabilistic verification tools to partition the input domain into safe and unsafe regions. In addition, we employ clustering and symbolic representation procedures that compress the unsafe regions into a compact representation. This, in turn, allows to temporarily activate the shield solely in (potentially) unsafe regions, in an efficient manner. Our novel approach allows to significantly reduce runtime overhead while still preserving formal safety guarantees. We extensively evaluate our approach on two benchmarks from the robotic navigation domain, as well as provide an in-depth analysis of its scalability and completeness.",
+      "abs_url": "https://arxiv.org/abs/2406.06507",
+      "pdf_url": "https://arxiv.org/pdf/2406.06507.pdf",
+      "pdf_file": "arxiv_2406.06507_verification_guided_shielding_for_deep_reinforcement_learning.pdf",
+      "group": "shielding",
+      "note": "Verification-guided shielding：用形式化/验证信息构造盾（适合占据图+离散动作空间）。"
+    },
+    {
+      "arxiv_id": "2406.08878",
+      "title": "CIMRL: Combining IMitation and Reinforcement Learning for Safe Autonomous Driving",
+      "authors": [
+        "Jonathan Booher",
+        "Khashayar Rohanimanesh",
+        "Junhong Xu",
+        "Vladislav Isenbaev",
+        "Ashwin Balakrishna",
+        "Ishan Gupta",
+        "Wei Liu",
+        "Aleksandr Petiushko"
+      ],
+      "published": "2024-06-13T07:31:29Z",
+      "year": 2024,
+      "primary_class": "cs.LG",
+      "abstract": "Modern approaches to autonomous driving rely heavily on learned components trained with large amounts of human driving data via imitation learning. However, these methods require large amounts of expensive data collection and even then face challenges with safely handling long-tail scenarios and compounding errors over time. At the same time, pure Reinforcement Learning (RL) methods can fail to learn performant policies in sparse, constrained, and challenging-to-define reward settings such as autonomous driving. Both of these challenges make deploying purely cloned or pure RL policies in safety critical applications such as autonomous vehicles challenging. In this paper we propose Combining IMitation and Reinforcement Learning (CIMRL) approach - a safe reinforcement learning framework that enables training driving policies in simulation through leveraging imitative motion priors and safety constraints. CIMRL does not require extensive reward specification and improves on the closed loop behavior of pure cloning methods. By combining RL and imitation, we demonstrate that our method achieves state-of-the-art results in closed loop simulation and real world driving benchmarks.",
+      "abs_url": "https://arxiv.org/abs/2406.08878",
+      "pdf_url": "https://arxiv.org/pdf/2406.08878.pdf",
+      "pdf_file": "arxiv_2406.08878_cimrl_combining_imitation_and_reinforcement_learning_for_safe_autonomo.pdf",
+      "group": "safe_driving",
+      "note": "IM+RL 混合（CIMRL）：把 imitation 与 RL 结合来提升安全性与收敛（贴近你现有 demo 体系）。"
+    },
+    {
+      "arxiv_id": "2410.11671",
+      "title": "Safety Filtering While Training: Improving the Performance and Sample Efficiency of Reinforcement Learning Agents",
+      "authors": [
+        "Federico Pizarro Bejarano",
+        "Lukas Brunke",
+        "Angela P. Schoellig"
+      ],
+      "published": "2024-10-15T15:01:57Z",
+      "year": 2024,
+      "primary_class": "cs.RO",
+      "abstract": "Reinforcement learning (RL) controllers are flexible and performant but rarely guarantee safety. Safety filters impart hard safety guarantees to RL controllers while maintaining flexibility. However, safety filters can cause undesired behaviours due to the separation between the controller and the safety filter, often degrading performance and robustness. In this paper, we analyze several modifications to incorporating the safety filter in training RL controllers rather than solely applying it during evaluation. The modifications allow the RL controller to learn to account for the safety filter, improving performance. This paper presents a comprehensive analysis of training RL with safety filters, featuring simulated and real-world experiments with a Crazyflie 2.0 drone. We examine how various training modifications and hyperparameters impact performance, sample efficiency, safety, and chattering. Our findings serve as a guide for practitioners and researchers focused on safety filters and safe RL.",
+      "abs_url": "https://arxiv.org/abs/2410.11671",
+      "pdf_url": "https://arxiv.org/pdf/2410.11671.pdf",
+      "pdf_file": "arxiv_2410.11671_safety_filtering_while_training_improving_the_performance_and_sample_e.pdf",
+      "group": "safety_filters",
+      "note": "Training 中引入 safety filter 可提升样本效率与最终性能（“训练期就带盾”）。"
+    },
+    {
+      "arxiv_id": "2411.17293",
+      "title": "SIL-RRT*: Learning Sampling Distribution through Self Imitation Learning",
+      "authors": [
+        "Xuzhe Dang",
+        "Stefan Edelkamp"
+      ],
+      "published": "2024-11-26T10:32:28Z",
+      "year": 2024,
+      "primary_class": "cs.RO",
+      "abstract": "Efficiently finding safe and feasible trajectories for mobile objects is a critical field in robotics and computer science. In this paper, we propose SIL-RRT*, a novel learning-based motion planning algorithm that extends the RRT* algorithm by using a deep neural network to predict a distribution for sampling at each iteration. We evaluate SIL-RRT* on various 2D and 3D environments and establish that it can efficiently solve high-dimensional motion planning problems with fewer samples than traditional sampling-based algorithms. Moreover, SIL-RRT* is able to scale to more complex environments, making it a promising approach for solving challenging robotic motion planning problems.",
+      "abs_url": "https://arxiv.org/abs/2411.17293",
+      "pdf_url": "https://arxiv.org/pdf/2411.17293.pdf",
+      "pdf_file": "arxiv_2411.17293_sil_rrt_star.pdf",
+      "group": "learning_motion_planning",
+      "note": "SIL-RRT*：自模仿提升 RRT* 连接/采样（learned sampling 的新线）。"
+    },
+    {
+      "arxiv_id": "2506.22894",
+      "title": "Safe Reinforcement Learning with a Predictive Safety Filter for Motion Planning and Control: A Drifting Vehicle Example",
+      "authors": [
+        "Bei Zhou",
+        "Baha Zarrouki",
+        "Mattia Piccinini",
+        "Cheng Hu",
+        "Lei Xie",
+        "Johannes Betz"
+      ],
+      "published": "2025-06-28T14:10:32Z",
+      "year": 2025,
+      "primary_class": "cs.RO",
+      "abstract": "Autonomous drifting is a complex and crucial maneuver for safety-critical scenarios like slippery roads and emergency collision avoidance, requiring precise motion planning and control. Traditional motion planning methods often struggle with the high instability and unpredictability of drifting, particularly when operating at high speeds. Recent learning-based approaches have attempted to tackle this issue but often rely on expert knowledge or have limited exploration capabilities. Additionally, they do not effectively address safety concerns during learning and deployment. To overcome these limitations, we propose a novel Safe Reinforcement Learning (RL)-based motion planner for autonomous drifting. Our approach integrates an RL agent with model-based drift dynamics to determine desired drift motion states, while incorporating a Predictive Safety Filter (PSF) that adjusts the agent's actions online to prevent unsafe states. This ensures safe and efficient learning, and stable drift operation. We validate the effectiveness of our method through simulations on a Matlab-Carsim platform, demonstrating significant improvements in drift performance, reduced tracking errors, and computational efficiency compared to traditional methods. This strategy promises to extend the capabilities of autonomous vehicles in safety-critical maneuvers.",
+      "abs_url": "https://arxiv.org/abs/2506.22894",
+      "pdf_url": "https://arxiv.org/pdf/2506.22894.pdf",
+      "pdf_file": "arxiv_2506.22894_safe_reinforcement_learning_with_a_predictive_safety_filter_for_motion.pdf",
+      "group": "safety_filters",
+      "note": "漂移车辆案例：用预测安全过滤器把 RL 用于规划+控制且保持安全（车辆运动学贴近）。"
+    },
+    {
+      "arxiv_id": "2509.22626",
+      "title": "Learning Admissible Heuristics for A*: Theory and Practice",
+      "authors": [
+        "Ehsan Futuhi",
+        "Nathan R. Sturtevant"
+      ],
+      "published": "2025-09-26T17:51:26Z",
+      "year": 2025,
+      "primary_class": "cs.LG",
+      "abstract": "Heuristic functions are central to the performance of search algorithms such as A-star, where admissibility - the property of never overestimating the true shortest-path cost - guarantees solution optimality. Recent deep learning approaches often disregard admissibility and provide limited guarantees on generalization beyond the training data. This paper addresses both of these limitations. First, we pose heuristic learning as a constrained optimization problem and introduce Cross-Entropy Admissibility (CEA), a loss function that enforces admissibility during training. On the Rubik's Cube domain, this method yields near-admissible heuristics with significantly stronger guidance than compressed pattern database (PDB) heuristics. Theoretically, we study the sample complexity of learning heuristics. By leveraging PDB abstractions and the structural properties of graphs such as the Rubik's Cube, we tighten the bound on the number of training samples needed for A-star to generalize. Replacing a general hypothesis class with a ReLU neural network gives bounds that depend primarily on the network's width and depth, rather than on graph size. Using the same network, we also provide the first generalization guarantees for goal-dependent heuristics.",
+      "abs_url": "https://arxiv.org/abs/2509.22626",
+      "pdf_url": "https://arxiv.org/pdf/2509.22626.pdf",
+      "pdf_file": "arxiv_2509.22626_learning_admissible_heuristics_astar.pdf",
+      "group": "neural_planning",
+      "note": "学习可采纳（admissible）启发式：把“更快但仍保守”的口径写扎实。"
+    },
+    {
+      "arxiv_id": "2510.10567",
+      "title": "Reinforcement Learning-based Dynamic Adaptation for Sampling-Based Motion Planning in Agile Autonomous Driving",
+      "authors": [
+        "Alexander Langmann",
+        "Yevhenii Tokarev",
+        "Mattia Piccinini",
+        "Korbinian Moller",
+        "Johannes Betz"
+      ],
+      "published": "2025-10-12T12:30:12Z",
+      "year": 2025,
+      "primary_class": "cs.RO",
+      "abstract": "Sampling-based trajectory planners are widely used for agile autonomous driving due to their ability to generate fast, smooth, and kinodynamically feasible trajectories. However, their behavior is often governed by a cost function with manually tuned, static weights, which forces a tactical compromise that is suboptimal across the wide range of scenarios encountered in a race. To address this shortcoming, we propose using a Reinforcement Learning (RL) agent as a high-level behavioral selector that dynamically switches the cost function parameters of an analytical, low-level trajectory planner during runtime. We show the effectiveness of our approach in simulation in an autonomous racing environment where our RL-based planner achieved 0% collision rate while reducing overtaking time by up to 60% compared to state-of-the-art static planners. Our new agent now dynamically switches between aggressive and conservative behaviors, enabling interactive maneuvers unattainable with static configurations. These results demonstrate that integrating reinforcement learning as a high-level selector resolves the inherent trade-off between safety and competitiveness in autonomous racing planners. The proposed methodology offers a pathway toward adaptive yet interpretable motion planning for broader autonomous driving applications.",
+      "abs_url": "https://arxiv.org/abs/2510.10567",
+      "pdf_url": "https://arxiv.org/pdf/2510.10567.pdf",
+      "pdf_file": "arxiv_2510.10567_reinforcement_learning_based_dynamic_adaptation_for_sampling_based_mot.pdf",
+      "group": "rl_motion_planning",
+      "note": "用 RL 动态调参采样规划器（agile driving 场景；可迁移到“learned sampling/预算分配”）。"
+    },
+    {
+      "arxiv_id": "2510.14959",
+      "title": "CBF-RL: Safety Filtering Reinforcement Learning in Training with Control Barrier Functions",
+      "authors": [
+        "Lizhi Yang",
+        "Blake Werner",
+        "Massimiliano de Sa",
+        "Aaron D. Ames"
+      ],
+      "published": "2025-10-16T17:58:58Z",
+      "year": 2025,
+      "primary_class": "cs.RO",
+      "abstract": "Reinforcement learning (RL), while powerful and expressive, can often prioritize performance at the expense of safety. Yet safety violations can lead to catastrophic outcomes in real-world deployments. Control Barrier Functions (CBFs) offer a principled method to enforce dynamic safety -- traditionally deployed online via safety filters. While the result is safe behavior, the fact that the RL policy does not have knowledge of the CBF can lead to conservative behaviors. This paper proposes CBF-RL, a framework for generating safe behaviors with RL by enforcing CBFs in training. CBF-RL has two key attributes: (1) minimally modifying a nominal RL policy to encode safety constraints via a CBF term, (2) and safety filtering of the policy rollouts in training. Theoretically, we prove that continuous-time safety filters can be deployed via closed-form expressions on discrete-time roll-outs. Practically, we demonstrate that CBF-RL internalizes the safety constraints in the learned policy -- both enforcing safer actions and biasing towards safer rewards -- enabling safe deployment without the need for an online safety filter. We validate our framework through ablation studies on navigation tasks and on the Unitree G1 humanoid robot, where CBF-RL enables safer exploration, faster convergence, and robust performance under uncertainty, enabling the humanoid robot to avoid obstacles and climb stairs safely in real-world settings without a runtime safety filter.",
+      "abs_url": "https://arxiv.org/abs/2510.14959",
+      "pdf_url": "https://arxiv.org/pdf/2510.14959.pdf",
+      "pdf_file": "arxiv_2510.14959_cbf_rl_safety_filtering_reinforcement_learning_in_training_with_contro.pdf",
+      "group": "cbf_clf",
+      "note": "CBF-RL：用 Control Barrier Function 做 training-time safety filter（对连续控制很典型）。"
+    }
+  ]
+}
