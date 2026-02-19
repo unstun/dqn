@@ -2123,6 +2123,54 @@ class AMRBicycleEnv(gym.Env):
                     return True
         return False
 
+    def is_continuous_action_admissible(
+        self,
+        delta_dot_rad_s: float,
+        a_m_s2: float,
+        *,
+        horizon_steps: int = 10,
+        min_od_m: float = 0.0,
+        min_progress_m: float = 1e-4,
+    ) -> bool:
+        """Check admissibility of a continuous action ``(delta_dot, accel)``.
+
+        Uses the same logic as :meth:`is_action_admissible` but accepts
+        arbitrary continuous control values instead of a discrete action index.
+        """
+        dist0 = float(self._goal_dist_pose_m(float(self._x_m), float(self._y_m), float(self._psi_rad)))
+        if not math.isfinite(dist0):
+            return True
+
+        h = max(1, int(horizon_steps))
+        dd = np.array([float(delta_dot_rad_s)], dtype=np.float64)
+        aa = np.array([float(a_m_s2)], dtype=np.float64)
+        x, y, psi, _v, min_od_arr, coll, reached = self._rollout_constant_actions_end_state(
+            delta_dot_rad_s=dd, a_m_s2=aa, horizon_steps=h,
+        )
+        if bool(coll[0]):
+            return False
+        if float(min_od_arr[0]) < float(min_od_m):
+            return False
+        if bool(reached[0]):
+            return True
+
+        dist1 = float(self._goal_dist_pose_m(float(x[0]), float(y[0]), float(psi[0])))
+        if not math.isfinite(dist1):
+            return False
+
+        reached_pose_now = bool(
+            self._goal_pose_reached(
+                d_goal_m=float(self._distance_to_goal_m()),
+                alpha_rad=float(self._goal_relative_angle_rad()),
+            )
+        )
+        if bool(reached_pose_now):
+            goal_relax_dist = float(self.goal_tolerance_m) * float(self.goal_admissible_relax_factor)
+            if float(dist1) <= float(goal_relax_dist):
+                return True
+
+        return float(dist0 - dist1) >= float(min_progress_m)
+
     def safe_action_mask(
         self,
         *,

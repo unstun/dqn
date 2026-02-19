@@ -417,6 +417,31 @@ def rollout_agent(
     )
 
 
+def _find_closest_admissible_discrete_action(
+    env: AMRBicycleEnv,
+    intended_dd: float,
+    intended_aa: float,
+    *,
+    horizon_steps: int,
+    min_od_m: float,
+    min_progress_m: float,
+) -> int | None:
+    """Find the admissible discrete action closest (L2) to an intended continuous action."""
+    mask = env.admissible_action_mask(
+        horizon_steps=int(horizon_steps),
+        min_od_m=float(min_od_m),
+        min_progress_m=float(min_progress_m),
+        fallback_to_safe=True,
+    )
+    if not bool(mask.any()):
+        return None
+    table = env.action_table  # (n_actions, 2)
+    admissible_ids = np.nonzero(mask)[0]
+    intended = np.array([float(intended_dd), float(intended_aa)], dtype=np.float64)
+    dists = np.linalg.norm(table[admissible_ids].astype(np.float64) - intended, axis=1)
+    return int(admissible_ids[int(np.argmin(dists))])
+
+
 def rollout_continuous_agent(
     env: gym.Env,
     agent: DDPGAgent | SACAgent,
@@ -428,6 +453,9 @@ def rollout_continuous_agent(
     obs_transform: Callable[[np.ndarray], np.ndarray] | None = None,
     collect_controls: bool = False,
     trace_path: Path | None = None,
+    forest_adm_horizon: int = 0,
+    forest_min_od_m: float = 0.0,
+    forest_min_progress_m: float = 1e-4,
 ) -> RolloutResult:
     if not isinstance(env, AMRBicycleEnv):
         raise RuntimeError("Continuous rollout requires AMRBicycleEnv.")
@@ -496,6 +524,12 @@ def rollout_continuous_agent(
     steps = 0
     reached = False
     stop_override_steps = 0
+    argmax_inadmissible_steps = 0
+    replacement_steps = 0
+    shield_active = int(forest_adm_horizon) > 0
+    shield_h = max(1, int(forest_adm_horizon))
+    shield_od = float(forest_min_od_m)
+    shield_prog = float(forest_min_progress_m)
     last_collision = False
     last_stuck = False
 
@@ -525,6 +559,25 @@ def rollout_continuous_agent(
                 raise RuntimeError(f"Continuous agent action dim must be 2, got {int(action.size)}")
             delta_dot = float(action[0])
             accel = float(action[1])
+
+            # Safety shield: check continuous action admissibility
+            if shield_active:
+                adm = env.is_continuous_action_admissible(
+                    delta_dot, accel,
+                    horizon_steps=shield_h, min_od_m=shield_od,
+                    min_progress_m=shield_prog,
+                )
+                if not adm:
+                    argmax_inadmissible_steps += 1
+                    rep_id = _find_closest_admissible_discrete_action(
+                        env, delta_dot, accel,
+                        horizon_steps=shield_h, min_od_m=shield_od,
+                        min_progress_m=shield_prog,
+                    )
+                    if rep_id is not None:
+                        delta_dot = float(env.action_table[int(rep_id), 0])
+                        accel = float(env.action_table[int(rep_id), 1])
+                        replacement_steps += 1
 
         if time_mode == "policy":
             sync_cuda()
@@ -595,14 +648,15 @@ def rollout_continuous_agent(
     else:
         failure_reason = "not_reached"
 
+    steps_safe = max(1, int(steps))
     debug = {
-        "argmax_inadmissible_steps": 0,
+        "argmax_inadmissible_steps": int(argmax_inadmissible_steps),
         "replacement_topk_steps": 0,
-        "replacement_mask_steps": 0,
+        "replacement_mask_steps": int(replacement_steps),
         "fallback_steps": 0,
         "stop_override_steps": int(stop_override_steps),
-        "argmax_inadmissible_rate": float("nan"),
-        "fallback_rate": float("nan"),
+        "argmax_inadmissible_rate": float(argmax_inadmissible_steps) / float(steps_safe) if shield_active else float("nan"),
+        "fallback_rate": 0.0 if shield_active else float("nan"),
         "failure_reason": str(failure_reason),
     }
 
@@ -2291,6 +2345,9 @@ def main(argv: list[str] | None = None) -> int:
                             obs_transform=obs_transform,
                             collect_controls=bool(int(i) in control_run_indices),
                             trace_path=trace_path,
+                            forest_adm_horizon=int(args.forest_adm_horizon),
+                            forest_min_od_m=float(args.forest_min_od_m),
+                            forest_min_progress_m=float(args.forest_min_progress_m),
                         )
                     else:
                         raise RuntimeError(f"Missing loaded RL agent for algo: {algo_key!r}")

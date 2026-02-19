@@ -2357,6 +2357,22 @@ def train_one(
     return agent, returns, eval_history, {"meta": train_meta, "train_progress": list(train_progress_history)}
 
 
+def _convert_discrete_demos_to_continuous(
+    forest_demo_data: tuple[np.ndarray, ...],
+    action_table: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Convert discrete demo transitions to continuous (delta_dot, accel) format.
+
+    ``action_table`` shape ``(n_discrete_actions, 2)`` maps each discrete
+    action index to ``[delta_dot_rad_s, accel_m_s2]``.  ``forest_demo_data``
+    is the 7-tuple returned by :func:`collect_forest_demos`.
+    """
+    obs_buf, act_buf, rew_buf, next_obs_buf, _mask_buf, done_buf, _trunc_buf = forest_demo_data
+    n = int(obs_buf.shape[0])
+    cont_actions = action_table[act_buf[:n].astype(np.int64)].astype(np.float32)
+    return obs_buf[:n], cont_actions, rew_buf[:n], next_obs_buf[:n], done_buf[:n]
+
+
 def train_one_continuous(
     env: gym.Env,
     algo: str,
@@ -2384,6 +2400,7 @@ def train_one_continuous(
     throughput_abort_max_minutes: float,
     progress: bool,
     device: torch.device,
+    forest_demo_data: tuple[np.ndarray, ...] | None = None,
     progress_write: Callable[[str], None] | None = None,
 ) -> tuple[np.ndarray, list[dict[str, float | int]], dict[str, object]]:
     if not isinstance(env, AMRBicycleEnv):
@@ -2438,6 +2455,19 @@ def train_one_continuous(
         )
     else:
         raise ValueError(f"Unsupported continuous algo: {algo!r}")
+
+    # -- Demo prefill for continuous agents (reuses discrete DQfD demos) --
+    if forest_demo_data is not None and float(cont_cfg.cont_demo_frac) > 0.0:
+        c_obs, c_act, c_rew, c_nobs, c_done = _convert_discrete_demos_to_continuous(
+            forest_demo_data, env.action_table,
+        )
+        n_demos = int(c_obs.shape[0])
+        for di in range(n_demos):
+            agent.replay.add(
+                c_obs[di], c_act[di], float(c_rew[di]), c_nobs[di],
+                bool(float(c_done[di]) > 0.5), demo=True,
+            )
+        log(f"[train] [{run_label}] continuous demo prefill: {n_demos} transitions loaded")
 
     train_two_suites = bool(forest_train_two_suites) and bool(forest_random_start_goal)
     train_short_prob = float(np.clip(float(forest_train_short_prob), 0.0, 1.0))
@@ -2720,6 +2750,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--cont-sac-log-std-min", type=float, default=-5.0, help="SAC actor log_std lower bound.")
     ap.add_argument("--cont-sac-log-std-max", type=float, default=2.0, help="SAC actor log_std upper bound.")
+    ap.add_argument(
+        "--cont-demo-frac", type=float, default=0.0,
+        help="Fraction of each continuous-agent batch guaranteed to be demo transitions (0 = disabled).",
+    )
     ap.add_argument(
         "--demo-mode",
         type=str,
@@ -3619,6 +3653,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     args.rl_algos = rl_algos
     selected_dqn_algos = [str(a) for a in args.rl_algos if is_dqn_canonical_algo(str(a))]
+    selected_cont_algos = [str(a) for a in args.rl_algos if is_continuous_algo(str(a))]
 
     try:
         device = select_device(device=args.device, cuda_device=args.cuda_device)
@@ -3726,6 +3761,7 @@ def main(argv: list[str] | None = None) -> int:
         sac_target_entropy=getattr(args, "cont_sac_target_entropy", None),
         sac_log_std_min=float(getattr(args, "cont_sac_log_std_min", -5.0)),
         sac_log_std_max=float(getattr(args, "cont_sac_log_std_max", 2.0)),
+        cont_demo_frac=float(getattr(args, "cont_demo_frac", 0.0)),
     )
     (out_dir / "configs").mkdir(parents=True, exist_ok=True)
     args_payload: dict[str, object] = {}
@@ -3820,7 +3856,9 @@ def main(argv: list[str] | None = None) -> int:
                 action_grid_power=float(args.forest_action_grid_power),
             )
             forest_demo_data = None
-            if bool(selected_dqn_algos) and bool(args.forest_demo_prefill) and int(args.learning_starts) > 0:
+            need_demos_for_dqn = bool(selected_dqn_algos) and bool(args.forest_demo_prefill) and int(args.learning_starts) > 0
+            need_demos_for_cont = bool(selected_cont_algos) and float(cont_cfg.cont_demo_frac) > 0.0
+            if need_demos_for_dqn or need_demos_for_cont:
                 demo_target = forest_demo_target(
                     learning_starts=int(args.learning_starts),
                     batch_size=int(agent_cfg.batch_size),
@@ -4067,6 +4105,7 @@ def main(argv: list[str] | None = None) -> int:
                         throughput_abort_max_minutes=float(getattr(args, "throughput_abort_max_minutes", 90.0)),
                         progress=progress,
                         device=device,
+                        forest_demo_data=forest_demo_data,
                         progress_write=progress_write,
                     )
             finally:

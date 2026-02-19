@@ -128,7 +128,8 @@
     "cont_sac_auto_alpha": true,
     "cont_sac_target_entropy": null,
     "cont_sac_log_std_min": -5,
-    "cont_sac_log_std_max": 2.0
+    "cont_sac_log_std_max": 2.0,
+    "cont_demo_frac": 0.25
   },
   "infer": {
     "envs": [

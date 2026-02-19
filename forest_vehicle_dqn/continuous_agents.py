@@ -73,17 +73,27 @@ def infer_continuous_checkpoint_algo(path: str | Path) -> str:
 
 
 class ContinuousReplayBuffer:
-    def __init__(self, capacity: int, obs_dim: int, action_dim: int, *, seed: int = 0) -> None:
+    def __init__(
+        self,
+        capacity: int,
+        obs_dim: int,
+        action_dim: int,
+        *,
+        seed: int = 0,
+        demo_frac: float = 0.0,
+    ) -> None:
         self.capacity = int(max(1, capacity))
         self.obs_dim = int(obs_dim)
         self.action_dim = int(action_dim)
         self._rng = np.random.default_rng(int(seed))
+        self._demo_frac = float(max(0.0, min(1.0, demo_frac)))
 
         self._obs = np.zeros((self.capacity, self.obs_dim), dtype=np.float32)
         self._actions = np.zeros((self.capacity, self.action_dim), dtype=np.float32)
         self._rewards = np.zeros((self.capacity,), dtype=np.float32)
         self._next_obs = np.zeros((self.capacity, self.obs_dim), dtype=np.float32)
         self._dones = np.zeros((self.capacity,), dtype=np.float32)
+        self._demos = np.zeros((self.capacity,), dtype=np.float32)
 
         self._idx = 0
         self._size = 0
@@ -98,13 +108,27 @@ class ContinuousReplayBuffer:
         reward: float,
         next_obs: np.ndarray,
         done: bool,
+        *,
+        demo: bool = False,
     ) -> None:
         i = int(self._idx)
+        # Demo overwrite protection: skip slots that hold demo transitions.
+        if int(self._size) >= int(self.capacity) and (not bool(demo)) and float(self._demos[i]) > 0.5:
+            found = False
+            for _ in range(int(self.capacity)):
+                i = (i + 1) % int(self.capacity)
+                if float(self._demos[i]) <= 0.5:
+                    found = True
+                    break
+            if not found:
+                return  # buffer full of demos; drop agent transition
+
         self._obs[i] = np.asarray(obs, dtype=np.float32).reshape(self.obs_dim)
         self._actions[i] = np.asarray(action, dtype=np.float32).reshape(self.action_dim)
         self._rewards[i] = float(reward)
         self._next_obs[i] = np.asarray(next_obs, dtype=np.float32).reshape(self.obs_dim)
         self._dones[i] = 1.0 if bool(done) else 0.0
+        self._demos[i] = 1.0 if bool(demo) else 0.0
 
         self._idx = (i + 1) % int(self.capacity)
         self._size = min(int(self.capacity), int(self._size) + 1)
@@ -113,7 +137,21 @@ class ContinuousReplayBuffer:
         b = int(max(1, batch_size))
         if int(self._size) < int(b):
             raise RuntimeError("replay size is smaller than batch_size")
-        idxs = self._rng.integers(0, int(self._size), size=int(b), endpoint=False)
+
+        if float(self._demo_frac) > 0.0:
+            demo_idxs_all = np.nonzero(self._demos[: int(self._size)] > 0.5)[0]
+            k_demo = int(float(b) * float(self._demo_frac))
+            if demo_idxs_all.size > 0 and k_demo > 0:
+                k_demo = min(int(k_demo), int(demo_idxs_all.size))
+                demo_chosen = self._rng.choice(demo_idxs_all, size=int(k_demo), replace=True)
+                k_rest = int(b) - int(k_demo)
+                rest_chosen = self._rng.integers(0, int(self._size), size=int(k_rest), endpoint=False)
+                idxs = np.concatenate([demo_chosen, rest_chosen])
+                self._rng.shuffle(idxs)
+            else:
+                idxs = self._rng.integers(0, int(self._size), size=int(b), endpoint=False)
+        else:
+            idxs = self._rng.integers(0, int(self._size), size=int(b), endpoint=False)
 
         obs = torch.from_numpy(self._obs[idxs]).to(device)
         actions = torch.from_numpy(self._actions[idxs]).to(device)
@@ -238,6 +276,7 @@ class _ContinuousAgentBase:
             obs_dim=int(self.obs_dim),
             action_dim=int(self.action_dim),
             seed=int(seed) + 1337,
+            demo_frac=float(config.cont_demo_frac),
         )
         self._train_steps = 0
 
