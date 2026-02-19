@@ -417,7 +417,7 @@ def rollout_agent(
     )
 
 
-def _find_closest_admissible_discrete_action(
+def _find_progress_first_admissible_discrete_action(
     env: AMRBicycleEnv,
     intended_dd: float,
     intended_aa: float,
@@ -426,7 +426,12 @@ def _find_closest_admissible_discrete_action(
     min_od_m: float,
     min_progress_m: float,
 ) -> int | None:
-    """Find the admissible discrete action closest (L2) to an intended continuous action."""
+    """Pick an admissible discrete action for a rejected continuous action.
+
+    Selection rule:
+    1) maximize short-horizon goal-distance progress;
+    2) tie-break by L2 distance to the intended continuous action.
+    """
     mask = env.admissible_action_mask(
         horizon_steps=int(horizon_steps),
         min_od_m=float(min_od_m),
@@ -437,8 +442,25 @@ def _find_closest_admissible_discrete_action(
         return None
     table = env.action_table  # (n_actions, 2)
     admissible_ids = np.nonzero(mask)[0]
+    cand = table[admissible_ids].astype(np.float64, copy=False)
+    x, y, psi, _v, _min_od, _coll, _reached = env._rollout_constant_actions_end_state(
+        delta_dot_rad_s=cand[:, 0],
+        a_m_s2=cand[:, 1],
+        horizon_steps=max(1, int(horizon_steps)),
+    )
+    dist1 = env._goal_dist_pose_m_vec(x, y, psi)
+    dist0 = float(env._goal_dist_pose_m(float(env._x_m), float(env._y_m), float(env._psi_rad)))
+    progress = float(dist0) - dist1
     intended = np.array([float(intended_dd), float(intended_aa)], dtype=np.float64)
-    dists = np.linalg.norm(table[admissible_ids].astype(np.float64) - intended, axis=1)
+    dists = np.linalg.norm(cand - intended, axis=1)
+    finite = np.isfinite(progress)
+    if bool(finite.any()):
+        best_prog = float(np.max(progress[finite]))
+        prog_mask = np.isclose(progress, best_prog, rtol=0.0, atol=1e-9) & finite
+        if bool(prog_mask.any()):
+            tie_ids = np.nonzero(prog_mask)[0]
+            best_local = int(tie_ids[int(np.argmin(dists[tie_ids]))])
+            return int(admissible_ids[best_local])
     return int(admissible_ids[int(np.argmin(dists))])
 
 
@@ -569,7 +591,7 @@ def rollout_continuous_agent(
                 )
                 if not adm:
                     argmax_inadmissible_steps += 1
-                    rep_id = _find_closest_admissible_discrete_action(
+                    rep_id = _find_progress_first_admissible_discrete_action(
                         env, delta_dot, accel,
                         horizon_steps=shield_h, min_od_m=shield_od,
                         min_progress_m=shield_prog,
@@ -1135,6 +1157,33 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.0,
         help="Forest-only: minimum clearance (OD) required by admissible-action gating.",
+    )
+    ap.add_argument(
+        "--cont-forest-adm-horizon",
+        type=int,
+        default=None,
+        help=(
+            "DDPG/SAC only: admissibility horizon steps. "
+            "When unset, falls back to --forest-adm-horizon."
+        ),
+    )
+    ap.add_argument(
+        "--cont-forest-min-progress-m",
+        type=float,
+        default=None,
+        help=(
+            "DDPG/SAC only: admissibility progress threshold (m). "
+            "When unset, falls back to --forest-min-progress-m."
+        ),
+    )
+    ap.add_argument(
+        "--cont-forest-min-od-m",
+        type=float,
+        default=None,
+        help=(
+            "DDPG/SAC only: admissibility minimum clearance OD (m). "
+            "When unset, falls back to --forest-min-od-m."
+        ),
     )
     ap.add_argument(
         "--forest-baseline-hybrid-collision-padding-m",
@@ -2290,6 +2339,21 @@ def main(argv: list[str] | None = None) -> int:
                         raise RuntimeError(f"Unsupported continuous algo for infer: {algo!r}")
                     ca.load(path)
                     cont_agents[str(algo)] = ca
+            cont_forest_adm_horizon = (
+                int(args.forest_adm_horizon)
+                if getattr(args, "cont_forest_adm_horizon", None) is None
+                else int(getattr(args, "cont_forest_adm_horizon"))
+            )
+            cont_forest_min_progress_m = (
+                float(args.forest_min_progress_m)
+                if getattr(args, "cont_forest_min_progress_m", None) is None
+                else float(getattr(args, "cont_forest_min_progress_m"))
+            )
+            cont_forest_min_od_m = (
+                float(args.forest_min_od_m)
+                if getattr(args, "cont_forest_min_od_m", None) is None
+                else float(getattr(args, "cont_forest_min_od_m"))
+            )
 
             for algo in args.rl_algos:
                 algo_key = str(algo)
@@ -2345,9 +2409,9 @@ def main(argv: list[str] | None = None) -> int:
                             obs_transform=obs_transform,
                             collect_controls=bool(int(i) in control_run_indices),
                             trace_path=trace_path,
-                            forest_adm_horizon=int(args.forest_adm_horizon),
-                            forest_min_od_m=float(args.forest_min_od_m),
-                            forest_min_progress_m=float(args.forest_min_progress_m),
+                            forest_adm_horizon=int(cont_forest_adm_horizon),
+                            forest_min_od_m=float(cont_forest_min_od_m),
+                            forest_min_progress_m=float(cont_forest_min_progress_m),
                         )
                     else:
                         raise RuntimeError(f"Missing loaded RL agent for algo: {algo_key!r}")

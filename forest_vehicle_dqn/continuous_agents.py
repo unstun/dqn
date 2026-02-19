@@ -39,6 +39,8 @@ class ContinuousAgentConfig:
 
     # Demo buffer: fraction of each batch guaranteed to be demo transitions
     cont_demo_frac: float = 0.0
+    # Optional behavior-cloning regularizer on demo samples (continuous-only).
+    cont_bc_lambda: float = 0.0
 
 
 def is_continuous_algo(algo: str) -> bool:
@@ -134,6 +136,15 @@ class ContinuousReplayBuffer:
         self._size = min(int(self.capacity), int(self._size) + 1)
 
     def sample(self, batch_size: int, *, device: torch.device) -> tuple[torch.Tensor, ...]:
+        return self.sample_with_demo(batch_size, device=device, with_demo_mask=False)
+
+    def sample_with_demo(
+        self,
+        batch_size: int,
+        *,
+        device: torch.device,
+        with_demo_mask: bool = False,
+    ) -> tuple[torch.Tensor, ...]:
         b = int(max(1, batch_size))
         if int(self._size) < int(b):
             raise RuntimeError("replay size is smaller than batch_size")
@@ -158,7 +169,10 @@ class ContinuousReplayBuffer:
         rewards = torch.from_numpy(self._rewards[idxs]).to(device).unsqueeze(1)
         next_obs = torch.from_numpy(self._next_obs[idxs]).to(device)
         dones = torch.from_numpy(self._dones[idxs]).to(device).unsqueeze(1)
-        return obs, actions, rewards, next_obs, dones
+        if not bool(with_demo_mask):
+            return obs, actions, rewards, next_obs, dones
+        demos = torch.from_numpy(self._demos[idxs]).to(device).unsqueeze(1)
+        return obs, actions, rewards, next_obs, dones, demos
 
 
 def _build_mlp(in_dim: int, out_dim: int, *, hidden_dim: int, hidden_layers: int) -> nn.Sequential:
@@ -382,7 +396,11 @@ class DDPGAgent(_ContinuousAgentBase):
         if len(self.replay) < int(self.config.batch_size):
             return None
 
-        obs, action, reward, next_obs, done = self.replay.sample(int(self.config.batch_size), device=self.device)
+        obs, action, reward, next_obs, done, demo_mask = self.replay.sample_with_demo(
+            int(self.config.batch_size),
+            device=self.device,
+            with_demo_mask=True,
+        )
 
         with torch.no_grad():
             next_action = self._scale_action(self.actor_target(next_obs))
@@ -397,7 +415,14 @@ class DDPGAgent(_ContinuousAgentBase):
         self.critic_opt.step()
 
         actor_action = self._scale_action(self.actor(obs))
-        actor_loss = -self.critic(obs, actor_action).mean()
+        actor_loss_rl = -self.critic(obs, actor_action).mean()
+        bc_loss = torch.tensor(0.0, dtype=torch.float32, device=self.device)
+        bc_lambda = max(0.0, float(getattr(self.config, "cont_bc_lambda", 0.0)))
+        if bc_lambda > 0.0:
+            demo_idx = (demo_mask.reshape(-1) > 0.5)
+            if bool(torch.any(demo_idx)):
+                bc_loss = F.mse_loss(actor_action[demo_idx], action[demo_idx])
+        actor_loss = actor_loss_rl + float(bc_lambda) * bc_loss
 
         self.actor_opt.zero_grad(set_to_none=True)
         actor_loss.backward()
@@ -409,6 +434,8 @@ class DDPGAgent(_ContinuousAgentBase):
         return {
             "critic_loss": float(critic_loss.item()),
             "actor_loss": float(actor_loss.item()),
+            "actor_loss_rl": float(actor_loss_rl.item()),
+            "bc_loss": float(bc_loss.item()),
         }
 
     def save(self, path: str | Path) -> None:
@@ -544,7 +571,11 @@ class SACAgent(_ContinuousAgentBase):
         if len(self.replay) < int(self.config.batch_size):
             return None
 
-        obs, action, reward, next_obs, done = self.replay.sample(int(self.config.batch_size), device=self.device)
+        obs, action, reward, next_obs, done, demo_mask = self.replay.sample_with_demo(
+            int(self.config.batch_size),
+            device=self.device,
+            with_demo_mask=True,
+        )
 
         with torch.no_grad():
             next_action_norm, next_logp, _next_mu = self.actor.sample(next_obs)
@@ -567,12 +598,20 @@ class SACAgent(_ContinuousAgentBase):
         q2_loss.backward()
         self.q2_opt.step()
 
-        action_norm, logp, _mu = self.actor.sample(obs)
+        action_norm, logp, mu_tanh = self.actor.sample(obs)
         action_now = self._scale_action(action_norm)
         q1_pi = self.q1(obs, action_now)
         q2_pi = self.q2(obs, action_now)
         q_pi = torch.minimum(q1_pi, q2_pi)
-        actor_loss = (self.alpha.detach() * logp - q_pi).mean()
+        actor_loss_rl = (self.alpha.detach() * logp - q_pi).mean()
+        bc_loss = torch.tensor(0.0, dtype=torch.float32, device=self.device)
+        bc_lambda = max(0.0, float(getattr(self.config, "cont_bc_lambda", 0.0)))
+        if bc_lambda > 0.0:
+            demo_idx = (demo_mask.reshape(-1) > 0.5)
+            if bool(torch.any(demo_idx)):
+                mu_action = self._scale_action(mu_tanh)
+                bc_loss = F.mse_loss(mu_action[demo_idx], action[demo_idx])
+        actor_loss = actor_loss_rl + float(bc_lambda) * bc_loss
 
         self.actor_opt.zero_grad(set_to_none=True)
         actor_loss.backward()
@@ -593,6 +632,8 @@ class SACAgent(_ContinuousAgentBase):
             "q1_loss": float(q1_loss.item()),
             "q2_loss": float(q2_loss.item()),
             "actor_loss": float(actor_loss.item()),
+            "actor_loss_rl": float(actor_loss_rl.item()),
+            "bc_loss": float(bc_loss.item()),
             "alpha": float(self.alpha.detach().item()),
             "alpha_loss": float(alpha_loss_value),
         }

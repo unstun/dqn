@@ -2708,6 +2708,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--train-freq", type=int, default=4)
     ap.add_argument("--learning-starts", type=int, default=2000)
+    ap.add_argument(
+        "--cont-learning-starts",
+        type=int,
+        default=None,
+        help=(
+            "DDPG/SAC only: warmup steps before updates. "
+            "When unset, falls back to --learning-starts."
+        ),
+    )
     ap.add_argument("--gamma", type=float, default=0.995, help="Discount factor for TD targets.")
     ap.add_argument("--learning-rate", type=float, default=5e-4, help="Adam learning rate.")
     ap.add_argument("--replay-capacity", type=int, default=100_000, help="Replay buffer capacity.")
@@ -2753,6 +2762,15 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--cont-demo-frac", type=float, default=0.0,
         help="Fraction of each continuous-agent batch guaranteed to be demo transitions (0 = disabled).",
+    )
+    ap.add_argument(
+        "--cont-bc-lambda",
+        type=float,
+        default=0.0,
+        help=(
+            "DDPG/SAC only: demo behavior-cloning regularizer weight on actor update "
+            "(0 disables BC)."
+        ),
     )
     ap.add_argument(
         "--demo-mode",
@@ -3762,7 +3780,12 @@ def main(argv: list[str] | None = None) -> int:
         sac_log_std_min=float(getattr(args, "cont_sac_log_std_min", -5.0)),
         sac_log_std_max=float(getattr(args, "cont_sac_log_std_max", 2.0)),
         cont_demo_frac=float(getattr(args, "cont_demo_frac", 0.0)),
+        cont_bc_lambda=float(getattr(args, "cont_bc_lambda", 0.0)),
     )
+    cont_learning_starts_raw = getattr(args, "cont_learning_starts", None)
+    cont_learning_starts = int(args.learning_starts) if cont_learning_starts_raw is None else int(cont_learning_starts_raw)
+    if int(cont_learning_starts) < 0:
+        raise SystemExit("--cont-learning-starts must be >= 0")
     (out_dir / "configs").mkdir(parents=True, exist_ok=True)
     args_payload: dict[str, object] = {}
     for k, v in vars(args).items():
@@ -3857,10 +3880,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             forest_demo_data = None
             need_demos_for_dqn = bool(selected_dqn_algos) and bool(args.forest_demo_prefill) and int(args.learning_starts) > 0
-            need_demos_for_cont = bool(selected_cont_algos) and float(cont_cfg.cont_demo_frac) > 0.0
+            need_demos_for_cont = (
+                bool(selected_cont_algos)
+                and float(cont_cfg.cont_demo_frac) > 0.0
+                and int(cont_learning_starts) > 0
+            )
             if need_demos_for_dqn or need_demos_for_cont:
+                demo_learning_starts = 0
+                if bool(need_demos_for_dqn):
+                    demo_learning_starts = max(int(demo_learning_starts), int(args.learning_starts))
+                if bool(need_demos_for_cont):
+                    demo_learning_starts = max(int(demo_learning_starts), int(cont_learning_starts))
                 demo_target = forest_demo_target(
-                    learning_starts=int(args.learning_starts),
+                    learning_starts=int(demo_learning_starts),
                     batch_size=int(agent_cfg.batch_size),
                     target_mult=float(args.forest_demo_target_mult),
                     target_cap=int(args.forest_demo_target_cap),
@@ -4079,7 +4111,7 @@ def main(argv: list[str] | None = None) -> int:
                         out_dir=out_dir,
                         cont_cfg=cont_cfg,
                         train_freq=int(args.train_freq),
-                        learning_starts=int(args.learning_starts),
+                        learning_starts=int(cont_learning_starts),
                         forest_random_start_goal=bool(args.forest_random_start_goal),
                         forest_rand_min_dist_m=float(args.forest_rand_min_dist_m),
                         forest_rand_max_dist_m=rand_max,
