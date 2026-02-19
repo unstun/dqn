@@ -27,7 +27,7 @@ from forest_vehicle_dqn.agents import AgentConfig, DQNFamilyAgent, parse_rl_algo
 from forest_vehicle_dqn.baselines.mpc_local_planner import MPCConfig
 from forest_vehicle_dqn.baselines.pathplan import AStarCurveOptConfig, grid_map_from_obstacles, plan_grid_astar
 from forest_vehicle_dqn.config_io import apply_config_defaults, load_json, resolve_config_path, select_section
-from forest_vehicle_dqn.env import AMRBicycleEnv, AMRGridEnv, RewardWeights
+from forest_vehicle_dqn.env import AMRBicycleEnv, AMRGridEnv, RewardWeights, bicycle_integrate_one_step
 from forest_vehicle_dqn.live_view_pygame import TrainLiveViewer
 from forest_vehicle_dqn.maps import FOREST_ENV_ORDER, get_map_spec
 from forest_vehicle_dqn.replay_buffer import FLAG_HAZARD, FLAG_NEAR_GOAL, FLAG_STUCK
@@ -232,6 +232,132 @@ def forest_expert_action(
     raise ValueError("forest_expert must be one of: auto, hybrid_astar, astar_mpc, hybrid_astar_mpc")
 
 
+def forest_stop_action(env: AMRBicycleEnv) -> int:
+    """Pick a stop-oriented action near the goal to drive v, delta toward 0 safely."""
+    dt = float(env.model.dt)
+    if not (dt > 0.0):
+        return 0
+
+    x0 = float(env._x_m)
+    y0 = float(env._y_m)
+    psi0 = float(env._psi_rad)
+    v0 = float(env._v_m_s)
+    delta0 = float(env._delta_rad)
+
+    gx_m = float(env.goal_xy[0]) * float(env.cell_size_m)
+    gy_m = float(env.goal_xy[1]) * float(env.cell_size_m)
+    tol_m = max(1e-6, float(env.goal_tolerance_m))
+    v_max = max(1e-9, float(env.model.v_max_m_s))
+    delta_max = max(1e-9, float(env.model.delta_max_rad))
+
+    best_action = 0
+    best_cost = float("inf")
+    for a_id in range(int(env.action_table.shape[0])):
+        delta_dot = float(env.action_table[a_id, 0])
+        accel = float(env.action_table[a_id, 1])
+        x, y, psi, v1, delta1 = bicycle_integrate_one_step(
+            x_m=x0,
+            y_m=y0,
+            psi_rad=psi0,
+            v_m_s=v0,
+            delta_rad=delta0,
+            delta_dot_rad_s=delta_dot,
+            a_m_s2=accel,
+            params=env.model,
+        )
+        _od, coll = env._od_and_collision_at_pose_m(x, y, psi)
+        if bool(coll):
+            continue
+
+        d_goal = float(math.hypot(float(gx_m) - float(x), float(gy_m) - float(y)))
+        d_term = d_goal / float(tol_m)
+        v_term = abs(float(v1)) / float(v_max)
+        delta_term = abs(float(delta1)) / float(delta_max)
+        cost = 5.0 * float(d_term) + float(v_term) + float(delta_term)
+
+        if float(cost) < float(best_cost):
+            best_cost = float(cost)
+            best_action = int(a_id)
+
+    return int(best_action)
+
+
+def _forest_policy_action_from_q(
+    env: AMRBicycleEnv,
+    q: torch.Tensor,
+    *,
+    forest_adm_horizon: int,
+    forest_topk: int,
+    forest_min_od_m: float,
+    forest_min_progress_m: float,
+    forest_no_fallback: bool,
+) -> tuple[int, bool]:
+    """Infer-style forest policy action from Q values; returns (action, argmax_inadmissible)."""
+    adm_h = max(1, int(forest_adm_horizon))
+    topk_k = max(1, int(forest_topk))
+    strict_no_fallback = bool(forest_no_fallback)
+    min_od = float(forest_min_od_m)
+    min_prog = float(forest_min_progress_m)
+
+    if not bool(strict_no_fallback):
+        reached_pose = bool(
+            env._goal_pose_reached(
+                d_goal_m=float(env._distance_to_goal_m()),
+                alpha_rad=float(env._goal_relative_angle_rad()),
+            )
+        )
+        reached_stop = bool(env._goal_stop_reached(v_m_s=float(env._v_m_s), delta_rad=float(env._delta_rad)))
+        if bool(reached_pose) and (not bool(reached_stop)):
+            return int(forest_stop_action(env)), False
+
+    a0 = int(torch.argmax(q).item())
+    a = int(a0)
+    a0_adm = bool(
+        env.is_action_admissible(
+            int(a0),
+            horizon_steps=int(adm_h),
+            min_od_m=float(min_od),
+            min_progress_m=float(min_prog),
+        )
+    )
+
+    if (not bool(strict_no_fallback)) and (not bool(a0_adm)):
+        chosen: int | None = None
+        kk = int(min(int(topk_k), int(q.numel())))
+        topk = torch.topk(q, k=kk, dim=0).indices.detach().cpu().numpy()
+        for cand in topk.tolist():
+            cand_i = int(cand)
+            if cand_i == int(a0):
+                continue
+            if bool(
+                env.is_action_admissible(
+                    int(cand_i),
+                    horizon_steps=int(adm_h),
+                    min_od_m=float(min_od),
+                    min_progress_m=float(min_prog),
+                )
+            ):
+                chosen = int(cand_i)
+                break
+
+        if chosen is None:
+            prog_mask = env.admissible_action_mask(
+                horizon_steps=int(adm_h),
+                min_od_m=float(min_od),
+                min_progress_m=float(min_prog),
+                fallback_to_safe=False,
+            )
+            if bool(prog_mask.any()):
+                q_masked = q.clone()
+                q_masked[torch.from_numpy(~prog_mask).to(q.device)] = torch.finfo(q_masked.dtype).min
+                chosen = int(torch.argmax(q_masked).item())
+
+        if chosen is not None:
+            a = int(chosen)
+
+    return int(a), (not bool(a0_adm))
+
+
 def _forest_pair_dist_ratio(env: AMRBicycleEnv) -> float:
     sx, sy = int(env.start_xy[0]), int(env.start_xy[1])
     gx, gy = int(env.goal_xy[0]), int(env.goal_xy[1])
@@ -374,7 +500,10 @@ def _eval_train_progress_suites(
     seed_base: int,
     max_steps: int,
     adm_horizon: int,
+    topk: int,
+    min_od_m: float,
     min_progress_m: float,
+    forest_no_fallback: bool,
     astar_timeout_s: float,
     astar_max_expanded: int,
 ) -> dict[str, float | int]:
@@ -415,16 +544,17 @@ def _eval_train_progress_suites(
             with torch.no_grad():
                 x = torch.from_numpy(obs_eval.astype(np.float32, copy=False)).to(agent.device)
                 q = agent.q(x.unsqueeze(0)).squeeze(0)
-                a = int(torch.argmax(q).item())
-            decision_steps += 1
-            if not bool(
-                env.is_action_admissible(
-                    int(a),
-                    horizon_steps=int(adm_horizon),
-                    min_od_m=0.0,
-                    min_progress_m=float(min_progress_m),
+                a, argmax_inadmissible = _forest_policy_action_from_q(
+                    env,
+                    q,
+                    forest_adm_horizon=int(adm_horizon),
+                    forest_topk=int(topk),
+                    forest_min_od_m=float(min_od_m),
+                    forest_min_progress_m=float(min_progress_m),
+                    forest_no_fallback=bool(forest_no_fallback),
                 )
-            ):
+            decision_steps += 1
+            if bool(argmax_inadmissible):
                 argmax_inadmissible_steps += 1
             obs_eval, _, done_eval, trunc_eval, info_eval = env.step(int(a))
             last_info_eval = dict(info_eval)
@@ -519,6 +649,7 @@ def collect_forest_demos(
     forest_expert: str,
     forest_demo_horizon: int,
     forest_adm_horizon: int,
+    forest_min_od_m: float,
     forest_min_progress_m: float,
     forest_use_admissible_next_mask: bool,
     forest_demo_w_clearance: float,
@@ -553,6 +684,7 @@ def collect_forest_demos(
     added = 0
     demo_ep = 0
     adm_h = max(1, int(forest_adm_horizon))
+    min_od_m = float(forest_min_od_m)
     min_prog_m = float(forest_min_progress_m)
     use_adm_next_mask = bool(forest_use_admissible_next_mask)
     full_next_mask = np.ones((int(env.action_space.n),), dtype=np.bool_)
@@ -662,7 +794,7 @@ def collect_forest_demos(
             next_mask = (
                 env.admissible_action_mask(
                     horizon_steps=adm_h,
-                    min_od_m=0.0,
+                    min_od_m=float(min_od_m),
                     min_progress_m=min_prog_m,
                     fallback_to_safe=True,
                 )
@@ -791,6 +923,8 @@ def train_one(
     forest_expert_exploration: bool,
     forest_action_shield: bool,
     forest_adm_horizon: int,
+    forest_topk: int,
+    forest_min_od_m: float,
     forest_min_progress_m: float,
     forest_no_fallback: bool,
     forest_expert_prob_start: float,
@@ -860,6 +994,8 @@ def train_one(
     run_label = f"{env.map_spec.name}/{algo}"
     t_train_one_start = time.perf_counter()
     adm_h = max(1, int(forest_adm_horizon))
+    topk_k = max(1, int(forest_topk))
+    min_od_m = float(forest_min_od_m)
     min_prog_m = float(forest_min_progress_m)
     strict_no_fallback = bool(forest_no_fallback)
     ckpt_joint_short_long = bool(save_ckpt_joint_short_long) and bool(forest_random_start_goal) and isinstance(env, AMRBicycleEnv)
@@ -967,6 +1103,7 @@ def train_one(
         f"learning_starts={int(learning_starts)}, demo_prefill={bool(forest_demo_prefill)}, "
         f"demo_target_mult={float(forest_demo_target_mult):.1f}, demo_target_cap={int(forest_demo_target_cap)}, "
         f"demo_pretrain_steps={int(forest_demo_pretrain_steps)}, forest_adm_horizon={int(adm_h)}, "
+        f"forest_topk={int(topk_k)}, forest_min_od_m={float(min_od_m):.3f}, "
         f"forest_min_progress_m={float(min_prog_m):.4f}, strict_no_fallback={bool(strict_no_fallback)}"
     )
 
@@ -1079,6 +1216,25 @@ def train_one(
             stage="train_episode",
         )
 
+    def _forest_q_values(obs_arr: np.ndarray) -> torch.Tensor:
+        with torch.no_grad():
+            x = torch.from_numpy(obs_arr.astype(np.float32, copy=False)).to(agent.device)
+            return agent.q(x.unsqueeze(0)).squeeze(0)
+
+    def _forest_greedy_action(obs_eval: np.ndarray) -> tuple[int, bool]:
+        if isinstance(env, AMRBicycleEnv):
+            q = _forest_q_values(obs_eval)
+            return _forest_policy_action_from_q(
+                env,
+                q,
+                forest_adm_horizon=int(adm_h),
+                forest_topk=int(topk_k),
+                forest_min_od_m=float(min_od_m),
+                forest_min_progress_m=float(min_prog_m),
+                forest_no_fallback=bool(strict_no_fallback),
+            )
+        return int(agent.act(obs_eval, episode=0, explore=False)), False
+
     # Forest-only: prefill replay buffer with a few short expert rollouts.
     # This is off-policy data (valid for Q-learning) and dramatically reduces the
     # chance of converging to the degenerate "stop until stuck" behavior.
@@ -1155,7 +1311,7 @@ def train_one(
                     next_obs, reward, done, truncated, info = env.step(a)
                     next_mask = env.admissible_action_mask(
                         horizon_steps=adm_h,
-                        min_od_m=0.0,
+                        min_od_m=float(min_od_m),
                         min_progress_m=min_prog_m,
                         fallback_to_safe=True,
                     )
@@ -1235,21 +1391,7 @@ def train_one(
                     trunc_eval = False
                     info_eval: dict[str, object] = {}
                     while not (done_eval or trunc_eval):
-                        a_eval = agent.act(obs_eval, episode=0, explore=False)
-                        inadmissible = not bool(
-                            env.is_action_admissible(int(a_eval), horizon_steps=adm_h, min_od_m=0.0, min_progress_m=min_prog_m)
-                        )
-                        if inadmissible:
-                            prog_mask = env.admissible_action_mask(
-                                horizon_steps=adm_h,
-                                min_od_m=0.0,
-                                min_progress_m=min_prog_m,
-                                fallback_to_safe=bool(strict_no_fallback),
-                            )
-                            if bool(prog_mask.any()):
-                                a_eval = agent.act_masked(obs_eval, episode=0, explore=False, action_mask=prog_mask)
-                            elif not bool(strict_no_fallback):
-                                a_eval = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=0.0))
+                        a_eval, _ = _forest_greedy_action(obs_eval)
                         obs_eval, _r, done_eval, trunc_eval, info_eval = env.step(int(a_eval))
                     if bool(info_eval.get("reached", False)):
                         succ += 1
@@ -1300,25 +1442,8 @@ def train_one(
         )
 
     def eval_action(obs_eval: np.ndarray) -> int:
-        if isinstance(env, AMRBicycleEnv):
-            a_eval = agent.act(obs_eval, episode=0, explore=False)
-            inadmissible = not bool(
-                env.is_action_admissible(int(a_eval), horizon_steps=adm_h, min_od_m=0.0, min_progress_m=min_prog_m)
-            )
-            if inadmissible:
-                prog_mask = env.admissible_action_mask(
-                    horizon_steps=adm_h,
-                    min_od_m=0.0,
-                    min_progress_m=min_prog_m,
-                    fallback_to_safe=bool(strict_no_fallback),
-                )
-                if bool(prog_mask.any()):
-                    a_eval = agent.act_masked(obs_eval, episode=0, explore=False, action_mask=prog_mask)
-                elif not bool(strict_no_fallback):
-                    a_eval = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=0.0))
-            return int(a_eval)
-
-        return int(agent.act(obs_eval, episode=0, explore=False))
+        a_eval, _ = _forest_greedy_action(obs_eval)
+        return int(a_eval)
 
     def eval_greedy_metrics() -> dict[str, float]:
         successes = 0
@@ -1472,7 +1597,10 @@ def train_one(
             seed_base=int(train_eval_seed_base),
             max_steps=int(eval_max_steps),
             adm_horizon=int(adm_h),
+            topk=int(topk_k),
+            min_od_m=float(min_od_m),
             min_progress_m=float(min_prog_m),
+            forest_no_fallback=bool(strict_no_fallback),
             astar_timeout_s=float(train_eval_astar_timeout_s),
             astar_max_expanded=int(train_eval_astar_max_expanded),
         )
@@ -1612,7 +1740,7 @@ def train_one(
             # fallback-to-safe behavior.
             mask0 = env.admissible_action_mask(
                 horizon_steps=adm_h,
-                min_od_m=0.0,
+                min_od_m=float(min_od_m),
                 min_progress_m=min_prog_m,
                 fallback_to_safe=True,
             )
@@ -1656,34 +1784,51 @@ def train_one(
                         if action_mask is not None:
                             action = agent.act_masked(obs, episode=ep, explore=True, action_mask=action_mask)
                         else:
-                            action = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=0.0))
+                            action = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=float(min_od_m)))
                 else:
                     if action_mask is not None:
                         action = agent.act_masked(obs, episode=ep, explore=True, action_mask=action_mask)
                     else:
                         action = agent.act(obs, episode=ep, explore=True)
-                        if not bool(env.is_action_admissible(int(action), horizon_steps=adm_h, min_od_m=0.0, min_progress_m=min_prog_m)):
-                            inadmissible_count += 1
-                            prog_mask = env.admissible_action_mask(
-                                horizon_steps=adm_h,
-                                min_od_m=0.0,
-                                min_progress_m=min_prog_m,
-                                fallback_to_safe=False,
-                            )
-                            if bool(prog_mask.any()):
-                                action = agent.act_masked(obs, episode=ep, explore=True, action_mask=prog_mask)
-                            else:
-                                try:
-                                    action = int(forest_expert_action_local())
-                                    used_expert = True
-                                    expert_takeovers += 1
-                                except Exception:
-                                    action = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=0.0))
             else:
                 if action_mask is not None:
                     action = agent.act_masked(obs, episode=ep, explore=True, action_mask=action_mask)
                 else:
                     action = agent.act(obs, episode=ep, explore=True)
+
+            if isinstance(env, AMRBicycleEnv) and (not bool(used_expert)):
+                if not bool(strict_no_fallback):
+                    reached_pose = bool(
+                        env._goal_pose_reached(
+                            d_goal_m=float(env._distance_to_goal_m()),
+                            alpha_rad=float(env._goal_relative_angle_rad()),
+                        )
+                    )
+                    reached_stop = bool(env._goal_stop_reached(v_m_s=float(env._v_m_s), delta_rad=float(env._delta_rad)))
+                    if bool(reached_pose) and (not bool(reached_stop)):
+                        action = int(forest_stop_action(env))
+
+                inadmissible = not bool(
+                    env.is_action_admissible(
+                        int(action),
+                        horizon_steps=int(adm_h),
+                        min_od_m=float(min_od_m),
+                        min_progress_m=float(min_prog_m),
+                    )
+                )
+                if bool(inadmissible):
+                    inadmissible_count += 1
+                    if not bool(strict_no_fallback):
+                        q = _forest_q_values(obs)
+                        action, _ = _forest_policy_action_from_q(
+                            env,
+                            q,
+                            forest_adm_horizon=int(adm_h),
+                            forest_topk=int(topk_k),
+                            forest_min_od_m=float(min_od_m),
+                            forest_min_progress_m=float(min_prog_m),
+                            forest_no_fallback=bool(strict_no_fallback),
+                        )
             action_decisions += 1
             next_obs, reward, done, truncated, info = env.step(action)
             last_info = dict(info)
@@ -1706,7 +1851,7 @@ def train_one(
                 if bool(strict_no_fallback):
                     next_mask_raw = env.admissible_action_mask(
                         horizon_steps=adm_h,
-                        min_od_m=0.0,
+                        min_od_m=float(min_od_m),
                         min_progress_m=min_prog_m,
                         fallback_to_safe=True,
                     )
@@ -1715,7 +1860,7 @@ def train_one(
                 else:
                     next_mask = env.admissible_action_mask(
                         horizon_steps=adm_h,
-                        min_od_m=0.0,
+                        min_od_m=float(min_od_m),
                         min_progress_m=min_prog_m,
                         fallback_to_safe=True,
                     )
@@ -1903,24 +2048,7 @@ def train_one(
             last_info: dict[str, object] = {}
             while not (done or truncated):
                 steps += 1
-                if isinstance(env, AMRBicycleEnv):
-                    a = agent.act(obs, episode=0, explore=False)
-                    inadmissible = not bool(
-                        env.is_action_admissible(int(a), horizon_steps=adm_h, min_od_m=0.0, min_progress_m=min_prog_m)
-                    )
-                    if inadmissible:
-                        prog_mask = env.admissible_action_mask(
-                            horizon_steps=adm_h,
-                            min_od_m=0.0,
-                            min_progress_m=min_prog_m,
-                            fallback_to_safe=bool(strict_no_fallback),
-                        )
-                        if bool(prog_mask.any()):
-                            a = agent.act_masked(obs, episode=0, explore=False, action_mask=prog_mask)
-                        elif not bool(strict_no_fallback):
-                            a = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=0.0))
-                else:
-                    a = agent.act(obs, episode=0, explore=False)
+                a = eval_action(obs)
                 obs, r, done, truncated, info = env.step(a)
                 last_info = dict(info)
                 ret += float(r)
@@ -1942,21 +2070,7 @@ def train_one(
             last_info: dict[str, object] = {}
             while not (done or truncated):
                 steps += 1
-                a = agent.act(obs, episode=0, explore=False)
-                inadmissible = not bool(
-                    env.is_action_admissible(int(a), horizon_steps=adm_h, min_od_m=0.0, min_progress_m=min_prog_m)
-                )
-                if inadmissible:
-                    prog_mask = env.admissible_action_mask(
-                        horizon_steps=adm_h,
-                        min_od_m=0.0,
-                        min_progress_m=min_prog_m,
-                        fallback_to_safe=bool(strict_no_fallback),
-                    )
-                    if bool(prog_mask.any()):
-                        a = agent.act_masked(obs, episode=0, explore=False, action_mask=prog_mask)
-                    elif not bool(strict_no_fallback):
-                        a = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=0.0))
+                a = eval_action(obs)
                 obs, r, done, truncated, info = env.step(a)
                 last_info = dict(info)
                 ret += float(r)
@@ -2747,10 +2861,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     ap.add_argument(
+        "--forest-topk",
+        type=int,
+        default=10,
+        help="Forest-only: try the top-k greedy actions before applying full admissible-progress masking.",
+    )
+    ap.add_argument(
         "--forest-adm-horizon",
         type=int,
         default=10,
         help="Forest-only: admissible-action horizon steps used consistently in train-time gating and pretrain validation.",
+    )
+    ap.add_argument(
+        "--forest-min-od-m",
+        type=float,
+        default=0.0,
+        help="Forest-only: minimum clearance (OD) required by admissible-action gating.",
     )
     ap.add_argument(
         "--forest-min-progress-m",
@@ -3382,6 +3508,7 @@ def main(argv: list[str] | None = None) -> int:
                     forest_expert=str(args.forest_expert),
                     forest_demo_horizon=int(args.forest_demo_horizon),
                     forest_adm_horizon=int(args.forest_adm_horizon),
+                    forest_min_od_m=float(args.forest_min_od_m),
                     forest_min_progress_m=float(args.forest_min_progress_m),
                     forest_use_admissible_next_mask=(not bool(getattr(args, "forest_no_fallback", False))),
                     forest_demo_w_clearance=float(args.forest_demo_w_clearance),
@@ -3464,6 +3591,8 @@ def main(argv: list[str] | None = None) -> int:
                     forest_expert_exploration=bool(args.forest_expert_exploration),
                     forest_action_shield=bool(args.forest_action_shield),
                     forest_adm_horizon=int(args.forest_adm_horizon),
+                    forest_topk=int(args.forest_topk),
+                    forest_min_od_m=float(args.forest_min_od_m),
                     forest_min_progress_m=float(args.forest_min_progress_m),
                     forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
                     forest_expert_prob_start=float(args.forest_expert_prob_start),
