@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from forest_vehicle_dqn.agents import parse_rl_algo
+from forest_vehicle_dqn.continuous_agents import is_continuous_algo
 from forest_vehicle_dqn.runs import latest_run_dir, latest_run_dir_with_models, resolve_experiment_dir
 
 
@@ -45,7 +46,7 @@ def main() -> int:
         nargs="+",
         default=["mlp-dqn"],
         help=(
-            "RL algorithms to run: mlp-dqn mlp-ddqn mlp-pddqn cnn-dqn cnn-ddqn cnn-pddqn (or 'all'). "
+            "RL algorithms to run: mlp-dqn mlp-ddqn mlp-pddqn cnn-dqn cnn-ddqn cnn-pddqn ddpg sac (or 'all'). "
             "Legacy aliases: dqn ddqn iddqn cnn-iddqn. Default: mlp-dqn."
         ),
     )
@@ -73,19 +74,26 @@ def main() -> int:
         "cnn-dqn": "CNN-DQN",
         "cnn-ddqn": "CNN-DDQN",
         "cnn-pddqn": "CNN-PDDQN",
+        "ddpg": "DDPG",
+        "sac": "SAC",
     }
-    canonical_all = ("mlp-dqn", "mlp-ddqn", "mlp-pddqn", "cnn-dqn", "cnn-ddqn", "cnn-pddqn")
+    dqn_canonical = ("mlp-dqn", "mlp-ddqn", "mlp-pddqn", "cnn-dqn", "cnn-ddqn", "cnn-pddqn")
+    cont_canonical = ("ddpg", "sac")
+    canonical_all = tuple(list(dqn_canonical) + list(cont_canonical))
     raw_algos = [str(a).lower().strip() for a in (args.rl_algos or [])]
     if any(a == "all" for a in raw_algos):
         raw_algos = list(canonical_all)
     rl_algos: list[str] = []
     unknown: list[str] = []
     for a in raw_algos:
-        try:
-            canonical, _arch, _base, _legacy = parse_rl_algo(a)
-        except ValueError:
-            unknown.append(a)
-            continue
+        if bool(is_continuous_algo(a)):
+            canonical = str(a).lower().strip()
+        else:
+            try:
+                canonical, _arch, _base, _legacy = parse_rl_algo(a)
+            except ValueError:
+                unknown.append(a)
+                continue
         if canonical not in rl_algos:
             rl_algos.append(canonical)
     if unknown:

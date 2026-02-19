@@ -45,10 +45,27 @@ from forest_vehicle_dqn.baselines.pathplan import (
     plan_rrt_star,
     point_footprint,
 )
+from forest_vehicle_dqn.continuous_agents import (
+    ContinuousAgentConfig,
+    DDPGAgent,
+    SACAgent,
+    is_continuous_algo,
+    infer_continuous_checkpoint_obs_dim,
+)
 from forest_vehicle_dqn.env import AMRBicycleEnv, AMRGridEnv, RewardWeights, bicycle_integrate_one_step, wrap_angle_rad
 from forest_vehicle_dqn.maps import FOREST_ENV_ORDER, get_map_spec
 from forest_vehicle_dqn.metrics import KPI, avg_abs_curvature, max_corner_degree, num_path_corners, path_length
 from forest_vehicle_dqn.smoothing import chaikin_smooth
+
+DQN_CANONICAL_ALGOS: tuple[str, ...] = (
+    "mlp-dqn",
+    "mlp-ddqn",
+    "mlp-pddqn",
+    "cnn-dqn",
+    "cnn-ddqn",
+    "cnn-pddqn",
+)
+CONTINUOUS_CANONICAL_ALGOS: tuple[str, ...] = ("ddpg", "sac")
 
 
 def _safe_slug(s: str) -> str:
@@ -400,6 +417,219 @@ def rollout_agent(
     )
 
 
+def rollout_continuous_agent(
+    env: gym.Env,
+    agent: DDPGAgent | SACAgent,
+    *,
+    max_steps: int,
+    seed: int,
+    reset_options: dict[str, object] | None = None,
+    time_mode: str = "rollout",
+    obs_transform: Callable[[np.ndarray], np.ndarray] | None = None,
+    collect_controls: bool = False,
+    trace_path: Path | None = None,
+) -> RolloutResult:
+    if not isinstance(env, AMRBicycleEnv):
+        raise RuntimeError("Continuous rollout requires AMRBicycleEnv.")
+
+    obs, info0 = env.reset(seed=seed, options=reset_options)
+    if obs_transform is not None:
+        obs = obs_transform(obs)
+    path: list[tuple[float, float]] = [(float(env.start_xy[0]), float(env.start_xy[1]))]
+    dt_s = float(_env_dt_s(env))
+
+    t_series: list[float] | None = None
+    v_series: list[float] | None = None
+    delta_series: list[float] | None = None
+    if bool(collect_controls):
+        t_series = [0.0]
+        v_series = [float(getattr(env, "_v_m_s", 0.0))]
+        delta_series = [float(getattr(env, "_delta_rad", 0.0))]
+
+    trace_rows: list[dict[str, object]] | None = [] if trace_path is not None else None
+    if trace_rows is not None:
+        d_goal0 = float(env._distance_to_goal_m())
+        alpha0 = float(env._goal_relative_angle_rad())
+        reached_pose0 = bool(env._goal_pose_reached(d_goal_m=d_goal0, alpha_rad=alpha0))
+        reached_stop0 = bool(env._goal_stop_reached(v_m_s=float(env._v_m_s), delta_rad=float(env._delta_rad)))
+        reached0 = bool(reached_pose0 and reached_stop0)
+        trace_rows.append(
+            {
+                "step": 0,
+                "x_m": float(info0.get("pose_m", (env._x_m, env._y_m, env._psi_rad))[0]),
+                "y_m": float(info0.get("pose_m", (env._x_m, env._y_m, env._psi_rad))[1]),
+                "theta_rad": float(info0.get("pose_m", (env._x_m, env._y_m, env._psi_rad))[2]),
+                "v_m_s": float(getattr(env, "_v_m_s", 0.0)),
+                "delta_rad": float(getattr(env, "_delta_rad", 0.0)),
+                "action_id": -1,
+                "delta_dot_rad_s": 0.0,
+                "a_m_s2": 0.0,
+                "od_m": float(getattr(env, "_last_od_m", float("nan"))),
+                "collision": bool(getattr(env, "_last_collision", False)),
+                "reached": bool(reached0),
+                "reached_pose": bool(reached_pose0),
+                "reached_stop": bool(reached_stop0),
+                "stuck": False,
+                "d_goal_m": float(d_goal0),
+                "alpha_rad": float(alpha0),
+                "cell_size_m": float(getattr(env, "cell_size_m", float("nan"))),
+                "start_x": int(getattr(env, "start_xy", (0, 0))[0]),
+                "start_y": int(getattr(env, "start_xy", (0, 0))[1]),
+                "goal_x": int(getattr(env, "goal_xy", (0, 0))[0]),
+                "goal_y": int(getattr(env, "goal_xy", (0, 0))[1]),
+            }
+        )
+
+    def sync_cuda() -> None:
+        if agent.device.type == "cuda" and torch.cuda.is_available():
+            torch.cuda.synchronize()
+
+    time_mode = str(time_mode).lower().strip()
+    if time_mode not in {"rollout", "policy"}:
+        raise ValueError("time_mode must be one of: rollout, policy")
+
+    inference_time_s = 0.0
+    sync_cuda()
+    t_rollout0 = time.perf_counter()
+    done = False
+    truncated = False
+    steps = 0
+    reached = False
+    stop_override_steps = 0
+    last_collision = False
+    last_stuck = False
+
+    while not (done or truncated) and steps < max_steps:
+        steps += 1
+        if time_mode == "policy":
+            sync_cuda()
+            t0 = time.perf_counter()
+
+        reached_pose = bool(
+            env._goal_pose_reached(
+                d_goal_m=float(env._distance_to_goal_m()),
+                alpha_rad=float(env._goal_relative_angle_rad()),
+            )
+        )
+        reached_stop = bool(env._goal_stop_reached(v_m_s=float(env._v_m_s), delta_rad=float(env._delta_rad)))
+        if reached_pose and not reached_stop:
+            dt = max(1e-6, float(env.model.dt))
+            dd_max = float(env.model.delta_dot_max_rad_s)
+            a_max = float(env.model.a_max_m_s2)
+            delta_dot = float(np.clip(-float(env._delta_rad) / dt, -dd_max, dd_max))
+            accel = float(np.clip(-float(env._v_m_s) / dt, -a_max, a_max))
+            stop_override_steps += 1
+        else:
+            action = np.asarray(agent.act(obs, explore=False), dtype=np.float32).reshape(-1)
+            if action.size < 2:
+                raise RuntimeError(f"Continuous agent action dim must be 2, got {int(action.size)}")
+            delta_dot = float(action[0])
+            accel = float(action[1])
+
+        if time_mode == "policy":
+            sync_cuda()
+            inference_time_s += float(time.perf_counter() - t0)
+
+        obs, _reward, done, truncated, info = env.step_continuous(
+            delta_dot_rad_s=float(delta_dot),
+            a_m_s2=float(accel),
+        )
+        if obs_transform is not None:
+            obs = obs_transform(obs)
+
+        xy = info.get("agent_xy")
+        if xy is not None:
+            x, y = xy
+            path.append((float(x), float(y)))
+        last_collision = bool(info.get("collision", False))
+        last_stuck = bool(info.get("stuck", False))
+
+        if t_series is not None and v_series is not None and delta_series is not None:
+            t_series.append(float(steps) * dt_s)
+            v_series.append(float(info.get("v_m_s", float(getattr(env, "_v_m_s", 0.0)))))
+            delta_series.append(float(info.get("delta_rad", float(getattr(env, "_delta_rad", 0.0)))))
+        if trace_rows is not None:
+            px, py, pth = info.get("pose_m", (env._x_m, env._y_m, env._psi_rad))
+            trace_rows.append(
+                {
+                    "step": int(steps),
+                    "x_m": float(px),
+                    "y_m": float(py),
+                    "theta_rad": float(pth),
+                    "v_m_s": float(info.get("v_m_s", env._v_m_s)),
+                    "delta_rad": float(info.get("delta_rad", env._delta_rad)),
+                    "action_id": -1,
+                    "delta_dot_rad_s": float(delta_dot),
+                    "a_m_s2": float(accel),
+                    "od_m": float(info.get("od_m", float("nan"))),
+                    "collision": bool(info.get("collision", False)),
+                    "reached": bool(info.get("reached", False)),
+                    "reached_pose": bool(info.get("reached_pose", False)),
+                    "reached_stop": bool(info.get("reached_stop", False)),
+                    "stuck": bool(info.get("stuck", False)),
+                    "d_goal_m": float(info.get("d_goal_m", float("nan"))),
+                    "alpha_rad": float(info.get("alpha_rad", float("nan"))),
+                    "cell_size_m": float(getattr(env, "cell_size_m", float("nan"))),
+                    "start_x": int(getattr(env, "start_xy", (0, 0))[0]),
+                    "start_y": int(getattr(env, "start_xy", (0, 0))[1]),
+                    "goal_x": int(getattr(env, "goal_xy", (0, 0))[0]),
+                    "goal_y": int(getattr(env, "goal_xy", (0, 0))[1]),
+                }
+            )
+        if info.get("reached"):
+            reached = True
+            break
+
+    if time_mode == "rollout":
+        sync_cuda()
+        inference_time_s = float(time.perf_counter() - t_rollout0)
+
+    if bool(reached):
+        failure_reason = "reached"
+    elif bool(last_collision):
+        failure_reason = "collision"
+    elif bool(last_stuck):
+        failure_reason = "stuck"
+    elif bool(truncated) or int(steps) >= int(max_steps):
+        failure_reason = "timeout"
+    else:
+        failure_reason = "not_reached"
+
+    debug = {
+        "argmax_inadmissible_steps": 0,
+        "replacement_topk_steps": 0,
+        "replacement_mask_steps": 0,
+        "fallback_steps": 0,
+        "stop_override_steps": int(stop_override_steps),
+        "argmax_inadmissible_rate": float("nan"),
+        "fallback_rate": float("nan"),
+        "failure_reason": str(failure_reason),
+    }
+
+    if trace_path is not None and trace_rows is not None:
+        trace_path = Path(trace_path)
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(trace_rows).to_csv(trace_path, index=False)
+    controls = None
+    if t_series is not None and v_series is not None and delta_series is not None:
+        controls = ControlTrace(
+            t_s=np.asarray(t_series, dtype=np.float64),
+            v_m_s=np.asarray(v_series, dtype=np.float64),
+            delta_rad=np.asarray(delta_series, dtype=np.float64),
+        )
+    return RolloutResult(
+        path_xy_cells=path,
+        compute_time_s=float(inference_time_s),
+        reached=bool(reached),
+        steps=int(steps),
+        path_time_s=float(steps) * dt_s,
+        controls=controls,
+        collision=bool(last_collision),
+        truncated=bool(truncated),
+        debug=debug,
+    )
+
+
 
 def _estimate_path_yaw_rad(path_xy_cells: list[tuple[float, float]]) -> list[float]:
     if not path_xy_cells:
@@ -685,7 +915,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=["mlp-dqn"],
         help=(
-            "RL algorithms to evaluate: mlp-dqn mlp-ddqn mlp-pddqn cnn-dqn cnn-ddqn cnn-pddqn (or 'all'). "
+            "RL algorithms to evaluate: mlp-dqn mlp-ddqn mlp-pddqn cnn-dqn cnn-ddqn cnn-pddqn ddpg sac (or 'all'). "
             "Legacy aliases: dqn ddqn iddqn cnn-iddqn. Default: mlp-dqn."
         ),
     )
@@ -1200,7 +1430,7 @@ def main(argv: list[str] | None = None) -> int:
     forest_envs = set(FOREST_ENV_ORDER)
     if int(args.max_steps) == 300 and args.envs and all(str(e) in forest_envs for e in args.envs):
         args.max_steps = 600
-    canonical_all = ("mlp-dqn", "mlp-ddqn", "mlp-pddqn", "cnn-dqn", "cnn-ddqn", "cnn-pddqn")
+    canonical_all = tuple(list(DQN_CANONICAL_ALGOS) + list(CONTINUOUS_CANONICAL_ALGOS))
     raw_algos = [str(a).lower().strip() for a in (args.rl_algos or [])]
     if any(a == "all" for a in raw_algos):
         raw_algos = list(canonical_all)
@@ -1208,11 +1438,14 @@ def main(argv: list[str] | None = None) -> int:
     rl_algos: list[str] = []
     unknown = []
     for a in raw_algos:
-        try:
-            canonical, _arch, _base, _legacy = parse_rl_algo(a)
-        except ValueError:
-            unknown.append(a)
-            continue
+        if bool(is_continuous_algo(a)):
+            canonical = str(a).lower().strip()
+        else:
+            try:
+                canonical, _arch, _base, _legacy = parse_rl_algo(a)
+            except ValueError:
+                unknown.append(a)
+                continue
         if canonical not in rl_algos:
             rl_algos.append(canonical)
 
@@ -1890,6 +2123,8 @@ def main(argv: list[str] | None = None) -> int:
                 "cnn-dqn": "CNN-DQN",
                 "cnn-ddqn": "CNN-DDQN",
                 "cnn-pddqn": "CNN-PDDQN",
+                "ddpg": "DDPG",
+                "sac": "SAC",
             }
             algo_seed_offset = {
                 "mlp-dqn": 20_000,
@@ -1898,6 +2133,8 @@ def main(argv: list[str] | None = None) -> int:
                 "cnn-dqn": 40_000,
                 "cnn-ddqn": 50_000,
                 "cnn-pddqn": 70_000,
+                "ddpg": 80_000,
+                "sac": 90_000,
             }
 
             def resolve_model_path(algo: str) -> Path:
@@ -1926,24 +2163,79 @@ def main(argv: list[str] | None = None) -> int:
                     "Point --models at a training run (or an experiment name/dir with a latest run)."
                 )
 
-            ckpt_obs_dim = infer_checkpoint_obs_dim(next(iter(algo_paths.values())))
-            for path in algo_paths.values():
-                if infer_checkpoint_obs_dim(path) != ckpt_obs_dim:
-                    raise RuntimeError(f"Observation dim mismatch between checkpoints under: {models_dir / env_base}")
+            dqn_algos_selected = [str(a) for a in args.rl_algos if str(a) in DQN_CANONICAL_ALGOS]
+            cont_algos_selected = [str(a) for a in args.rl_algos if bool(is_continuous_algo(str(a)))]
 
-            obs_dim = env_obs_dim
+            dqn_obs_dim: int | None = None
+            if dqn_algos_selected:
+                dqn_obs_dim = infer_checkpoint_obs_dim(algo_paths[dqn_algos_selected[0]])
+                for algo in dqn_algos_selected:
+                    if infer_checkpoint_obs_dim(algo_paths[algo]) != int(dqn_obs_dim):
+                        raise RuntimeError(f"Observation dim mismatch between DQN checkpoints under: {models_dir / env_base}")
+                if int(dqn_obs_dim) != int(env_obs_dim):
+                    raise RuntimeError(
+                        f"DQN checkpoint expects obs_dim={dqn_obs_dim} but env provides obs_dim={env_obs_dim} for {env_base!r}. "
+                        "Re-train models to match the environment observation space."
+                    )
+
+            cont_obs_dim: int | None = None
+            if cont_algos_selected:
+                cont_obs_dim = infer_continuous_checkpoint_obs_dim(algo_paths[cont_algos_selected[0]])
+                for algo in cont_algos_selected:
+                    if infer_continuous_checkpoint_obs_dim(algo_paths[algo]) != int(cont_obs_dim):
+                        raise RuntimeError(
+                            f"Observation dim mismatch between continuous checkpoints under: {models_dir / env_base}"
+                        )
+                if int(cont_obs_dim) != int(env_obs_dim):
+                    raise RuntimeError(
+                        f"Continuous checkpoint expects obs_dim={cont_obs_dim} but env provides obs_dim={env_obs_dim} for {env_base!r}. "
+                        "Re-train models to match the environment observation space."
+                    )
+
             obs_transform = None
-            if ckpt_obs_dim != env_obs_dim:
-                raise RuntimeError(
-                    f"Checkpoint expects obs_dim={ckpt_obs_dim} but env provides obs_dim={env_obs_dim} for {env_base!r}. "
-                    "Re-train models to match the environment observation space."
-                )
-
-            agents: dict[str, DQNFamilyAgent] = {}
-            for algo, path in algo_paths.items():
-                a = DQNFamilyAgent(str(algo), obs_dim, n_actions, config=agent_cfg, seed=args.seed, device=device)
+            dqn_agents: dict[str, DQNFamilyAgent] = {}
+            for algo in dqn_algos_selected:
+                path = algo_paths[algo]
+                a = DQNFamilyAgent(str(algo), int(env_obs_dim), n_actions, config=agent_cfg, seed=args.seed, device=device)
                 a.load(path)
-                agents[str(algo)] = a
+                dqn_agents[str(algo)] = a
+
+            cont_agents: dict[str, DDPGAgent | SACAgent] = {}
+            if cont_algos_selected:
+                if not isinstance(env, AMRBicycleEnv):
+                    raise RuntimeError("Continuous RL algorithms (ddpg/sac) currently require AMRBicycleEnv.")
+                action_low = np.asarray(
+                    [-float(env.model.delta_dot_max_rad_s), -float(env.model.a_max_m_s2)],
+                    dtype=np.float32,
+                )
+                action_high = np.asarray(
+                    [float(env.model.delta_dot_max_rad_s), float(env.model.a_max_m_s2)],
+                    dtype=np.float32,
+                )
+                for algo in cont_algos_selected:
+                    path = algo_paths[algo]
+                    if str(algo) == "ddpg":
+                        ca = DDPGAgent(
+                            int(env_obs_dim),
+                            action_low=action_low,
+                            action_high=action_high,
+                            config=ContinuousAgentConfig(),
+                            seed=int(args.seed),
+                            device=device,
+                        )
+                    elif str(algo) == "sac":
+                        ca = SACAgent(
+                            int(env_obs_dim),
+                            action_low=action_low,
+                            action_high=action_high,
+                            config=ContinuousAgentConfig(),
+                            seed=int(args.seed),
+                            device=device,
+                        )
+                    else:
+                        raise RuntimeError(f"Unsupported continuous algo for infer: {algo!r}")
+                    ca.load(path)
+                    cont_agents[str(algo)] = ca
 
             for algo in args.rl_algos:
                 algo_key = str(algo)
@@ -1971,22 +2263,37 @@ def main(argv: list[str] | None = None) -> int:
                     trace_path = None
                     if bool(getattr(args, "forest_policy_save_traces", False)) and isinstance(env, AMRBicycleEnv):
                         trace_path = out_dir / "traces" / f"{_safe_slug(env_case)}__{_safe_slug(pretty)}__run{int(i)}.csv"
-                    roll = rollout_agent(
-                        env,
-                        agents[algo_key],
-                        max_steps=args.max_steps,
-                        seed=int(args.seed) + seed_base + int(i),
-                        reset_options=reset_options_list[i] if i < len(reset_options_list) else None,
-                        time_mode=str(getattr(args, "kpi_time_mode", "rollout")),
-                        obs_transform=obs_transform,
-                        forest_adm_horizon=int(args.forest_adm_horizon),
-                        forest_topk=int(args.forest_topk),
-                        forest_min_od_m=float(args.forest_min_od_m),
-                        forest_min_progress_m=float(args.forest_min_progress_m),
-                        forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
-                        collect_controls=bool(int(i) in control_run_indices),
-                        trace_path=trace_path,
-                    )
+                    if algo_key in dqn_agents:
+                        roll = rollout_agent(
+                            env,
+                            dqn_agents[algo_key],
+                            max_steps=args.max_steps,
+                            seed=int(args.seed) + seed_base + int(i),
+                            reset_options=reset_options_list[i] if i < len(reset_options_list) else None,
+                            time_mode=str(getattr(args, "kpi_time_mode", "rollout")),
+                            obs_transform=obs_transform,
+                            forest_adm_horizon=int(args.forest_adm_horizon),
+                            forest_topk=int(args.forest_topk),
+                            forest_min_od_m=float(args.forest_min_od_m),
+                            forest_min_progress_m=float(args.forest_min_progress_m),
+                            forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
+                            collect_controls=bool(int(i) in control_run_indices),
+                            trace_path=trace_path,
+                        )
+                    elif algo_key in cont_agents:
+                        roll = rollout_continuous_agent(
+                            env,
+                            cont_agents[algo_key],
+                            max_steps=args.max_steps,
+                            seed=int(args.seed) + seed_base + int(i),
+                            reset_options=reset_options_list[i] if i < len(reset_options_list) else None,
+                            time_mode=str(getattr(args, "kpi_time_mode", "rollout")),
+                            obs_transform=obs_transform,
+                            collect_controls=bool(int(i) in control_run_indices),
+                            trace_path=trace_path,
+                        )
+                    else:
+                        raise RuntimeError(f"Missing loaded RL agent for algo: {algo_key!r}")
                     algo_times.append(float(roll.compute_time_s))
                     if int(i) in path_run_indices:
                         env_paths_by_run[int(i)][pretty] = PathTrace(path_xy_cells=roll.path_xy_cells, success=bool(roll.reached))

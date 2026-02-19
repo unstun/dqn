@@ -1,0 +1,47 @@
+{
+  "_meta": {
+    "title": "v6p2p4 ddpg/sac comparison (on top of v6p2p3 unified rules)",
+    "date": "2026-02-19",
+    "summary": "Run 300-episode training and short/mid/long inference (5 runs each) for cnn-ddqn + ddpg + sac under unified shielded train/infer regime.",
+    "version": "v6p2p4"
+  },
+  "env": {
+    "os": "Ubuntu 24.04",
+    "conda_env": "ros2py310"
+  },
+  "commands": {
+    "self_check": [
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check"
+    ],
+    "train": "conda run -n ros2py310 python train.py --profile v6p2p4",
+    "infer": "conda run -n ros2py310 python infer.py --profile v6p2p4"
+  },
+  "key_hparams": {
+    "rl_algos": [
+      "cnn-ddqn",
+      "ddpg",
+      "sac"
+    ],
+    "episodes": 300,
+    "runs": 5,
+    "forest_reward_k_t": 0.1,
+    "forest_reward_k_delta": 0.8,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.02,
+    "forest_topk": 10,
+    "no_terminate_on_stuck": true,
+    "rl_early_stop_warmup_episodes": 9999,
+    "rl_early_stop_patience_points": 9999
+  },
+  "artifacts": {
+    "train_run_dir": "runs/v6p2p4/train_20260219_153029",
+    "train_run_json": "runs/v6p2p4/train_20260219_153029/configs/run.json",
+    "infer_run_dir": "runs/v6p2p4/train_20260219_153029/infer/20260219_161252",
+    "infer_run_json": "runs/v6p2p4/train_20260219_153029/infer/20260219_161252/configs/run.json",
+    "kpi_mean_csv": "runs/v6p2p4/train_20260219_153029/infer/20260219_161252/table2_kpis_mean_raw.csv",
+    "kpi_raw_csv": "runs/v6p2p4/train_20260219_153029/infer/20260219_161252/table2_kpis_raw.csv"
+  }
+}

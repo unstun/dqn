@@ -26,11 +26,31 @@ import torch
 from forest_vehicle_dqn.agents import AgentConfig, DQNFamilyAgent, parse_rl_algo
 from forest_vehicle_dqn.baselines.mpc_local_planner import MPCConfig
 from forest_vehicle_dqn.baselines.pathplan import AStarCurveOptConfig, grid_map_from_obstacles, plan_grid_astar
+from forest_vehicle_dqn.continuous_agents import (
+    ContinuousAgentConfig,
+    DDPGAgent,
+    SACAgent,
+    is_continuous_algo,
+)
 from forest_vehicle_dqn.config_io import apply_config_defaults, load_json, resolve_config_path, select_section
 from forest_vehicle_dqn.env import AMRBicycleEnv, AMRGridEnv, RewardWeights, bicycle_integrate_one_step
 from forest_vehicle_dqn.live_view_pygame import TrainLiveViewer
 from forest_vehicle_dqn.maps import FOREST_ENV_ORDER, get_map_spec
 from forest_vehicle_dqn.replay_buffer import FLAG_HAZARD, FLAG_NEAR_GOAL, FLAG_STUCK
+
+DQN_CANONICAL_ALGOS: tuple[str, ...] = (
+    "mlp-dqn",
+    "mlp-ddqn",
+    "mlp-pddqn",
+    "cnn-dqn",
+    "cnn-ddqn",
+    "cnn-pddqn",
+)
+CONTINUOUS_CANONICAL_ALGOS: tuple[str, ...] = ("ddpg", "sac")
+
+
+def is_dqn_canonical_algo(algo: str) -> bool:
+    return str(algo).lower().strip() in DQN_CANONICAL_ALGOS
 
 
 def moving_average(x: np.ndarray, window: int) -> np.ndarray:
@@ -123,6 +143,8 @@ def plot_training_eval_metrics(df_eval: pd.DataFrame, *, out_path: Path) -> None
         "cnn-dqn": "CNN-DQN",
         "cnn-ddqn": "CNN-DDQN",
         "cnn-pddqn": "CNN-PDDQN",
+        "ddpg": "DDPG",
+        "sac": "SAC",
         # Legacy (older runs)
         "dqn": "DQN",
         "ddqn": "DDQN",
@@ -130,7 +152,18 @@ def plot_training_eval_metrics(df_eval: pd.DataFrame, *, out_path: Path) -> None
         "cnn-iddqn": "CNN-PDDQN",
     }
     present = [str(x) for x in df_eval["algo"].dropna().drop_duplicates().tolist()]
-    pref = ("mlp-dqn", "mlp-ddqn", "mlp-pddqn", "cnn-dqn", "cnn-ddqn", "cnn-pddqn", "dqn", "ddqn")
+    pref = (
+        "mlp-dqn",
+        "mlp-ddqn",
+        "mlp-pddqn",
+        "cnn-dqn",
+        "cnn-ddqn",
+        "cnn-pddqn",
+        "ddpg",
+        "sac",
+        "dqn",
+        "ddqn",
+    )
     ordered = [a for a in pref if a in present] + [a for a in present if a not in pref]
     algo_defs: list[tuple[str, str]] = [(a, algo_label.get(a, a.upper())) for a in ordered]
     for i, env_name in enumerate(envs):
@@ -2324,6 +2357,250 @@ def train_one(
     return agent, returns, eval_history, {"meta": train_meta, "train_progress": list(train_progress_history)}
 
 
+def train_one_continuous(
+    env: gym.Env,
+    algo: str,
+    *,
+    episodes: int,
+    seed: int,
+    out_dir: Path,
+    cont_cfg: ContinuousAgentConfig,
+    train_freq: int,
+    learning_starts: int,
+    forest_random_start_goal: bool,
+    forest_rand_min_dist_m: float,
+    forest_rand_max_dist_m: float | None,
+    forest_rand_fixed_prob: float,
+    forest_rand_tries: int,
+    forest_rand_edge_margin_m: float,
+    forest_train_two_suites: bool,
+    forest_train_short_prob: float,
+    forest_train_short_prob_ramp: float,
+    forest_train_short_min_dist_m: float,
+    forest_train_short_max_dist_m: float | None,
+    forest_train_long_min_dist_m: float,
+    forest_train_long_max_dist_m: float | None,
+    throughput_abort_min_episodes: int,
+    throughput_abort_max_minutes: float,
+    progress: bool,
+    device: torch.device,
+    progress_write: Callable[[str], None] | None = None,
+) -> tuple[np.ndarray, list[dict[str, float | int]], dict[str, object]]:
+    if not isinstance(env, AMRBicycleEnv):
+        raise RuntimeError(f"Continuous algo {algo!r} currently supports AMRBicycleEnv only.")
+
+    if progress_write is None:
+        progress_write = make_progress_writer(progress)
+
+    def log(msg: str) -> None:
+        if progress_write is not None:
+            progress_write(str(msg))
+
+    run_label = f"{env.map_spec.name}/{algo}"
+    t_start = time.perf_counter()
+    obs_dim = int(env.observation_space.shape[0])
+    returns = np.zeros((int(episodes),), dtype=np.float32)
+    eval_history: list[dict[str, float | int]] = []
+
+    action_low = np.asarray(
+        [
+            -float(env.model.delta_dot_max_rad_s),
+            -float(env.model.a_max_m_s2),
+        ],
+        dtype=np.float32,
+    )
+    action_high = np.asarray(
+        [
+            float(env.model.delta_dot_max_rad_s),
+            float(env.model.a_max_m_s2),
+        ],
+        dtype=np.float32,
+    )
+
+    algo_key = str(algo).lower().strip()
+    if algo_key == "ddpg":
+        agent = DDPGAgent(
+            obs_dim=int(obs_dim),
+            action_low=action_low,
+            action_high=action_high,
+            config=cont_cfg,
+            seed=int(seed),
+            device=device,
+        )
+    elif algo_key == "sac":
+        agent = SACAgent(
+            obs_dim=int(obs_dim),
+            action_low=action_low,
+            action_high=action_high,
+            config=cont_cfg,
+            seed=int(seed),
+            device=device,
+        )
+    else:
+        raise ValueError(f"Unsupported continuous algo: {algo!r}")
+
+    train_two_suites = bool(forest_train_two_suites) and bool(forest_random_start_goal)
+    train_short_prob = float(np.clip(float(forest_train_short_prob), 0.0, 1.0))
+    train_short_prob_ramp = float(np.clip(float(forest_train_short_prob_ramp), 0.0, 1.0))
+    throughput_abort_min_eps_eff = max(1, int(throughput_abort_min_episodes))
+    throughput_abort_max_s = max(0.0, float(throughput_abort_max_minutes)) * 60.0
+
+    def _maybe_max_dist(raw: float | None) -> float | None:
+        if raw is None:
+            return None
+        if float(raw) <= 0.0:
+            return None
+        return float(raw)
+
+    train_short_max = _maybe_max_dist(forest_train_short_max_dist_m)
+    train_long_max = _maybe_max_dist(forest_train_long_max_dist_m)
+
+    def random_reset_options_for_training(*, suite: str | None) -> dict[str, object]:
+        if suite == "short":
+            min_dist = float(forest_train_short_min_dist_m)
+            max_dist = train_short_max
+            fixed_prob = 0.0
+        elif suite == "long":
+            min_dist = float(forest_train_long_min_dist_m)
+            max_dist = train_long_max
+            fixed_prob = 0.0
+        else:
+            min_dist = float(forest_rand_min_dist_m)
+            max_dist = forest_rand_max_dist_m
+            fixed_prob = float(forest_rand_fixed_prob)
+        return {
+            "random_start_goal": True,
+            "rand_min_dist_m": float(min_dist),
+            "rand_max_dist_m": (0.0 if max_dist is None else float(max_dist)),
+            "rand_fixed_prob": float(fixed_prob),
+            "rand_tries": int(forest_rand_tries),
+            "rand_edge_margin_m": float(forest_rand_edge_margin_m),
+        }
+
+    log(
+        f"[train] [{run_label}] continuous train start: episodes={int(episodes)}, "
+        f"learning_starts={int(learning_starts)}, train_freq={int(train_freq)}, device={device}"
+    )
+
+    global_step = 0
+    episodes_completed = 0
+    train_stop_reason = "completed"
+    throughput_aborted = False
+    explore_rng = np.random.default_rng(int(seed) + 2027)
+
+    pbar = None
+    if progress:
+        try:
+            from tqdm import tqdm  # type: ignore
+        except Exception:
+            pbar = None
+        else:
+            pbar = tqdm(
+                range(int(episodes)),
+                desc=f"Train {env.map_spec.name} {algo_key}",
+                unit="ep",
+                dynamic_ncols=True,
+                leave=True,
+            )
+
+    ep_iter = pbar if pbar is not None else range(int(episodes))
+    for ep in ep_iter:
+        reset_options = None
+        if bool(forest_random_start_goal):
+            if bool(train_two_suites):
+                p_short = float(train_short_prob)
+                ramp = float(train_short_prob_ramp)
+                if float(ramp) > 1e-9 and int(episodes) > 1:
+                    ramp_episodes = max(1.0, float(ramp) * float(max(1, int(episodes) - 1)))
+                    mix = float(np.clip(float(ep) / float(ramp_episodes), 0.0, 1.0))
+                    p_short = float((1.0 - float(mix)) * 1.0 + float(mix) * float(train_short_prob))
+                suite = "short" if float(explore_rng.random()) < float(np.clip(p_short, 0.0, 1.0)) else "long"
+                reset_options = random_reset_options_for_training(suite=suite)
+            else:
+                reset_options = random_reset_options_for_training(suite=None)
+
+        obs, _ = env.reset(seed=int(seed) + int(ep), options=reset_options)
+        done = False
+        truncated = False
+        ep_return = 0.0
+        ep_steps = 0
+        last_loss: dict[str, float] | None = None
+
+        while not (done or truncated):
+            ep_steps += 1
+            global_step += 1
+
+            if int(global_step) < int(learning_starts):
+                action = explore_rng.uniform(low=action_low, high=action_high, size=(2,)).astype(np.float32)
+            else:
+                action = agent.act(obs, explore=True).astype(np.float32, copy=False)
+
+            next_obs, reward, done, truncated, _info = env.step_continuous(
+                delta_dot_rad_s=float(action[0]),
+                a_m_s2=float(action[1]),
+            )
+            terminal = bool(done and not truncated)
+            agent.observe(obs, action, float(reward), next_obs, terminal)
+
+            if int(global_step) >= int(learning_starts) and (int(global_step) % max(1, int(train_freq)) == 0):
+                last_loss = agent.update()
+
+            obs = next_obs
+            ep_return += float(reward)
+
+        returns[int(ep)] = float(ep_return)
+        episodes_completed = int(ep) + 1
+
+        if pbar is not None:
+            post = {"ret": f"{float(ep_return):.3f}", "steps": int(global_step)}
+            if isinstance(last_loss, dict):
+                if "critic_loss" in last_loss:
+                    post["critic"] = f"{float(last_loss['critic_loss']):.3f}"
+                if "q1_loss" in last_loss:
+                    post["q1"] = f"{float(last_loss['q1_loss']):.3f}"
+            pbar.set_postfix(post, refresh=False)
+
+        if (int(ep) + 1) % max(1, int(episodes) // 20, 10) == 0 or int(ep) == 0 or int(ep) == int(episodes - 1):
+            pct = 100.0 * float(int(ep) + 1) / float(max(1, int(episodes)))
+            log(
+                f"[train] [{run_label}] continuous progress: ep={int(ep) + 1}/{int(episodes)} "
+                f"({pct:.1f}%), last_ret={float(ep_return):.3f}, elapsed={format_elapsed_s(time.perf_counter() - t_start)}"
+            )
+
+        if float(throughput_abort_max_s) > 0.0:
+            elapsed_s = float(time.perf_counter() - t_start)
+            if int(episodes_completed) < int(throughput_abort_min_eps_eff) and float(elapsed_s) > float(throughput_abort_max_s):
+                throughput_aborted = True
+                train_stop_reason = "training_throughput_abnormal"
+                log(
+                    f"[train] [{run_label}] Throughput fuse triggered: ep={int(episodes_completed)} "
+                    f"< {int(throughput_abort_min_eps_eff)}, elapsed={format_elapsed_s(elapsed_s)}"
+                )
+                break
+
+    if pbar is not None:
+        pbar.close()
+
+    model_path = out_dir / "models" / env.map_spec.name / f"{algo_key}.pt"
+    agent.save(model_path)
+    print(f"[train] Saved {algo_key} (final, train_steps={int(agent._train_steps)}) -> {model_path}")
+    log(
+        f"[train] [{run_label}] continuous train done: episodes={int(episodes_completed)}/{int(episodes)}, "
+        f"stop_reason={str(train_stop_reason)}, elapsed={format_elapsed_s(time.perf_counter() - t_start)}"
+    )
+    train_meta: dict[str, object] = {
+        "episodes_target": int(episodes),
+        "episodes_completed": int(episodes_completed),
+        "stop_reason": str(train_stop_reason),
+        "throughput_aborted": bool(throughput_aborted),
+        "rl_early_stopped": False,
+        "progress_enabled": False,
+        "train_progress_rows": 0,
+        "chosen_ckpt": "final",
+    }
+    return returns, eval_history, {"meta": train_meta, "train_progress": []}
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Train RL agents (default: DQN) and generate Fig. 13-style reward curves.")
     ap.add_argument(
@@ -2349,7 +2626,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=["mlp-dqn"],
         help=(
-            "RL algorithms to train: mlp-dqn mlp-ddqn mlp-pddqn cnn-dqn cnn-ddqn cnn-pddqn (or 'all'). "
+            "RL algorithms to train: mlp-dqn mlp-ddqn mlp-pddqn cnn-dqn cnn-ddqn cnn-pddqn ddpg sac (or 'all'). "
             "Legacy aliases: dqn ddqn iddqn cnn-iddqn. Default: mlp-dqn."
         ),
     )
@@ -2413,6 +2690,36 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--eps-decay", type=int, default=2000, help="Epsilon linear decay episodes.")
     ap.add_argument("--hidden-layers", type=int, default=3, help="Q-network hidden layer count.")
     ap.add_argument("--hidden-dim", type=int, default=256, help="Q-network hidden width.")
+    ap.add_argument("--cont-actor-lr", type=float, default=3e-4, help="DDPG/SAC: actor learning rate.")
+    ap.add_argument("--cont-critic-lr", type=float, default=3e-4, help="DDPG/SAC: critic learning rate.")
+    ap.add_argument("--cont-tau", type=float, default=0.005, help="DDPG/SAC: Polyak averaging factor.")
+    ap.add_argument(
+        "--cont-ddpg-noise-std",
+        type=float,
+        default=0.10,
+        help="DDPG: Gaussian exploration noise std (as fraction of action half-range).",
+    )
+    ap.add_argument(
+        "--cont-ddpg-noise-clip",
+        type=float,
+        default=0.50,
+        help="DDPG: Gaussian exploration noise clip (as fraction of action half-range).",
+    )
+    ap.add_argument("--cont-sac-alpha", type=float, default=0.2, help="SAC: initial/fixed entropy temperature alpha.")
+    ap.add_argument(
+        "--cont-sac-auto-alpha",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="SAC: automatically tune entropy temperature alpha.",
+    )
+    ap.add_argument(
+        "--cont-sac-target-entropy",
+        type=float,
+        default=None,
+        help="SAC: target entropy (default: -action_dim).",
+    )
+    ap.add_argument("--cont-sac-log-std-min", type=float, default=-5.0, help="SAC actor log_std lower bound.")
+    ap.add_argument("--cont-sac-log-std-max", type=float, default=2.0, help="SAC actor log_std upper bound.")
     ap.add_argument(
         "--demo-mode",
         type=str,
@@ -3281,7 +3588,7 @@ def main(argv: list[str] | None = None) -> int:
     if bool(getattr(args, "forest_no_fallback", False)):
         args.forest_action_shield = False
         args.forest_expert_exploration = False
-    canonical_all = ("mlp-dqn", "mlp-ddqn", "mlp-pddqn", "cnn-dqn", "cnn-ddqn", "cnn-pddqn")
+    canonical_all = tuple(list(DQN_CANONICAL_ALGOS) + list(CONTINUOUS_CANONICAL_ALGOS))
     raw_algos = [str(a).lower().strip() for a in (args.rl_algos or [])]
     if any(a == "all" for a in raw_algos):
         raw_algos = list(canonical_all)
@@ -3289,11 +3596,14 @@ def main(argv: list[str] | None = None) -> int:
     rl_algos: list[str] = []
     unknown = []
     for a in raw_algos:
-        try:
-            canonical, _arch, _base, _legacy = parse_rl_algo(a)
-        except ValueError:
-            unknown.append(a)
-            continue
+        if bool(is_continuous_algo(a)):
+            canonical = str(a).lower().strip()
+        else:
+            try:
+                canonical, _arch, _base, _legacy = parse_rl_algo(a)
+            except ValueError:
+                unknown.append(a)
+                continue
         if canonical not in rl_algos:
             rl_algos.append(canonical)
 
@@ -3308,6 +3618,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No RL algorithms selected (choose from: {' '.join(canonical_all)}).", file=sys.stderr)
         return 2
     args.rl_algos = rl_algos
+    selected_dqn_algos = [str(a) for a in args.rl_algos if is_dqn_canonical_algo(str(a))]
 
     try:
         device = select_device(device=args.device, cuda_device=args.cuda_device)
@@ -3399,6 +3710,23 @@ def main(argv: list[str] | None = None) -> int:
     dqn_cfg = replace(agent_cfg, n_step=n_step)
     ddqn_cfg = replace(agent_cfg, n_step=n_step)
     pddqn_cfg = replace(agent_cfg, n_step=n_step, target_update_tau=0.01)
+    cont_cfg = ContinuousAgentConfig(
+        gamma=float(getattr(args, "gamma", agent_cfg.gamma)),
+        actor_lr=float(getattr(args, "cont_actor_lr", 3e-4)),
+        critic_lr=float(getattr(args, "cont_critic_lr", 3e-4)),
+        tau=float(getattr(args, "cont_tau", 0.005)),
+        replay_capacity=int(getattr(args, "replay_capacity", agent_cfg.replay_capacity)),
+        batch_size=int(getattr(args, "batch_size", agent_cfg.batch_size)),
+        hidden_layers=int(getattr(args, "hidden_layers", agent_cfg.hidden_layers)),
+        hidden_dim=int(getattr(args, "hidden_dim", agent_cfg.hidden_dim)),
+        ddpg_noise_std=float(getattr(args, "cont_ddpg_noise_std", 0.10)),
+        ddpg_noise_clip=float(getattr(args, "cont_ddpg_noise_clip", 0.50)),
+        sac_alpha=float(getattr(args, "cont_sac_alpha", 0.2)),
+        sac_auto_alpha=bool(getattr(args, "cont_sac_auto_alpha", True)),
+        sac_target_entropy=getattr(args, "cont_sac_target_entropy", None),
+        sac_log_std_min=float(getattr(args, "cont_sac_log_std_min", -5.0)),
+        sac_log_std_max=float(getattr(args, "cont_sac_log_std_max", 2.0)),
+    )
     (out_dir / "configs").mkdir(parents=True, exist_ok=True)
     args_payload: dict[str, object] = {}
     for k, v in vars(args).items():
@@ -3423,6 +3751,10 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     (out_dir / "configs" / "agent_config.json").write_text(json.dumps(asdict(agent_cfg), indent=2, sort_keys=True), encoding="utf-8")
+    (out_dir / "configs" / "continuous_agent_config.json").write_text(
+        json.dumps(asdict(cont_cfg), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
     algo_cfgs = {
         "mlp-dqn": dqn_cfg,
         "mlp-ddqn": ddqn_cfg,
@@ -3432,13 +3764,19 @@ def main(argv: list[str] | None = None) -> int:
         "cnn-pddqn": pddqn_cfg,
     }
     for algo in args.rl_algos:
-        cfg = algo_cfgs.get(str(algo))
-        if cfg is None:
+        algo_key = str(algo)
+        cfg = algo_cfgs.get(algo_key)
+        if cfg is not None:
+            (out_dir / "configs" / f"agent_config_{algo_key}.json").write_text(
+                json.dumps(asdict(cfg), indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
             continue
-        (out_dir / "configs" / f"agent_config_{algo}.json").write_text(
-            json.dumps(asdict(cfg), indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        if bool(is_continuous_algo(algo_key)):
+            (out_dir / "configs" / f"agent_config_{algo_key}.json").write_text(
+                json.dumps(asdict(cont_cfg), indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
 
     all_rows: list[dict[str, float | int | str]] = []
     all_eval_rows: list[dict[str, float | int | str]] = []
@@ -3450,6 +3788,8 @@ def main(argv: list[str] | None = None) -> int:
         "cnn-dqn": "CNN-DQN",
         "cnn-ddqn": "CNN-DDQN",
         "cnn-pddqn": "CNN-PDDQN",
+        "ddpg": "DDPG",
+        "sac": "SAC",
     }
 
     for env_name in args.envs:
@@ -3480,7 +3820,7 @@ def main(argv: list[str] | None = None) -> int:
                 action_grid_power=float(args.forest_action_grid_power),
             )
             forest_demo_data = None
-            if bool(args.forest_demo_prefill) and int(args.learning_starts) > 0:
+            if bool(selected_dqn_algos) and bool(args.forest_demo_prefill) and int(args.learning_starts) > 0:
                 demo_target = forest_demo_target(
                     learning_starts=int(args.learning_starts),
                     batch_size=int(agent_cfg.batch_size),
@@ -3546,10 +3886,15 @@ def main(argv: list[str] | None = None) -> int:
         env_train_meta: dict[str, dict[str, object]] = {}
         for algo in args.rl_algos:
             t_algo_start = time.perf_counter()
-            log(f"[train] Algo start: env={env_name}, algo={str(algo)}")
-            cfg = algo_cfgs[str(algo)]
+            algo_key = str(algo)
+            log(f"[train] Algo start: env={env_name}, algo={str(algo_key)}")
+            cfg = algo_cfgs.get(algo_key)
+            algo_is_dqn = bool(is_dqn_canonical_algo(algo_key))
+            algo_is_cont = bool(is_continuous_algo(algo_key))
+            if not (algo_is_dqn or algo_is_cont):
+                raise RuntimeError(f"Unsupported algo in train loop: {algo_key!r}")
             live_viewer = None
-            if bool(getattr(args, "live_view", False)):
+            if bool(algo_is_dqn) and bool(getattr(args, "live_view", False)):
                 live_viewer = TrainLiveViewer(
                     enabled=True,
                     fps=int(getattr(args, "live_view_fps", 0)),
@@ -3559,147 +3904,187 @@ def main(argv: list[str] | None = None) -> int:
                     show_collision_box=bool(getattr(args, "live_view_collision_box", True)),
                 )
             try:
-                _, algo_returns, algo_eval, algo_extra = train_one(
-                    env,
-                    str(algo),
-                    episodes=args.episodes,
-                    # Forest training (global-map + imitation warm-start) can be sensitive to random initialization.
-                    # Keep a deterministic seed offset across algorithms for fair comparisons.
-                    seed=args.seed + 1000,
-                    out_dir=out_dir,
-                    agent_cfg=cfg,
-                    replay_near_goal_factor=float(args.replay_near_goal_factor),
-                    replay_hazard_od_m=float(args.replay_hazard_od_m),
-                    train_freq=args.train_freq,
-                    learning_starts=args.learning_starts,
-                    forest_demo_target_mult=float(args.forest_demo_target_mult),
-                    forest_demo_target_cap=int(args.forest_demo_target_cap),
-                    save_ckpt=str(args.save_ckpt),
-                    forest_curriculum=bool(args.forest_curriculum),
-                    curriculum_band_m=float(args.curriculum_band_m),
-                    curriculum_ramp=float(args.curriculum_ramp),
-                    forest_demo_prefill=bool(args.forest_demo_prefill),
-                    forest_demo_pretrain_steps=int(args.forest_demo_pretrain_steps),
-                    forest_demo_pretrain_eval_every=int(args.forest_demo_pretrain_eval_every),
-                    forest_demo_pretrain_val_runs=int(args.forest_demo_pretrain_val_runs),
-                    forest_demo_pretrain_early_stop_sr=float(args.forest_demo_pretrain_early_stop_sr),
-                    forest_demo_pretrain_early_stop_patience=int(args.forest_demo_pretrain_early_stop_patience),
-                    forest_demo_horizon=int(args.forest_demo_horizon),
-                    forest_demo_w_clearance=float(args.forest_demo_w_clearance),
-                    forest_demo_data=forest_demo_data,
-                    forest_expert=str(args.forest_expert),
-                    forest_expert_exploration=bool(args.forest_expert_exploration),
-                    forest_action_shield=bool(args.forest_action_shield),
-                    forest_adm_horizon=int(args.forest_adm_horizon),
-                    forest_topk=int(args.forest_topk),
-                    forest_min_od_m=float(args.forest_min_od_m),
-                    forest_min_progress_m=float(args.forest_min_progress_m),
-                    forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
-                    forest_expert_prob_start=float(args.forest_expert_prob_start),
-                    forest_expert_prob_final=float(args.forest_expert_prob_final),
-                    forest_expert_prob_decay=float(args.forest_expert_prob_decay),
-                    forest_expert_adapt_k=float(args.forest_expert_adapt_k),
-                    forest_expert_recent_window=int(args.forest_expert_recent_window),
-                    forest_random_start_goal=bool(args.forest_random_start_goal),
-                    forest_rand_min_dist_m=float(args.forest_rand_min_dist_m),
-                    forest_rand_max_dist_m=rand_max,
-                    forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
-                    forest_rand_tries=int(args.forest_rand_tries),
-                    forest_rand_edge_margin_m=float(args.forest_rand_edge_margin_m),
-                    forest_train_two_suites=bool(getattr(args, "forest_train_two_suites", False)),
-                    forest_train_short_prob=float(getattr(args, "forest_train_short_prob", 0.5)),
-                    forest_train_short_prob_ramp=float(getattr(args, "forest_train_short_prob_ramp", 0.0)),
-                    forest_train_dynamic_curriculum=bool(getattr(args, "forest_train_dynamic_curriculum", False)),
-                    forest_train_dynamic_target_sr_short=float(
-                        getattr(args, "forest_train_dynamic_target_sr_short", 0.6)
-                    ),
-                    forest_train_dynamic_target_sr_long=float(
-                        getattr(args, "forest_train_dynamic_target_sr_long", 0.6)
-                    ),
-                    forest_train_dynamic_k=float(getattr(args, "forest_train_dynamic_k", 0.25)),
-                    forest_train_dynamic_min_short_prob=float(
-                        getattr(args, "forest_train_dynamic_min_short_prob", 0.2)
-                    ),
-                    forest_train_dynamic_max_short_prob=float(
-                        getattr(args, "forest_train_dynamic_max_short_prob", 0.9)
-                    ),
-                    forest_train_short_min_dist_m=float(getattr(args, "forest_train_short_min_dist_m", 6.0)),
-                    forest_train_short_max_dist_m=(
-                        None
-                        if float(getattr(args, "forest_train_short_max_dist_m", 14.0)) <= 0.0
-                        else float(getattr(args, "forest_train_short_max_dist_m", 14.0))
-                    ),
-                    forest_train_long_min_dist_m=float(getattr(args, "forest_train_long_min_dist_m", 42.0)),
-                    forest_train_long_max_dist_m=(
-                        None
-                        if float(getattr(args, "forest_train_long_max_dist_m", 0.0)) <= 0.0
-                        else float(getattr(args, "forest_train_long_max_dist_m", 0.0))
-                    ),
-                    astar_curve_cfg=astar_curve_cfg,
-                    astar_timeout_s=float(astar_timeout_s),
-                    astar_max_expanded=int(astar_max_expanded),
-                    mpc_cfg=mpc_cfg,
-                    eval_every=int(args.eval_every),
-                    eval_runs=int(args.eval_runs),
-                    train_eval_every=int(getattr(args, "train_eval_every", 10)),
-                    train_eval_short_min_dist_m=float(getattr(args, "train_eval_short_min_dist_m", 6.0)),
-                    train_eval_short_max_dist_m=(
-                        None
-                        if float(getattr(args, "train_eval_short_max_dist_m", 14.0)) <= 0.0
-                        else float(getattr(args, "train_eval_short_max_dist_m", 14.0))
-                    ),
-                    train_eval_long_min_dist_m=float(getattr(args, "train_eval_long_min_dist_m", 42.0)),
-                    train_eval_long_max_dist_m=(
-                        None
-                        if float(getattr(args, "train_eval_long_max_dist_m", 0.0)) <= 0.0
-                        else float(getattr(args, "train_eval_long_max_dist_m", 0.0))
-                    ),
-                    train_eval_seed_base=int(getattr(args, "train_eval_seed_base", 131071)) + int(args.seed + 1000),
-                    train_eval_astar_timeout_s=float(getattr(args, "train_eval_astar_timeout", 5.0)),
-                    train_eval_astar_max_expanded=int(getattr(args, "train_eval_astar_max_expanded", 1_000_000)),
-                    rl_early_stop_warmup_episodes=int(getattr(args, "rl_early_stop_warmup_episodes", 80)),
-                    rl_early_stop_patience_points=int(getattr(args, "rl_early_stop_patience_points", 6)),
-                    rl_early_stop_min_delta_sr=float(getattr(args, "rl_early_stop_min_delta_sr", 0.01)),
-                    rl_early_stop_min_delta_ratio=float(getattr(args, "rl_early_stop_min_delta_ratio", 0.01)),
-                    throughput_abort_min_episodes=int(getattr(args, "throughput_abort_min_episodes", 50)),
-                    throughput_abort_max_minutes=float(getattr(args, "throughput_abort_max_minutes", 90.0)),
-                    eval_score_time_weight=float(args.eval_score_time_weight),
-                    save_ckpt_joint_short_long=bool(getattr(args, "save_ckpt_joint_short_long", False)),
-                    save_ckpt_suite_runs=int(getattr(args, "save_ckpt_suite_runs", 10)),
-                    save_ckpt_short_min_dist_m=float(getattr(args, "save_ckpt_short_min_dist_m", 6.0)),
-                    save_ckpt_short_max_dist_m=(
-                        None
-                        if float(getattr(args, "save_ckpt_short_max_dist_m", 14.0)) <= 0.0
-                        else float(getattr(args, "save_ckpt_short_max_dist_m", 14.0))
-                    ),
-                    save_ckpt_long_min_dist_m=float(getattr(args, "save_ckpt_long_min_dist_m", 42.0)),
-                    save_ckpt_long_max_dist_m=(
-                        None
-                        if float(getattr(args, "save_ckpt_long_max_dist_m", 0.0)) <= 0.0
-                        else float(getattr(args, "save_ckpt_long_max_dist_m", 0.0))
-                    ),
-                    save_ckpt_long_sr_floor=float(getattr(args, "save_ckpt_long_sr_floor", 0.0)),
-                    progress=progress,
-                    device=device,
-                    live_viewer=live_viewer,
-                    progress_write=progress_write,
-                )
+                if bool(algo_is_dqn):
+                    if cfg is None:
+                        raise RuntimeError(f"Missing DQN config for algo: {algo_key!r}")
+                    _, algo_returns, algo_eval, algo_extra = train_one(
+                        env,
+                        str(algo_key),
+                        episodes=args.episodes,
+                        # Forest training (global-map + imitation warm-start) can be sensitive to random initialization.
+                        # Keep a deterministic seed offset across algorithms for fair comparisons.
+                        seed=args.seed + 1000,
+                        out_dir=out_dir,
+                        agent_cfg=cfg,
+                        replay_near_goal_factor=float(args.replay_near_goal_factor),
+                        replay_hazard_od_m=float(args.replay_hazard_od_m),
+                        train_freq=args.train_freq,
+                        learning_starts=args.learning_starts,
+                        forest_demo_target_mult=float(args.forest_demo_target_mult),
+                        forest_demo_target_cap=int(args.forest_demo_target_cap),
+                        save_ckpt=str(args.save_ckpt),
+                        forest_curriculum=bool(args.forest_curriculum),
+                        curriculum_band_m=float(args.curriculum_band_m),
+                        curriculum_ramp=float(args.curriculum_ramp),
+                        forest_demo_prefill=bool(args.forest_demo_prefill),
+                        forest_demo_pretrain_steps=int(args.forest_demo_pretrain_steps),
+                        forest_demo_pretrain_eval_every=int(args.forest_demo_pretrain_eval_every),
+                        forest_demo_pretrain_val_runs=int(args.forest_demo_pretrain_val_runs),
+                        forest_demo_pretrain_early_stop_sr=float(args.forest_demo_pretrain_early_stop_sr),
+                        forest_demo_pretrain_early_stop_patience=int(args.forest_demo_pretrain_early_stop_patience),
+                        forest_demo_horizon=int(args.forest_demo_horizon),
+                        forest_demo_w_clearance=float(args.forest_demo_w_clearance),
+                        forest_demo_data=forest_demo_data,
+                        forest_expert=str(args.forest_expert),
+                        forest_expert_exploration=bool(args.forest_expert_exploration),
+                        forest_action_shield=bool(args.forest_action_shield),
+                        forest_adm_horizon=int(args.forest_adm_horizon),
+                        forest_topk=int(args.forest_topk),
+                        forest_min_od_m=float(args.forest_min_od_m),
+                        forest_min_progress_m=float(args.forest_min_progress_m),
+                        forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
+                        forest_expert_prob_start=float(args.forest_expert_prob_start),
+                        forest_expert_prob_final=float(args.forest_expert_prob_final),
+                        forest_expert_prob_decay=float(args.forest_expert_prob_decay),
+                        forest_expert_adapt_k=float(args.forest_expert_adapt_k),
+                        forest_expert_recent_window=int(args.forest_expert_recent_window),
+                        forest_random_start_goal=bool(args.forest_random_start_goal),
+                        forest_rand_min_dist_m=float(args.forest_rand_min_dist_m),
+                        forest_rand_max_dist_m=rand_max,
+                        forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
+                        forest_rand_tries=int(args.forest_rand_tries),
+                        forest_rand_edge_margin_m=float(args.forest_rand_edge_margin_m),
+                        forest_train_two_suites=bool(getattr(args, "forest_train_two_suites", False)),
+                        forest_train_short_prob=float(getattr(args, "forest_train_short_prob", 0.5)),
+                        forest_train_short_prob_ramp=float(getattr(args, "forest_train_short_prob_ramp", 0.0)),
+                        forest_train_dynamic_curriculum=bool(getattr(args, "forest_train_dynamic_curriculum", False)),
+                        forest_train_dynamic_target_sr_short=float(
+                            getattr(args, "forest_train_dynamic_target_sr_short", 0.6)
+                        ),
+                        forest_train_dynamic_target_sr_long=float(
+                            getattr(args, "forest_train_dynamic_target_sr_long", 0.6)
+                        ),
+                        forest_train_dynamic_k=float(getattr(args, "forest_train_dynamic_k", 0.25)),
+                        forest_train_dynamic_min_short_prob=float(
+                            getattr(args, "forest_train_dynamic_min_short_prob", 0.2)
+                        ),
+                        forest_train_dynamic_max_short_prob=float(
+                            getattr(args, "forest_train_dynamic_max_short_prob", 0.9)
+                        ),
+                        forest_train_short_min_dist_m=float(getattr(args, "forest_train_short_min_dist_m", 6.0)),
+                        forest_train_short_max_dist_m=(
+                            None
+                            if float(getattr(args, "forest_train_short_max_dist_m", 14.0)) <= 0.0
+                            else float(getattr(args, "forest_train_short_max_dist_m", 14.0))
+                        ),
+                        forest_train_long_min_dist_m=float(getattr(args, "forest_train_long_min_dist_m", 42.0)),
+                        forest_train_long_max_dist_m=(
+                            None
+                            if float(getattr(args, "forest_train_long_max_dist_m", 0.0)) <= 0.0
+                            else float(getattr(args, "forest_train_long_max_dist_m", 0.0))
+                        ),
+                        astar_curve_cfg=astar_curve_cfg,
+                        astar_timeout_s=float(astar_timeout_s),
+                        astar_max_expanded=int(astar_max_expanded),
+                        mpc_cfg=mpc_cfg,
+                        eval_every=int(args.eval_every),
+                        eval_runs=int(args.eval_runs),
+                        train_eval_every=int(getattr(args, "train_eval_every", 10)),
+                        train_eval_short_min_dist_m=float(getattr(args, "train_eval_short_min_dist_m", 6.0)),
+                        train_eval_short_max_dist_m=(
+                            None
+                            if float(getattr(args, "train_eval_short_max_dist_m", 14.0)) <= 0.0
+                            else float(getattr(args, "train_eval_short_max_dist_m", 14.0))
+                        ),
+                        train_eval_long_min_dist_m=float(getattr(args, "train_eval_long_min_dist_m", 42.0)),
+                        train_eval_long_max_dist_m=(
+                            None
+                            if float(getattr(args, "train_eval_long_max_dist_m", 0.0)) <= 0.0
+                            else float(getattr(args, "train_eval_long_max_dist_m", 0.0))
+                        ),
+                        train_eval_seed_base=int(getattr(args, "train_eval_seed_base", 131071)) + int(args.seed + 1000),
+                        train_eval_astar_timeout_s=float(getattr(args, "train_eval_astar_timeout", 5.0)),
+                        train_eval_astar_max_expanded=int(getattr(args, "train_eval_astar_max_expanded", 1_000_000)),
+                        rl_early_stop_warmup_episodes=int(getattr(args, "rl_early_stop_warmup_episodes", 80)),
+                        rl_early_stop_patience_points=int(getattr(args, "rl_early_stop_patience_points", 6)),
+                        rl_early_stop_min_delta_sr=float(getattr(args, "rl_early_stop_min_delta_sr", 0.01)),
+                        rl_early_stop_min_delta_ratio=float(getattr(args, "rl_early_stop_min_delta_ratio", 0.01)),
+                        throughput_abort_min_episodes=int(getattr(args, "throughput_abort_min_episodes", 50)),
+                        throughput_abort_max_minutes=float(getattr(args, "throughput_abort_max_minutes", 90.0)),
+                        eval_score_time_weight=float(args.eval_score_time_weight),
+                        save_ckpt_joint_short_long=bool(getattr(args, "save_ckpt_joint_short_long", False)),
+                        save_ckpt_suite_runs=int(getattr(args, "save_ckpt_suite_runs", 10)),
+                        save_ckpt_short_min_dist_m=float(getattr(args, "save_ckpt_short_min_dist_m", 6.0)),
+                        save_ckpt_short_max_dist_m=(
+                            None
+                            if float(getattr(args, "save_ckpt_short_max_dist_m", 14.0)) <= 0.0
+                            else float(getattr(args, "save_ckpt_short_max_dist_m", 14.0))
+                        ),
+                        save_ckpt_long_min_dist_m=float(getattr(args, "save_ckpt_long_min_dist_m", 42.0)),
+                        save_ckpt_long_max_dist_m=(
+                            None
+                            if float(getattr(args, "save_ckpt_long_max_dist_m", 0.0)) <= 0.0
+                            else float(getattr(args, "save_ckpt_long_max_dist_m", 0.0))
+                        ),
+                        save_ckpt_long_sr_floor=float(getattr(args, "save_ckpt_long_sr_floor", 0.0)),
+                        progress=progress,
+                        device=device,
+                        live_viewer=live_viewer,
+                        progress_write=progress_write,
+                    )
+                else:
+                    algo_returns, algo_eval, algo_extra = train_one_continuous(
+                        env,
+                        str(algo_key),
+                        episodes=int(args.episodes),
+                        seed=int(args.seed + 1000),
+                        out_dir=out_dir,
+                        cont_cfg=cont_cfg,
+                        train_freq=int(args.train_freq),
+                        learning_starts=int(args.learning_starts),
+                        forest_random_start_goal=bool(args.forest_random_start_goal),
+                        forest_rand_min_dist_m=float(args.forest_rand_min_dist_m),
+                        forest_rand_max_dist_m=rand_max,
+                        forest_rand_fixed_prob=float(args.forest_rand_fixed_prob),
+                        forest_rand_tries=int(args.forest_rand_tries),
+                        forest_rand_edge_margin_m=float(args.forest_rand_edge_margin_m),
+                        forest_train_two_suites=bool(getattr(args, "forest_train_two_suites", False)),
+                        forest_train_short_prob=float(getattr(args, "forest_train_short_prob", 0.5)),
+                        forest_train_short_prob_ramp=float(getattr(args, "forest_train_short_prob_ramp", 0.0)),
+                        forest_train_short_min_dist_m=float(getattr(args, "forest_train_short_min_dist_m", 6.0)),
+                        forest_train_short_max_dist_m=(
+                            None
+                            if float(getattr(args, "forest_train_short_max_dist_m", 14.0)) <= 0.0
+                            else float(getattr(args, "forest_train_short_max_dist_m", 14.0))
+                        ),
+                        forest_train_long_min_dist_m=float(getattr(args, "forest_train_long_min_dist_m", 42.0)),
+                        forest_train_long_max_dist_m=(
+                            None
+                            if float(getattr(args, "forest_train_long_max_dist_m", 0.0)) <= 0.0
+                            else float(getattr(args, "forest_train_long_max_dist_m", 0.0))
+                        ),
+                        throughput_abort_min_episodes=int(getattr(args, "throughput_abort_min_episodes", 50)),
+                        throughput_abort_max_minutes=float(getattr(args, "throughput_abort_max_minutes", 90.0)),
+                        progress=progress,
+                        device=device,
+                        progress_write=progress_write,
+                    )
             finally:
                 if live_viewer is not None:
                     live_viewer.close()
-            env_curves[str(algo)] = algo_returns
-            env_eval_rows[str(algo)] = list(algo_eval)
+            env_curves[str(algo_key)] = algo_returns
+            env_eval_rows[str(algo_key)] = list(algo_eval)
             for row in algo_eval:
-                all_eval_rows.append({"env": env_name, "algo": str(algo), **row})
+                all_eval_rows.append({"env": env_name, "algo": str(algo_key), **row})
             train_progress_rows = algo_extra.get("train_progress", [])
             if isinstance(train_progress_rows, list):
                 for row in train_progress_rows:
                     if isinstance(row, dict):
-                        all_eval_rows.append({"env": env_name, "algo": str(algo), **row})
+                        all_eval_rows.append({"env": env_name, "algo": str(algo_key), **row})
             meta_obj = algo_extra.get("meta", {})
-            env_train_meta[str(algo)] = dict(meta_obj) if isinstance(meta_obj, dict) else {}
+            env_train_meta[str(algo_key)] = dict(meta_obj) if isinstance(meta_obj, dict) else {}
             log(
-                f"[train] Algo done: env={env_name}, algo={str(algo)}, "
+                f"[train] Algo done: env={env_name}, algo={str(algo_key)}, "
                 f"elapsed={format_elapsed_s(time.perf_counter() - t_algo_start)}"
             )
 
