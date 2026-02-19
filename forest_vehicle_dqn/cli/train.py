@@ -2771,6 +2771,18 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     ap.add_argument(
+        "--forest-reward-k-t",
+        type=float,
+        default=0.1,
+        help="Forest-only: per-step time penalty coefficient (reward k_t).",
+    )
+    ap.add_argument(
+        "--forest-reward-k-delta",
+        type=float,
+        default=1.5,
+        help="Forest-only: steering-change smoothness penalty coefficient (reward k_delta).",
+    )
+    ap.add_argument(
         "--forest-reward-no-progress-penalty",
         type=float,
         default=0.0,
@@ -3330,6 +3342,8 @@ def main(argv: list[str] | None = None) -> int:
                 goal_angle_tolerance_deg=float(args.goal_angle_tolerance_deg),
                 goal_stop_speed_m_s=float(args.goal_stop_speed_m_s),
                 goal_stop_delta_deg=float(args.goal_stop_delta_deg),
+                reward_k_t=float(args.forest_reward_k_t),
+                reward_k_delta=float(args.forest_reward_k_delta),
                 reward_no_progress_penalty=float(args.forest_reward_no_progress_penalty),
                 reward_no_progress_eps_m=float(args.forest_reward_no_progress_eps_m),
                 reward_idle_speed_m_s=float(args.forest_reward_idle_speed_m_s),

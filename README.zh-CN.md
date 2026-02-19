@@ -66,19 +66,19 @@ python infer.py --profile forest_a_all6_300_cuda
 
 ### 最新训练/推理命令（请持续维护）
 
-最后更新：2026-02-11  
-当前推荐训练 profile：`repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1`
+最后更新：2026-02-19  
+当前推荐训练 profile：`v6p2p2`
 
 ```bash
-conda run -n ros2py310 python train.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1
-conda run -n ros2py310 python infer.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1
+conda run -n ros2py310 python train.py --profile v6p2p2
+conda run -n ros2py310 python infer.py --profile v6p2p2
 ```
 
 快速 smoke（同配置，降低训练轮数用于先验筛查）：
 
 ```bash
-conda run -n ros2py310 python train.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1
-conda run -n ros2py310 python infer.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1
+conda run -n ros2py310 python train.py --profile repro_20260219_v6p2p2_reward_kt_kdelta_sweep_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260219_v6p2p2_reward_kt_kdelta_sweep_smoke
 ```
 
 固定 mid（14–42m）推理命令（strict vs hybrid，runs=20）：
@@ -121,7 +121,7 @@ conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_
 规划器快捷键：`1`=hybrid A*，`2`=RRT*，`3`=grid A*，`4`=cnn-ddqn（需要 `--rl-checkpoint <path>`）。  
 其他：`R` 重置，`SPACE` 暂停，`P` 重新规划。
 
-## 版本总索引（v1 → v6p2）
+## 版本总索引（v1 → v6p2p2）
 
 > 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；`v4`~`v8p3` 已于 2026-02-09 清理（误混入本仓库版本链）。
 
@@ -131,7 +131,7 @@ conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v6p1）
+### 增量版本（v3p1 → v6p2p2）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -144,6 +144,7 @@ conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_
 | `v6` | `docs/versions/v6/` | `configs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6_timeout_tune_hybrid_long_pairs20_v1/20260211_214602` | `0.90 / 0.70` | `0.95 / 0.90` | 未通过 |
 | `v6p1` | `docs/versions/v6p1/` | `configs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1/20260212_003414` | `0.70 / 0.95` | `0.95 / 0.90` | 未通过 |
 | `v6p2` | `docs/versions/v6p2/` | `configs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1.json` | `runs/repro_20260211_v6p1_timeout_tune_hybrid_long_pairs20_v1/20260212_003414` | `0.70 / 0.95` | `0.95 / 0.90` | 未通过 |
+| `v6p2p2` | `docs/versions/v6p2p2/` | `configs/v6p2p2.json` | `runs/repro_20260219_v6p2p2_reward_sweep_kt0p1_kd0p8_infer20/20260219_123433` | `0.75 / 0.55` | `0.95 / 1.00` | 未通过（待 full） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
