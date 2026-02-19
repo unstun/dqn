@@ -37,6 +37,9 @@ class ContinuousAgentConfig:
     sac_log_std_min: float = -5.0
     sac_log_std_max: float = 2.0
 
+    # Demo buffer: fraction of each batch guaranteed to be demo transitions
+    cont_demo_frac: float = 0.0
+
 
 def is_continuous_algo(algo: str) -> bool:
     return str(algo).lower().strip() in CONTINUOUS_ALGOS
