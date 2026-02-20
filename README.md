@@ -158,9 +158,9 @@ conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_
 Planner hotkeys: `1`=hybrid A*, `2`=RRT*, `3`=grid A*, `4`=cnn-ddqn (requires `--rl-checkpoint <path>`).  
 Other: `R` reset, `SPACE` pause, `P` replan.
 
-## 版本总索引（v1 → v7p2p3）
+## 版本总索引（v1 → v7p2p1）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理，当前实验编号延续至 `v7p2p3`（主线稳定版本仍为 `v7p1`）。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理，当前主线编号延续至 `v7p2p1`。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -168,7 +168,7 @@ Other: `R` reset, `SPACE` pause, `P` replan.
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p2p3）
+### 增量版本（v3p1 → v7p2p1）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -185,7 +185,6 @@ Other: `R` reset, `SPACE` pause, `P` replan.
 | `v6p2p3` | `docs/versions/v6p2p3/` | `configs/v6p2p3.json` | `runs/v6p2p3/train_20260219_142104/infer/20260219_145315` | `0.80 / 1.00` | `1.00 / 1.00` | 已运行（runs=5，待 full20） |
 | `v7p2` | `docs/versions/v7p2/` | `configs/v7p2.json` | `runs/v7p2_smoke/train_20260220_211732/infer/20260220_212137` | `1.00 / 1.00` | `1.00 / 1.00` | 已运行（smoke：episodes=40, runs=3） |
 | `v7p2p1` | `docs/versions/v7p2p1/` | `configs/repro_20260220_v7p2p1_rollback_v7p1.json` | `runs/v7p2_es150/train_20260220_222056/infer/20260220_223016` | `0.85 / 0.65` | `0.95 / 1.00` | 失败归档，已回退到 `v7p1` |
-| `v7p2p3` | `docs/versions/v7p2p3/` | `configs/v7p2p3.json` | `runs/v7p2p3_train300_esbest/train_20260221_003108/infer/20260221_004529` | `0.60 / 0.60` | `1.00 / 1.00` | 失败归档（`eps_decay` 修复未优于 `v7p1`） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
@@ -217,7 +216,7 @@ conda run -n ros2py310 python infer.py --profile <candidate> --models <version>_
 
 5. Archive immediately:
 - Create `docs/versions/<version>/` four-doc bundle and log commands, run paths, KPIs, and failure reasons.
-- Prepare next iteration as `<version+1>` (example: `v7p2p4`).
+- Prepare next iteration as `<version+1>` (example: `v7p2p2`).
 
 ## Final acceptance gate (short/long suites, runs=20)
 
