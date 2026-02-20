@@ -95,6 +95,60 @@ def make_progress_writer(progress: bool) -> Callable[[str], None]:
     return progress_write
 
 
+def emit_train_config_sanity_warnings(
+    *,
+    args: argparse.Namespace,
+    demo_mode: str,
+    selected_dqn_algos: list[str],
+    log: Callable[[str], None],
+) -> None:
+    """Emit non-fatal warnings for common RL misconfigurations."""
+    if selected_dqn_algos:
+        episodes = max(0, int(getattr(args, "episodes", 0)))
+        eps_start = float(getattr(args, "eps_start", 0.0))
+        eps_final = float(getattr(args, "eps_final", 0.0))
+        eps_decay = int(getattr(args, "eps_decay", 0))
+        if episodes > 0 and eps_decay > int(2 * episodes):
+            log(
+                f"[train][warn] eps_decay={int(eps_decay)} is much larger than episodes={int(episodes)}; "
+                "epsilon may barely decay during training."
+            )
+        if eps_start <= eps_final:
+            log(
+                f"[train][warn] eps_start={eps_start:.4g} <= eps_final={eps_final:.4g}; "
+                "epsilon-greedy exploration may not decrease as intended."
+            )
+        if eps_start < 0.30:
+            log(
+                f"[train][warn] eps_start={eps_start:.4g} is low for early exploration; "
+                "consider a higher initial epsilon when training from scratch."
+            )
+
+    if str(demo_mode).lower().strip() == "dqfd":
+        demo_lambda = float(getattr(args, "demo_lambda", 0.0))
+        pretrain_steps = max(0, int(getattr(args, "forest_demo_pretrain_steps", 0)))
+        if demo_lambda > 3.0:
+            log(
+                f"[train][warn] demo_lambda={demo_lambda:.4g} is high; "
+                "strong margin supervision can suppress RL policy improvement."
+            )
+        if pretrain_steps > 50_000:
+            log(
+                f"[train][warn] forest_demo_pretrain_steps={int(pretrain_steps)} is large; "
+                "consider shorter pretrain or stronger early-stop checks to avoid overfitting demos."
+            )
+
+    envs = [str(e) for e in getattr(args, "envs", [])]
+    has_forest = any(e in FOREST_ENV_ORDER for e in envs)
+    if has_forest:
+        obs_map_size = int(getattr(args, "obs_map_size", 12))
+        if obs_map_size <= 12:
+            log(
+                f"[train][warn] obs_map_size={int(obs_map_size)} may be coarse for forest maps; "
+                "consider larger map observations if collision detail is insufficient."
+            )
+
+
 def plot_training_eval_metrics(df_eval: pd.DataFrame, *, out_path: Path) -> None:
     if df_eval.empty:
         return
@@ -2727,6 +2781,15 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--eps-start", type=float, default=0.6, help="Epsilon-greedy start value.")
     ap.add_argument("--eps-final", type=float, default=0.01, help="Epsilon-greedy final value.")
     ap.add_argument("--eps-decay", type=int, default=2000, help="Epsilon linear decay episodes.")
+    ap.add_argument(
+        "--eps-decay-ratio",
+        type=float,
+        default=1.0,
+        help=(
+            "When --eps-decay <= 0, auto-resolve decay as round(episodes * ratio). "
+            "Ignored when --eps-decay > 0."
+        ),
+    )
     ap.add_argument("--hidden-layers", type=int, default=3, help="Q-network hidden layer count.")
     ap.add_argument("--hidden-dim", type=int, default=256, help="Q-network hidden width.")
     ap.add_argument("--cont-actor-lr", type=float, default=3e-4, help="DDPG/SAC: actor learning rate.")
@@ -3690,6 +3753,12 @@ def main(argv: list[str] | None = None) -> int:
         f"[train] Run start: envs={len(args.envs)}, algos={len(args.rl_algos)}, "
         f"episodes={int(args.episodes)}, device={device}, demo_mode={demo_mode}, progress={bool(progress)}"
     )
+    emit_train_config_sanity_warnings(
+        args=args,
+        demo_mode=demo_mode,
+        selected_dqn_algos=selected_dqn_algos,
+        log=log,
+    )
 
     astar_curve_cfg = AStarCurveOptConfig(
         enable=bool(args.forest_astar_opt_enable),
@@ -3718,6 +3787,20 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = run_paths.run_dir
 
     agent_cfg = AgentConfig()
+    eps_decay = int(getattr(args, "eps_decay", agent_cfg.eps_decay))
+    if eps_decay <= 0:
+        raw_ratio = float(getattr(args, "eps_decay_ratio", 1.0))
+        ratio = float(raw_ratio) if float(raw_ratio) > 0.0 else 1.0
+        if float(raw_ratio) <= 0.0:
+            log(
+                f"[train][warn] eps_decay_ratio={float(raw_ratio):.4g} <= 0; "
+                "fallback to ratio=1.0 for eps auto-decay."
+            )
+        eps_decay = max(1, int(round(float(args.episodes) * float(ratio))))
+        log(
+            f"[train] eps_decay auto-resolved: episodes={int(args.episodes)}, "
+            f"ratio={float(ratio):.4g} -> eps_decay={int(eps_decay)}"
+        )
     per_beta_steps = int(getattr(args, "per_beta_steps", 0))
     if demo_mode == "dqfd" and per_beta_steps <= 0:
         per_beta_steps = max(1, int(args.episodes) * int(args.max_steps) // max(1, int(args.train_freq)))
@@ -3732,7 +3815,7 @@ def main(argv: list[str] | None = None) -> int:
         grad_clip_norm=float(getattr(args, "grad_clip_norm", agent_cfg.grad_clip_norm)),
         eps_start=float(getattr(args, "eps_start", agent_cfg.eps_start)),
         eps_final=float(getattr(args, "eps_final", agent_cfg.eps_final)),
-        eps_decay=int(getattr(args, "eps_decay", agent_cfg.eps_decay)),
+        eps_decay=int(eps_decay),
         hidden_layers=int(getattr(args, "hidden_layers", agent_cfg.hidden_layers)),
         hidden_dim=int(getattr(args, "hidden_dim", agent_cfg.hidden_dim)),
         demo_mode=str(demo_mode),

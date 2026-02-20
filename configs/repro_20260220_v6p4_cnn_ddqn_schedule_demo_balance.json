@@ -1,0 +1,62 @@
+{
+  "_meta": {
+    "title": "v6p4 cnn-ddqn schedule+demo-balance",
+    "date": "2026-02-20",
+    "summary": "Fix epsilon schedule mismatch, reduce DQfD over-regularization, and raise obs_map_size for forest_a.",
+    "version": "v6p4"
+  },
+  "env": {
+    "os": "Ubuntu 24.04",
+    "conda_env": "ros2py310"
+  },
+  "commands": {
+    "self_check": [
+      "conda run -n ros2py310 python train.py --profile v6p4 --self-check",
+      "conda run -n ros2py310 python infer.py --profile v6p4 --self-check"
+    ],
+    "smoke": {
+      "train": "conda run -n ros2py310 python train.py --profile v6p4 --episodes 300 --out v6p4_smoke300",
+      "infer": "conda run -n ros2py310 python infer.py --profile v6p4 --models v6p4_smoke300 --runs 3 --out v6p4_smoke300"
+    },
+    "full": {
+      "train": "conda run -n ros2py310 python train.py --profile v6p4 --out v6p4_full3000",
+      "infer": "conda run -n ros2py310 python infer.py --profile v6p4 --models v6p4_full3000 --runs 20 --out v6p4_full3000"
+    }
+  },
+  "key_hparams": {
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "episodes": 3000,
+    "runs_default": 5,
+    "eps_start": 1.0,
+    "eps_final": 0.05,
+    "eps_decay": 2000,
+    "per_beta0": 0.6,
+    "per_beta_steps": 900000,
+    "demo_lambda": 1.5,
+    "demo_margin": 0.8,
+    "forest_demo_pretrain_steps": 12000,
+    "obs_map_size": 16,
+    "learning_starts": 2000,
+    "forest_reward_k_t": 0.1,
+    "forest_reward_k_delta": 0.8,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.02,
+    "forest_topk": 10,
+    "no_terminate_on_stuck": true
+  },
+  "artifacts": {
+    "train_run_dir": "N/A",
+    "train_run_json": "N/A",
+    "infer_run_dir": "N/A",
+    "infer_run_json": "N/A",
+    "kpi_mean_csv": "N/A",
+    "kpi_raw_csv": "N/A"
+  }
+}
