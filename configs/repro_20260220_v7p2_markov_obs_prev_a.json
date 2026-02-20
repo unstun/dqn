@@ -1,0 +1,70 @@
+{
+  "_meta": {
+    "title": "repro_20260220_v7p2_markov_obs_prev_a",
+    "date": "2026-02-20",
+    "summary": "V7P2 reproducibility config: AMRBicycleEnv observation adds prev_a_n so acceleration smoothness reward uses fully observable state.",
+    "commands": [
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python train.py --profile v7p2 --episodes 40 --out v7p2_smoke --device cuda --progress",
+      "conda run -n ros2py310 python infer.py --profile v7p2 --models v7p2_smoke --runs 3 --out v7p2_smoke"
+    ],
+    "notes": [
+      "V7P2 keeps V7P1 reward coefficients and policy regime unchanged.",
+      "Behavior change is limited to observation schema: AMRBicycleEnv scalar part is now 11 (includes prev_a_n).",
+      "Old V7P1 checkpoints are not shape-compatible with V7P2 due obs_dim change."
+    ]
+  },
+  "train": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "v7p2_smoke",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "episodes": 40,
+    "max_steps": 1200,
+    "forest_reward_k_t": 0.1,
+    "forest_reward_k_delta": 0.8,
+    "forest_no_fallback": false,
+    "forest_topk": 10,
+    "forest_adm_horizon": 30,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.02,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "device": "cuda",
+    "cuda_device": 0,
+    "seed": 21,
+    "progress": true
+  },
+  "infer": {
+    "envs": [
+      "forest_a::short",
+      "forest_a::mid",
+      "forest_a::long"
+    ],
+    "models": "v7p2_smoke",
+    "out": "v7p2_smoke",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "runs": 3,
+    "forest_no_fallback": false,
+    "forest_topk": 10,
+    "forest_adm_horizon": 30,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.02,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "max_steps": 1200,
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 33,
+    "progress": true
+  }
+}
