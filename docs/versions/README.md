@@ -1,6 +1,6 @@
-# 版本留档索引（v1 → v6p2p5）
+# 版本留档索引（v1 → v6p3）
 
-- 归档入口：仓库根目录 `README.md` 的“版本总索引（v1 → v6p2p5）”。
+- 归档入口：仓库根目录 `README.md` 的“版本总索引（v1 → v6p3）”。
 - 本文件保留为 `docs/versions/` 内部快速导航，与根 README 保持同一口径。
 - 历史目录 `v3p1`~`v3p11` 保留原始记录，未纳入本轮重编号。
 - `v4`~`v8p3` 已于 2026-02-09 清理（误混入本仓库版本链）。
@@ -28,6 +28,7 @@
 | `v6p2p3` | `v6p2p3` | `docs/versions/v6p2p3/` | `configs/v6p2p3.json` | `runs/v6p2p3/train_20260219_142104/infer/20260219_145315` | `0.80` / `1.00` | `1.00` / `1.00` | 已运行（runs=5，待 full20） |
 | `v6p2p4` | `v6p2p4` | `docs/versions/v6p2p4/` | `configs/v6p2p4.json` | `runs/v6p2p4/train_20260219_153029/infer/20260219_161252` | `0.80` / `1.00` | `1.00` / `1.00` | 已运行（runs=5，含 DDPG/SAC 对比，待 full20） |
 | `v6p2p5` | `v6p2p5` | `docs/versions/v6p2p5/` | `configs/v6p2p5.json` | `runs/v6p2p5_quickcheck/20260219_025226` | `1.00` / `N/A` | `1.00` / `N/A` | 已完成代码隔离（含 quickcheck，待 smoke/full） |
+| `v6p3` | `v6p3` | `docs/versions/v6p3/` | `configs/v6p3.json` | `runs/v6p3_smoke120/train_20260219_041557/infer/20260219_043629` | `1.00` / `1.00` | `1.00` / `1.00` | 已运行（smoke:120ep,runs=3；mid 回退，待 full20） |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。

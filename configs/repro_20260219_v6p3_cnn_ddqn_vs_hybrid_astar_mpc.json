@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "title": "v6p3 cnn-ddqn vs Hybrid A*-MPC",
+    "date": "2026-02-19",
+    "summary": "Version setup for cnn-ddqn-only RL and Hybrid A*-MPC baseline comparison.",
+    "version": "v6p3"
+  },
+  "env": {
+    "os": "Ubuntu 24.04",
+    "conda_env": "ros2py310"
+  },
+  "commands": {
+    "self_check": [
+      "conda run -n ros2py310 python train.py --profile v6p3 --self-check",
+      "conda run -n ros2py310 python infer.py --profile v6p3 --self-check"
+    ],
+    "train": "conda run -n ros2py310 python train.py --profile v6p3",
+    "infer": "conda run -n ros2py310 python infer.py --profile v6p3"
+  },
+  "key_hparams": {
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "episodes": 300,
+    "runs": 5,
+    "forest_reward_k_t": 0.1,
+    "forest_reward_k_delta": 0.8,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.02,
+    "forest_topk": 10,
+    "no_terminate_on_stuck": true
+  },
+  "artifacts": {
+    "train_run_dir": "runs/v6p3_smoke120/train_20260219_041557",
+    "train_run_json": "runs/v6p3_smoke120/train_20260219_041557/configs/run.json",
+    "infer_run_dir": "runs/v6p3_smoke120/train_20260219_041557/infer/20260219_043629",
+    "infer_run_json": "runs/v6p3_smoke120/train_20260219_041557/infer/20260219_043629/configs/run.json",
+    "kpi_mean_csv": "runs/v6p3_smoke120/train_20260219_041557/infer/20260219_043629/table2_kpis_mean_raw.csv",
+    "kpi_raw_csv": "runs/v6p3_smoke120/train_20260219_041557/infer/20260219_043629/table2_kpis_raw.csv"
+  }
+}

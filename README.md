@@ -68,18 +68,18 @@ python infer.py --profile forest_a_all6_300_cuda
 ### Latest train/infer commands (keep updated)
 
 Last updated: 2026-02-19  
-Current recommended train profile: `v6p2p5`
+Current recommended train profile: `v6p3`
 
 ```bash
-conda run -n ros2py310 python train.py --profile v6p2p5
-conda run -n ros2py310 python infer.py --profile v6p2p5
+conda run -n ros2py310 python train.py --profile v6p3
+conda run -n ros2py310 python infer.py --profile v6p3
 ```
 
 Quick smoke (same settings, fewer episodes):
 
 ```bash
-conda run -n ros2py310 python train.py --profile v6p2p5 --episodes 40 --out v6p2p5_smoke
-conda run -n ros2py310 python infer.py --profile v6p2p5 --models v6p2p5_smoke --runs 3 --out v6p2p5_smoke
+conda run -n ros2py310 python train.py --profile v6p3 --episodes 40 --out v6p3_smoke
+conda run -n ros2py310 python infer.py --profile v6p3 --models v6p3_smoke --runs 3 --out v6p3_smoke
 ```
 
 Fixed mid (14-42m) infer commands (strict vs hybrid, runs=20):
@@ -122,7 +122,7 @@ conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_
 Planner hotkeys: `1`=hybrid A*, `2`=RRT*, `3`=grid A*, `4`=cnn-ddqn (requires `--rl-checkpoint <path>`).  
 Other: `R` reset, `SPACE` pause, `P` replan.
 
-## 版本总索引（v1 → v6p2p5）
+## 版本总索引（v1 → v6p3）
 
 > 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；`v4`~`v8p3` 已于 2026-02-09 清理（误混入本仓库版本链）。
 
@@ -132,7 +132,7 @@ Other: `R` reset, `SPACE` pause, `P` replan.
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v6p2p5）
+### 增量版本（v3p1 → v6p3）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -149,6 +149,7 @@ Other: `R` reset, `SPACE` pause, `P` replan.
 | `v6p2p3` | `docs/versions/v6p2p3/` | `configs/v6p2p3.json` | `runs/v6p2p3/train_20260219_142104/infer/20260219_145315` | `0.80 / 1.00` | `1.00 / 1.00` | 已运行（runs=5，待 full20） |
 | `v6p2p4` | `docs/versions/v6p2p4/` | `configs/v6p2p4.json` | `runs/v6p2p4/train_20260219_153029/infer/20260219_161252` | `0.80 / 1.00` | `1.00 / 1.00` | 已运行（runs=5，含 DDPG/SAC 对比，待 full20） |
 | `v6p2p5` | `docs/versions/v6p2p5/` | `configs/v6p2p5.json` | `runs/v6p2p5_quickcheck/20260219_025226` | `1.00 / N/A` | `1.00 / N/A` | 已完成代码隔离（含 quickcheck，待 smoke/full） |
+| `v6p3` | `docs/versions/v6p3/` | `configs/v6p3.json` | `runs/v6p3_smoke120/train_20260219_041557/infer/20260219_043629` | `1.00 / 1.00` | `1.00 / 1.00` | 已运行（smoke:120ep,runs=3；mid 回退，待 full20） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
