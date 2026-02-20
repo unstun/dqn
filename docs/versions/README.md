@@ -4,6 +4,7 @@
 - 本文件保留为 `docs/versions/` 内部快速导航，与根 README 保持同一口径。
 - 历史目录 `v3p1`~`v3p11` 保留原始记录，未纳入本轮重编号。
 - `v4`~`v8p3` 已于 2026-02-09 清理（误混入本仓库版本链）。
+- 当前主线对外口径（`v6p2p3` 及后续）统一为 `CNN-DDQN (shielded/hybrid inference)`；`strict-argmax` 仅用于诊断/消融，不作为主结论口径。
 
 | 版本 | 历史来源 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|---|
