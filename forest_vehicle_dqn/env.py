@@ -831,7 +831,7 @@ class AMRBicycleEnv(gym.Env):
         ).astype(np.float32, copy=False)
         self._obs_occ_flat = (2.0 * occ_ds.reshape(-1) - 1.0).astype(np.float32, copy=False)
 
-        obs_dim = 11 + int(self.obs_map_size) * int(self.obs_map_size)
+        obs_dim = 10 + int(self.obs_map_size) * int(self.obs_map_size)
         self.observation_space = gym.spaces.Box(
             low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32
         )
@@ -2211,9 +2211,6 @@ class AMRBicycleEnv(gym.Env):
         delta_lim = float(self.model.delta_max_rad)
         delta_n = 0.0 if abs(delta_lim) < 1e-9 else float(self._delta_rad) / float(delta_lim)
 
-        a_lim = float(self.model.a_max_m_s2)
-        prev_a_n = 0.0 if abs(a_lim) < 1e-9 else float(self._prev_a) / float(a_lim)
-
         alpha_n = float(self._goal_relative_angle_rad()) / math.pi
         od01 = min(self.od_cap_m, max(0.0, float(self._last_od_m))) / float(self.od_cap_m)
         od_n = 2.0 * float(np.clip(od01, 0.0, 1.0)) - 1.0
@@ -2227,12 +2224,11 @@ class AMRBicycleEnv(gym.Env):
         cos_psi = float(np.clip(cos_psi, -1.0, 1.0))
         v_n = float(np.clip(v_n, -1.0, 1.0))
         delta_n = float(np.clip(delta_n, -1.0, 1.0))
-        prev_a_n = float(np.clip(prev_a_n, -1.0, 1.0))
         alpha_n = float(np.clip(alpha_n, -1.0, 1.0))
         obs = np.concatenate(
             [
                 np.array(
-                    [ax_n, ay_n, gx_n, gy_n, sin_psi, cos_psi, v_n, delta_n, prev_a_n, alpha_n, od_n],
+                    [ax_n, ay_n, gx_n, gy_n, sin_psi, cos_psi, v_n, delta_n, alpha_n, od_n],
                     dtype=np.float32,
                 ),
                 self._obs_occ_flat,

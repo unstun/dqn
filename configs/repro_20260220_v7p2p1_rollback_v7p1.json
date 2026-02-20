@@ -1,0 +1,70 @@
+{
+  "_meta": {
+    "title": "repro_20260220_v7p2p1_rollback_v7p1",
+    "date": "2026-02-20",
+    "summary": "V7P2P1 failed-archive reproducibility config: keep failure evidence under docs/versions/v7p2p1 and roll mainline back to v7p1 for next iteration.",
+    "commands": [
+      "conda run -n ros2py310 python train.py --self-check",
+      "conda run -n ros2py310 python infer.py --self-check",
+      "conda run -n ros2py310 python train.py --profile v7p1 --episodes 150 --out v7p1_smoke150 --device cuda --progress",
+      "conda run -n ros2py310 python infer.py --profile v7p1 --models v7p1_smoke150 --runs 3 --out v7p1_smoke150"
+    ],
+    "notes": [
+      "Standard workflow: pre-version GitHub snapshot -> smoke150 (train) + runs=3 (infer) -> go/no-go.",
+      "If smoke has no clear gain, stop full evaluation, archive as failed version, and rollback to previous stable version.",
+      "Current rollback target after v7p2p1 is v7p1."
+    ]
+  },
+  "train": {
+    "envs": [
+      "forest_a"
+    ],
+    "out": "v7p1_smoke150",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "episodes": 150,
+    "max_steps": 1200,
+    "forest_reward_k_t": 0.1,
+    "forest_reward_k_delta": 0.8,
+    "forest_no_fallback": false,
+    "forest_topk": 10,
+    "forest_adm_horizon": 30,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.02,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "device": "cuda",
+    "cuda_device": 0,
+    "seed": 21,
+    "progress": true
+  },
+  "infer": {
+    "envs": [
+      "forest_a::short",
+      "forest_a::mid",
+      "forest_a::long"
+    ],
+    "models": "v7p1_smoke150",
+    "out": "v7p1_smoke150",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "runs": 3,
+    "forest_no_fallback": false,
+    "forest_topk": 10,
+    "forest_adm_horizon": 30,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.02,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "max_steps": 1200,
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 33,
+    "progress": true
+  }
+}

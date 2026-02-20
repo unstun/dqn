@@ -95,6 +95,18 @@
 - Before each remote run, sync **local repo -> remote repo** first (local is source of truth; exclude `runs/`).
 - After remote execution, sync result folders from remote `runs/` back to local `runs/` before analysis/archiving.
 
+12.2) **版本标准工作流（默认）/ Version standard workflow (default)**
+
+- 每次创建新版本（`vxpx`）前，必须先完成 GitHub 快照：`git status` clean、`git add/commit`、`git push` 成功。
+- 每个新版本默认先跑固定 smoke 门：
+  - 训练：`episodes=150`
+  - 推理：`runs=3`（short/mid/long）
+- 若 smoke 未显示明确收益（按当前目标：路径更短、计算时间更短、路径更平滑），则：
+  - 不进入 full 评测；
+  - 主线代码/默认命令回退到上一稳定版本（例如回退到 `v7p1`）；
+  - 当轮作为失败版本归档（四件套必须记录失败原因与证据路径）。
+- 下一轮在失败版本基础上递增命名继续（例如 `v7p2p1` 失败后进入 `v7p2p2`）。
+
 13) **最终研究门槛（硬约束）/ Final research gate (hard requirement)**
 
 - 最终结论必须在 `short/long` 双套件、各 `runs=20` 条件下汇报。

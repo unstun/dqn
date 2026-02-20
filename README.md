@@ -49,10 +49,11 @@ conda run -n ros2py310 python -m pip install -r requirements-optional.txt
 
 Old checkpoints/configs with the previous forest observation/flag schema are not backward compatible.
 
-## Breaking changes (2026-02-20)
+## Version note (2026-02-20)
 
-- Forest bicycle observation changed from `10 + N*N` to `11 + N*N` (added `prev_a_n` scalar for Markov consistency with acceleration-smoothness reward).
-- Checkpoints trained with `v7p1` and earlier are not shape-compatible with `v7p2` (`obs_dim` changed).
+- `v7p2/v7p2p1` attempted a Markov-observation fix (adding `prev_a_n`) but did not show stable gains and was archived as a failed branch.
+- Mainline has been rolled back to `v7p1` behavior (forest bicycle observation `10 + N*N`) for continued iteration.
+- Failure archive: `docs/versions/v7p2p1/`.
 
 ## Train / infer (recommended: config profiles)
 
@@ -73,11 +74,11 @@ python infer.py --profile forest_a_all6_300_cuda
 ### Latest train/infer commands (keep updated)
 
 Last updated: 2026-02-20  
-Current recommended train profile: `v7p2`
+Current recommended train profile: `v7p1`
 
 ```bash
-conda run -n ros2py310 python train.py --profile v7p2
-conda run -n ros2py310 python infer.py --profile v7p2
+conda run -n ros2py310 python train.py --profile v7p1
+conda run -n ros2py310 python infer.py --profile v7p1
 ```
 
 Note: training now saves process logs to `<run_dir>/train_flow.log` by default; disable via `--no-save-train-log`.
@@ -157,9 +158,9 @@ conda run -n ros2py310 python game.py --profile repro_20260212_interactive_game_
 Planner hotkeys: `1`=hybrid A*, `2`=RRT*, `3`=grid A*, `4`=cnn-ddqn (requires `--rl-checkpoint <path>`).  
 Other: `R` reset, `SPACE` pause, `P` replan.
 
-## 版本总索引（v1 → v7p2）
+## 版本总索引（v1 → v7p2p1）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理，当前主线编号延续至 `v7p2`。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理，当前主线编号延续至 `v7p2p1`。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -167,7 +168,7 @@ Other: `R` reset, `SPACE` pause, `P` replan.
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p2）
+### 增量版本（v3p1 → v7p2p1）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -183,35 +184,39 @@ Other: `R` reset, `SPACE` pause, `P` replan.
 | `v6p2p2` | `docs/versions/v6p2p2/` | `configs/v6p2p2.json` | `runs/repro_20260219_v6p2p2_reward_sweep_kt0p1_kd0p8_infer20/20260219_123433` | `0.75 / 0.55` | `0.95 / 1.00` | 未通过（待 full） |
 | `v6p2p3` | `docs/versions/v6p2p3/` | `configs/v6p2p3.json` | `runs/v6p2p3/train_20260219_142104/infer/20260219_145315` | `0.80 / 1.00` | `1.00 / 1.00` | 已运行（runs=5，待 full20） |
 | `v7p2` | `docs/versions/v7p2/` | `configs/v7p2.json` | `runs/v7p2_smoke/train_20260220_211732/infer/20260220_212137` | `1.00 / 1.00` | `1.00 / 1.00` | 已运行（smoke：episodes=40, runs=3） |
+| `v7p2p1` | `docs/versions/v7p2p1/` | `configs/repro_20260220_v7p2p1_rollback_v7p1.json` | `runs/v7p2_es150/train_20260220_222056/infer/20260220_223016` | `0.85 / 0.65` | `0.95 / 1.00` | 失败归档，已回退到 `v7p1` |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
 
-## Recommended iteration workflow (time-first)
+## Recommended iteration workflow (version-first)
 
-For daily DDQN/CNN tuning loops, use a two-stage flow to reduce turnaround time:
+For each new version candidate, use this default pipeline:
 
-1. Stage 0 (sanity):
-
+1. Pre-version snapshot (mandatory):
+- Ensure clean workspace: `git status`.
+- Snapshot and push before changes:
 ```bash
-conda run -n ros2py310 python train.py --self-check
-conda run -n ros2py310 python infer.py --self-check
+git add -A
+git commit -m "snapshot: pre-<version>"
+git push origin <branch>
 ```
 
-2. Stage 1 (smoke-first, short loop):
+2. Implement one small version delta only (single-purpose change).
 
+3. Smoke gate (fixed quick loop):
 ```bash
-conda run -n ros2py310 python train.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1
-conda run -n ros2py310 python infer.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke_midcover_v1
+conda run -n ros2py310 python train.py --profile <candidate> --episodes 150 --out <version>_smoke150 --device cuda
+conda run -n ros2py310 python infer.py --profile <candidate> --models <version>_smoke150 --runs 3 --out <version>_smoke150
 ```
 
-3. Stage 2 (full gate, only after smoke shows clear progress):
+4. Go/No-Go rule:
+- If smoke does not show clear gain, stop escalation and mark as failed version.
+- Roll back mainline to previous stable version (for example, `v7p1`).
 
-```bash
-conda run -n ros2py310 python infer.py --profile repro_20260211_forest_a_cnn_ddqn_v5_smoke --models runs/repro_20260211_v5_retrain_v3p11_smoke/train_20260211_080356/models --out repro_20260211_v5_full20 --runs 20
-```
-
-Default expectation: do not jump directly to long full evaluations unless smoke indicates meaningful improvement.
+5. Archive immediately:
+- Create `docs/versions/<version>/` four-doc bundle and log commands, run paths, KPIs, and failure reasons.
+- Prepare next iteration as `<version+1>` (example: `v7p2p2`).
 
 ## Final acceptance gate (short/long suites, runs=20)
 

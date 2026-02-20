@@ -43,7 +43,7 @@ def infer_flat_obs_cnn_layout(obs_dim: int) -> FlatObsCnnLayout:
 
     Supported layouts:
     - AMRGridEnv:   obs = [5 scalars] + [1 * (N*N) map]
-    - AMRBicycleEnv:obs = [11 scalars] + [1 * (N*N) map]  (occ)
+    - AMRBicycleEnv:obs = [10 scalars] + [1 * (N*N) map]  (occ)
     """
 
     d = int(obs_dim)
@@ -51,7 +51,7 @@ def infer_flat_obs_cnn_layout(obs_dim: int) -> FlatObsCnnLayout:
         raise ValueError("obs_dim must be > 0")
 
     candidates: list[FlatObsCnnLayout] = []
-    for scalar_dim, channels in ((5, 1), (11, 1)):
+    for scalar_dim, channels in ((5, 1), (10, 1)):
         rem = d - int(scalar_dim)
         if rem <= 0:
             continue
@@ -64,7 +64,7 @@ def infer_flat_obs_cnn_layout(obs_dim: int) -> FlatObsCnnLayout:
 
     if not candidates:
         raise ValueError(
-            f"Cannot infer CNN layout from obs_dim={d}. Expected 5+N^2 (grid) or 11+N^2 (bicycle)."
+            f"Cannot infer CNN layout from obs_dim={d}. Expected 5+N^2 (grid) or 10+N^2 (bicycle)."
         )
     if len(candidates) > 1:
         raise ValueError(f"Ambiguous CNN layout for obs_dim={d}: {candidates}")
