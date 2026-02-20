@@ -1,11 +1,11 @@
 {
   "_meta": {
-    "title": "v6p2p3 train+infer (k_t=0.10, k_delta=0.8, unified policy rules)",
+    "title": "v7p1 train+infer (k_t=0.10, k_delta=0.8, unified policy rules)",
     "date": "2026-02-19",
     "summary": "Based on v6p2p2, set forest_reward_k_t=0.10 and forest_reward_k_delta=0.8. Unify train/infer policy rules to hybrid/shielded regime.",
     "commands": [
-      "conda run -n ros2py310 python train.py --profile v6p2p3",
-      "conda run -n ros2py310 python infer.py --profile v6p2p3"
+      "conda run -n ros2py310 python train.py --profile v7p1",
+      "conda run -n ros2py310 python infer.py --profile v7p1"
     ],
     "notes": [
       "Train and infer both use hybrid/shielded policy regime (`forest_no_fallback=false`).",
@@ -17,7 +17,7 @@
     "envs": [
       "forest_a"
     ],
-    "out": "v6p2p3",
+    "out": "v7p1",
     "rl_algos": [
       "cnn-ddqn"
     ],
@@ -121,8 +121,8 @@
       "forest_a::mid",
       "forest_a::long"
     ],
-    "models": "v6p2p3",
-    "out": "v6p2p3",
+    "models": "v7p1",
+    "out": "v7p1",
     "rl_algos": [
       "cnn-ddqn"
     ],

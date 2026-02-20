@@ -8,6 +8,7 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
+from typing import TextIO
 
 from forest_vehicle_dqn.runtime import configure_runtime, select_device, torch_runtime_info
 from forest_vehicle_dqn.runs import create_run_dir, resolve_experiment_dir
@@ -54,7 +55,7 @@ def format_elapsed_s(seconds: float) -> str:
     return f"{int(hours)}h{int(rem_minutes):02d}m{sec:04.1f}s"
 
 
-def make_progress_writer(progress: bool) -> Callable[[str], None]:
+def make_progress_writer(progress: bool, *, flow_log_fp: TextIO | None = None) -> Callable[[str], None]:
     tqdm_cls = None
     if progress:
         try:
@@ -65,6 +66,12 @@ def make_progress_writer(progress: bool) -> Callable[[str], None]:
             tqdm_cls = _tqdm
 
     def progress_write(msg: str) -> None:
+        if flow_log_fp is not None:
+            try:
+                flow_log_fp.write(f"{str(msg)}\n")
+                flow_log_fp.flush()
+            except Exception:
+                pass
         if not bool(progress):
             return
         if tqdm_cls is not None:
@@ -3196,6 +3203,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show a training progress bar (default: on when running in a TTY).",
     )
     ap.add_argument(
+        "--save-train-log",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Write training process logs to <run_dir>/train_flow.log (default: True).",
+    )
+    ap.add_argument(
         "--live-view",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -3316,7 +3329,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     progress = bool(sys.stderr.isatty()) if args.progress is None else bool(args.progress)
-    progress_write = make_progress_writer(progress)
+    save_train_log = bool(getattr(args, "save_train_log", True))
+    experiment_dir = resolve_experiment_dir(args.out, runs_root=args.runs_root)
+    run_paths = create_run_dir(experiment_dir, timestamp_runs=args.timestamp_runs, prefix="train")
+    out_dir = run_paths.run_dir
+    flow_log_path = out_dir / "train_flow.log"
+    flow_log_fp: TextIO | None = None
+    if save_train_log:
+        flow_log_fp = flow_log_path.open("w", encoding="utf-8")
+    progress_write = make_progress_writer(progress, flow_log_fp=flow_log_fp)
 
     def log(msg: str) -> None:
         progress_write(str(msg))
@@ -3326,6 +3347,8 @@ def main(argv: list[str] | None = None) -> int:
         f"[train] Run start: envs={len(args.envs)}, algos={len(args.rl_algos)}, "
         f"episodes={int(args.episodes)}, device={device}, demo_mode={demo_mode}, progress={bool(progress)}"
     )
+    if flow_log_fp is not None:
+        log(f"[train] Flow log path: {flow_log_path}")
 
     astar_curve_cfg = AStarCurveOptConfig(
         enable=bool(args.forest_astar_opt_enable),
@@ -3348,10 +3371,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     astar_timeout_s = max(1e-3, float(args.forest_astar_timeout))
     astar_max_expanded = max(1, int(args.forest_astar_max_expanded))
-
-    experiment_dir = resolve_experiment_dir(args.out, runs_root=args.runs_root)
-    run_paths = create_run_dir(experiment_dir, timestamp_runs=args.timestamp_runs, prefix="train")
-    out_dir = run_paths.run_dir
 
     agent_cfg = AgentConfig()
     per_beta_steps = int(getattr(args, "per_beta_steps", 0))
@@ -3789,7 +3808,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Wrote: {out_dir / 'training_eval_metrics.png'}")
     print(f"Wrote models under: {out_dir / 'models'}")
     print(f"Run dir: {out_dir}")
+    if flow_log_fp is not None:
+        print(f"Wrote: {flow_log_path}")
     log(f"[train] Run done: total_elapsed={format_elapsed_s(time.perf_counter() - t_main_start)}")
+    if flow_log_fp is not None:
+        flow_log_fp.close()
     return 0
 
 

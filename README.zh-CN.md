@@ -66,12 +66,42 @@ python infer.py --profile forest_a_all6_300_cuda
 
 ### 最新训练/推理命令（请持续维护）
 
-最后更新：2026-02-19  
+最后更新：2026-02-20  
 当前推荐训练 profile：`v6p2p3`
 
 ```bash
 conda run -n ros2py310 python train.py --profile v6p2p3
 conda run -n ros2py310 python infer.py --profile v6p2p3
+```
+
+说明：训练默认会将流程日志保存到 `<run_dir>/train_flow.log`；如需关闭可加 `--no-save-train-log`。
+
+主线对外口径（文档/论文）：`CNN-DDQN（shielded/hybrid inference）`。
+- 对 `v6p2p3/v7p1` 及后续主线版本，统一按 `shielded/hybrid` 命名与汇报。
+- 不将这些主线结果表述为 `strict-argmax`。
+
+### 远端优先执行（`ubuntu-zt`）
+
+默认策略：训练/推理（含 smoke/full）先走 `ssh ubuntu-zt`。  
+只有远端不可用时，才回落本地执行。
+
+```bash
+# 1) 本地仓库 -> 远端仓库同步（本地为准）
+rsync -avz --delete \
+  --exclude '.git/' \
+  --exclude 'runs/' \
+  --exclude '__pycache__/' \
+  --exclude '*.pyc' \
+  /home/sun/phdproject/dqn/dqn/ \
+  ubuntu-zt:/home/sun/phdproject/dqn/dqn/
+
+# 2) 远端执行（示例：smoke 训练）
+ssh ubuntu-zt "cd /home/sun/phdproject/dqn/dqn && /home/sun/miniconda3/bin/conda run -n ros2py310 python train.py --profile v6p2p3 --episodes 40 --out v6p2p3_smoke --device cuda --progress"
+
+# 3) 远端结果 -> 本地 runs/ 回传
+rsync -avz \
+  ubuntu-zt:/home/sun/phdproject/dqn/dqn/runs/v6p2p3_smoke/ \
+  /home/sun/phdproject/dqn/dqn/runs/v6p2p3_smoke/
 ```
 
 快速 smoke（同配置，降低训练轮数用于先验筛查）：
@@ -81,7 +111,7 @@ conda run -n ros2py310 python train.py --profile v6p2p3 --episodes 40 --out v6p2
 conda run -n ros2py310 python infer.py --profile v6p2p3 --models v6p2p3_smoke --runs 3 --out v6p2p3_smoke
 ```
 
-固定 mid（14–42m）推理命令（strict vs hybrid，runs=20）：
+固定 mid（14–42m）推理命令（strict vs hybrid，runs=20，诊断消融用途）：
 
 ```bash
 conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_strict_mid_pairs20_v1
@@ -188,11 +218,11 @@ conda run -n ros2py310 python infer.py --profile repro_20260211_forest_a_cnn_ddq
 
 任一套件未满足任一条件，即视为未通过最终门槛。
 
-推理口径命名说明：本仓库区分 `strict-argmax`（旧称 strict no-fallback）与 `shielded/masked/hybrid`。`strict-argmax` 指推理期纯 `argmax(Q)`（不做 masking/top-k/stop-override/replacement/启发式接管/规划器接管）；允许计算 mask 仅用于统计/诊断。若推理期启用任何干预，请按 `shielded/masked/hybrid` 命名（不得宣称 `strict-argmax`/strict no-fallback）。
+推理口径命名说明：本仓库区分 `strict-argmax`（旧称 strict no-fallback）与 `shielded/masked/hybrid`。`strict-argmax` 指推理期纯 `argmax(Q)`（不做 masking/top-k/stop-override/replacement/启发式接管/规划器接管）；允许计算 mask 仅用于统计/诊断。若推理期启用任何干预，请按 `shielded/masked/hybrid` 命名（不得宣称 `strict-argmax`/strict no-fallback）。当前主线对外口径为 `shielded/hybrid`。
 
-### strict-argmax vs hybrid（固定 pairs 复评测模板）
+### strict-argmax vs hybrid（固定 pairs 复评测模板，仅诊断用途）
 
-为避免 random pair 漂移，建议在**固定随机样本**上同时汇报两套推理口径：
+为避免 random pair 漂移，建议在**固定随机样本**上同时汇报两套推理口径。本节用于消融/诊断，不作为当前主线版本的主声明模板。
 
 - `strict-argmax`：使用 `--forest-no-fallback`（推理纯 `argmax(Q)`）
 - `hybrid/shielded`：使用 `--no-forest-no-fallback`（允许 stop-override + replacement；不启用启发式 fallback）

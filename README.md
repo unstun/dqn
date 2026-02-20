@@ -67,12 +67,42 @@ python infer.py --profile forest_a_all6_300_cuda
 
 ### Latest train/infer commands (keep updated)
 
-Last updated: 2026-02-19  
+Last updated: 2026-02-20  
 Current recommended train profile: `v6p2p3`
 
 ```bash
 conda run -n ros2py310 python train.py --profile v6p2p3
 conda run -n ros2py310 python infer.py --profile v6p2p3
+```
+
+Note: training now saves process logs to `<run_dir>/train_flow.log` by default; disable via `--no-save-train-log`.
+
+Primary claim regime (docs/paper, current mainline): `CNN-DDQN (shielded/hybrid inference)`.
+- For v6p2p3/v7p1 and onward mainline reporting, use `shielded/hybrid` naming.
+- Do not present these mainline results as `strict-argmax`.
+
+### Remote-first execution (`ubuntu-zt`)
+
+Default policy: run train/infer on `ssh ubuntu-zt` first (including smoke/full).  
+Fallback to local only when remote is unavailable.
+
+```bash
+# 1) Sync local repo -> remote repo (local is source of truth)
+rsync -avz --delete \
+  --exclude '.git/' \
+  --exclude 'runs/' \
+  --exclude '__pycache__/' \
+  --exclude '*.pyc' \
+  /home/sun/phdproject/dqn/dqn/ \
+  ubuntu-zt:/home/sun/phdproject/dqn/dqn/
+
+# 2) Run on remote (example: smoke train)
+ssh ubuntu-zt "cd /home/sun/phdproject/dqn/dqn && /home/sun/miniconda3/bin/conda run -n ros2py310 python train.py --profile v6p2p3 --episodes 40 --out v6p2p3_smoke --device cuda --progress"
+
+# 3) Sync remote results -> local runs/
+rsync -avz \
+  ubuntu-zt:/home/sun/phdproject/dqn/dqn/runs/v6p2p3_smoke/ \
+  /home/sun/phdproject/dqn/dqn/runs/v6p2p3_smoke/
 ```
 
 Quick smoke (same settings, fewer episodes):
@@ -82,7 +112,7 @@ conda run -n ros2py310 python train.py --profile v6p2p3 --episodes 40 --out v6p2
 conda run -n ros2py310 python infer.py --profile v6p2p3 --models v6p2p3_smoke --runs 3 --out v6p2p3_smoke
 ```
 
-Fixed mid (14-42m) infer commands (strict vs hybrid, runs=20):
+Fixed mid (14-42m) infer commands (strict vs hybrid, runs=20, diagnostic ablation):
 
 ```bash
 conda run -n ros2py310 python infer.py --profile repro_20260211_v5_reval_v3p11_strict_mid_pairs20_v1
@@ -189,11 +219,11 @@ Use `table2_kpis_mean_raw.csv` and compare `CNN-DDQN` against `Hybrid A*-MPC` wi
 
 If any suite fails any condition above, the final gate is considered failed.
 
-Inference regime naming note: this repo distinguishes `strict-argmax` (legacy label: strict no-fallback) vs `shielded/masked/hybrid`. `strict-argmax` means pure `argmax(Q)` inference (no masking/top-k/stop-override/replacement/heuristic takeover/planner takeover); masks may be computed for logging only. If any inference-time intervention is enabled, label it `shielded/masked/hybrid` (not `strict-argmax`).
+Inference regime naming note: this repo distinguishes `strict-argmax` (legacy label: strict no-fallback) vs `shielded/masked/hybrid`. `strict-argmax` means pure `argmax(Q)` inference (no masking/top-k/stop-override/replacement/heuristic takeover/planner takeover); masks may be computed for logging only. If any inference-time intervention is enabled, label it `shielded/masked/hybrid` (not `strict-argmax`). Current mainline claim/reporting regime is `shielded/hybrid`.
 
-### Strict-argmax vs hybrid re-eval (fixed pairs)
+### Strict-argmax vs hybrid re-eval (fixed pairs, diagnostic only)
 
-To compare checkpoints fairly without random-pair drift, evaluate on **fixed random pairs** (short/long suites) and report two regimes:
+To compare checkpoints fairly without random-pair drift, evaluate on **fixed random pairs** (short/long suites) and report two regimes. This section is for ablation/diagnostics; it is not the primary claim template for current mainline versions.
 
 - `strict-argmax`: pass `--forest-no-fallback` (pure `argmax(Q)`).
 - `hybrid/shielded`: pass `--no-forest-no-fallback` (allows stop-override + replacement only; no heuristic fallback).

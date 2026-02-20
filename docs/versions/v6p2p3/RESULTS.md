@@ -11,6 +11,7 @@
 ## 一、本轮执行结论
 - 已完成一次严格 300 轮训练（第二次训练，`episodes=300/300`）。
 - 已完成 `short/mid/long` 三套件各 `runs=5` 推理。
+- 本页结果口径：`CNN-DDQN (shielded/hybrid inference)`（非 `strict-argmax`）。
 - 本轮属于非最终门槛评测（最终门槛要求 short/long 各 `runs=20`）。
 
 ## 二、指标总表（runs=5）

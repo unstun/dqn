@@ -3,6 +3,7 @@
 - 版本类型：**Patch（p+1）**
 - 上一版本：`v6p2p2`
 - 本版口径：`shielded/hybrid`（训练与推理统一）
+- 对外表述（文档/论文）：`CNN-DDQN (shielded/hybrid inference)`，不宣称 `strict-argmax`
 - 状态：**已运行（训练 300 轮 + short/mid/long 各 5 轮推理）**
 
 ## 本版目标

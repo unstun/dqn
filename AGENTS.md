@@ -86,6 +86,15 @@
 - 推荐 smoke 命令使用 `conda run -n ros2py310 ...`，并限制在可快速回路内完成。
 - Use a two-stage loop by default: `self-check -> smoke -> full runs=20`; do not jump to long full evaluations unless smoke indicates clear progress.
 
+12.1) **远端优先执行（ubuntu-zt）/ Remote-first execution (ubuntu-zt)**
+
+- 训练/推理（含 `self-check`、`smoke`、`full`）默认先在 `ssh ubuntu-zt` 上执行；仅当远端不可用（如 SSH 失败、远端环境异常、远端资源不足）时，才回落本地执行以避免本机卡顿。
+- 每次远端运行前，必须先执行“本地仓库 -> 远端仓库”同步；此处同步口径固定为本地覆盖远端（不包含 `runs/`）。
+- 远端运行完成后，必须将远端 `runs/` 对应结果目录回传到本地 `runs/`，再进行后续分析与归档。
+- Train/infer jobs (including `self-check`, `smoke`, `full`) should run on `ssh ubuntu-zt` by default; fall back to local only when remote execution is unavailable (SSH/env/resource issues).
+- Before each remote run, sync **local repo -> remote repo** first (local is source of truth; exclude `runs/`).
+- After remote execution, sync result folders from remote `runs/` back to local `runs/` before analysis/archiving.
+
 13) **最终研究门槛（硬约束）/ Final research gate (hard requirement)**
 
 - 最终结论必须在 `short/long` 双套件、各 `runs=20` 条件下汇报。
