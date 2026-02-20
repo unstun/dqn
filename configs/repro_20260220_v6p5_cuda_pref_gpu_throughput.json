@@ -1,0 +1,51 @@
+{
+  "_meta": {
+    "title": "v6p5 cuda-priority throughput profile",
+    "date": "2026-02-20",
+    "summary": "Use v6p5_cuda_pref for higher CUDA-side workload while keeping CNN-DDQN+DQfD method family.",
+    "version": "v6p5"
+  },
+  "env": {
+    "os": "Ubuntu 24.04",
+    "conda_env": "ros2py310"
+  },
+  "commands": {
+    "self_check": [
+      "conda run -n ros2py310 python train.py --profile v6p5_cuda_pref --self-check",
+      "conda run -n ros2py310 python infer.py --profile v6p5_cuda_pref --self-check"
+    ],
+    "smoke": {
+      "train": "conda run -n ros2py310 python train.py --profile v6p5_cuda_pref --device cuda --episodes 300 --out v6p5_cuda_pref_smoke300",
+      "infer": "conda run -n ros2py310 python infer.py --profile v6p5_cuda_pref --device cuda --models v6p5_cuda_pref_smoke300 --runs 3 --out v6p5_cuda_pref_smoke300"
+    },
+    "full": {
+      "train": "conda run -n ros2py310 python train.py --profile v6p5_cuda_pref --device cuda --out v6p5_cuda_pref_full3000",
+      "infer": "conda run -n ros2py310 python infer.py --profile v6p5_cuda_pref --device cuda --models v6p5_cuda_pref_full3000 --runs 20 --out v6p5_cuda_pref_full3000"
+    }
+  },
+  "key_hparams": {
+    "base_profile": "v6p5",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "demo_mode": "dqfd",
+    "device": "cuda",
+    "batch_size": 256,
+    "train_freq": 1,
+    "train_eval_every": 0,
+    "obs_map_mode": "local",
+    "obs_map_size": 64,
+    "obs_local_range_m": 18.0,
+    "eps_decay": 0,
+    "eps_decay_ratio": 0.67,
+    "note": "GPU throughput oriented; report separately from baseline v6p5 metrics"
+  },
+  "artifacts": {
+    "train_run_dir": "N/A",
+    "train_run_json": "N/A",
+    "infer_run_dir": "N/A",
+    "infer_run_json": "N/A",
+    "kpi_mean_csv": "N/A",
+    "kpi_raw_csv": "N/A"
+  }
+}

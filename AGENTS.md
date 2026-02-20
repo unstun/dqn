@@ -160,6 +160,9 @@
 - OS: Ubuntu 24.04
 - Conda env: `ros2py310`
 - 命令风格 / Command style: 优先 / prefer `conda run -n ros2py310 ...`
+- CUDA 使用约定 / CUDA preference:
+  - 训练与推理默认优先使用 `--device cuda`（当 CUDA 可用时）；仅在 CUDA 不可用、显存不足或复现实验明确要求 CPU 时使用 `--device cpu`。
+  - Training/inference should prefer `--device cuda` by default when CUDA is available; use `--device cpu` only when CUDA is unavailable, out-of-memory, or explicitly required for reproducibility.
 - 安装/快速开始/成功判定：优先参考 `../AGENTS.md`（避免重复维护）。
   Install/quickstart/success definition: refer to `../AGENTS.md`.
 

@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "title": "v6p5 cnn backbone with batch normalization",
+    "date": "2026-02-20",
+    "summary": "Keep v6p5 local high-res observation and add BatchNorm2d in CNNQNetwork conv trunk for training stability.",
+    "version": "v6p5"
+  },
+  "env": {
+    "os": "Ubuntu 24.04",
+    "conda_env": "ros2py310"
+  },
+  "commands": {
+    "self_check": [
+      "conda run -n ros2py310 python train.py --profile v6p5 --self-check",
+      "conda run -n ros2py310 python infer.py --profile v6p5 --self-check"
+    ],
+    "smoke": {
+      "train": "conda run -n ros2py310 python train.py --profile v6p5 --episodes 300 --out v6p5_bn_smoke300",
+      "infer": "conda run -n ros2py310 python infer.py --profile v6p5 --models v6p5_bn_smoke300 --runs 3 --out v6p5_bn_smoke300"
+    },
+    "full": {
+      "train": "conda run -n ros2py310 python train.py --profile v6p5 --out v6p5_bn_full3000",
+      "infer": "conda run -n ros2py310 python infer.py --profile v6p5 --models v6p5_bn_full3000 --runs 20 --out v6p5_bn_full3000"
+    }
+  },
+  "key_hparams": {
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "episodes": 3000,
+    "eps_decay": 0,
+    "eps_decay_ratio": 0.67,
+    "obs_map_mode": "local",
+    "obs_map_size": 64,
+    "obs_local_range_m": 18.0,
+    "cnn_backbone_norm": "batchnorm2d",
+    "demo_lambda": 1.5,
+    "demo_margin": 0.8,
+    "forest_demo_pretrain_steps": 12000,
+    "learning_starts": 2000
+  },
+  "artifacts": {
+    "train_run_dir": "N/A",
+    "train_run_json": "N/A",
+    "infer_run_dir": "N/A",
+    "infer_run_json": "N/A",
+    "kpi_mean_csv": "N/A",
+    "kpi_raw_csv": "N/A"
+  }
+}

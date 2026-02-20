@@ -142,10 +142,17 @@ def emit_train_config_sanity_warnings(
     has_forest = any(e in FOREST_ENV_ORDER for e in envs)
     if has_forest:
         obs_map_size = int(getattr(args, "obs_map_size", 12))
-        if obs_map_size <= 12:
+        obs_map_mode = str(getattr(args, "obs_map_mode", "global")).lower().strip()
+        obs_local_range_m = float(getattr(args, "obs_local_range_m", 0.0))
+        if obs_map_mode == "global" and obs_map_size <= 12:
             log(
                 f"[train][warn] obs_map_size={int(obs_map_size)} may be coarse for forest maps; "
                 "consider larger map observations if collision detail is insufficient."
+            )
+        if obs_map_mode == "local" and not (obs_local_range_m > 0.0):
+            log(
+                f"[train][warn] obs_map_mode=local but obs_local_range_m={obs_local_range_m:.4g}; "
+                "local mode requires a positive crop range."
             )
 
 
@@ -3104,6 +3111,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Downsampled global-map observation size (applies to both grid and forest envs).",
     )
     ap.add_argument(
+        "--obs-map-mode",
+        type=str,
+        choices=("global", "local"),
+        default="global",
+        help=(
+            "Forest-only observation mode: global (downsample full map) or local "
+            "(crop around the robot, then downsample to --obs-map-size)."
+        ),
+    )
+    ap.add_argument(
+        "--obs-local-range-m",
+        type=float,
+        default=0.0,
+        help="Forest-only: half-width range (meters) of the local observation crop when --obs-map-mode=local.",
+    )
+    ap.add_argument(
         "--goal-tolerance-m",
         type=float,
         default=1.0,
@@ -3946,6 +3969,8 @@ def main(argv: list[str] | None = None) -> int:
                 sensor_range_m=float(args.sensor_range),
                 n_sectors=args.n_sectors,
                 obs_map_size=int(args.obs_map_size),
+                obs_map_mode=str(getattr(args, "obs_map_mode", "global")),
+                obs_local_range_m=float(getattr(args, "obs_local_range_m", 0.0)),
                 goal_tolerance_m=float(args.goal_tolerance_m),
                 goal_angle_tolerance_deg=float(args.goal_angle_tolerance_deg),
                 goal_stop_speed_m_s=float(args.goal_stop_speed_m_s),

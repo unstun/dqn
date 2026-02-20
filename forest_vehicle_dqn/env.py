@@ -589,6 +589,8 @@ class AMRBicycleEnv(gym.Env):
         sensor_range_m: float = 6.0,
         n_sectors: int = 36,
         obs_map_size: int = 12,
+        obs_map_mode: str = "global",
+        obs_local_range_m: float = 0.0,
         od_cap_m: float = 2.0,
         safe_distance_m: float = 0.20,
         safe_speed_distance_m: float = 0.20,
@@ -666,6 +668,13 @@ class AMRBicycleEnv(gym.Env):
         self.obs_map_size = int(obs_map_size)
         if self.obs_map_size < 4:
             raise ValueError("obs_map_size must be >= 4")
+        obs_mode = str(obs_map_mode).lower().strip()
+        if obs_mode not in {"global", "local"}:
+            raise ValueError("obs_map_mode must be one of: global, local")
+        self.obs_map_mode = str(obs_mode)
+        self.obs_local_range_m = float(obs_local_range_m)
+        if self.obs_map_mode == "local" and not (self.obs_local_range_m > 0.0):
+            raise ValueError("obs_local_range_m must be > 0 when obs_map_mode=local")
         self.od_cap_m = float(od_cap_m)
         if not (self.od_cap_m > 0):
             raise ValueError("od_cap_m must be > 0")
@@ -823,13 +832,28 @@ class AMRBicycleEnv(gym.Env):
         )
         self.action_space = gym.spaces.Discrete(int(self.action_table.shape[0]))
 
-        # Global-planning observation: agent/goal pose + downsampled (static) maps.
+        # Base occupancy map (global, static) used directly in global mode, and as the source
+        # of local window crops in local mode.
         occ_ds = cv2.resize(
             self._grid.astype(np.float32, copy=False),
             dsize=(int(self.obs_map_size), int(self.obs_map_size)),
             interpolation=cv2.INTER_NEAREST,
         ).astype(np.float32, copy=False)
-        self._obs_occ_flat = (2.0 * occ_ds.reshape(-1) - 1.0).astype(np.float32, copy=False)
+        self._obs_occ_flat_global = (2.0 * occ_ds.reshape(-1) - 1.0).astype(np.float32, copy=False)
+        self._obs_local_span_cells = 0
+        self._obs_local_pad = 0
+        self._obs_local_grid_pad: np.ndarray | None = None
+        if self.obs_map_mode == "local":
+            span_raw = max(4, int(round((2.0 * float(self.obs_local_range_m)) / float(self.cell_size_m))))
+            span_cap = max(int(self._width), int(self._height))
+            self._obs_local_span_cells = int(min(int(span_raw), int(span_cap)))
+            self._obs_local_pad = int(self._obs_local_span_cells)
+            self._obs_local_grid_pad = np.pad(
+                self._grid.astype(np.uint8, copy=False),
+                pad_width=((int(self._obs_local_pad), int(self._obs_local_pad)), (int(self._obs_local_pad), int(self._obs_local_pad))),
+                mode="constant",
+                constant_values=1,
+            )
 
         obs_dim = 10 + int(self.obs_map_size) * int(self.obs_map_size)
         self.observation_space = gym.spaces.Box(
@@ -2243,6 +2267,40 @@ class AMRBicycleEnv(gym.Env):
             out = (~coll) & (min_od >= float(min_od_thr))
         return out.astype(np.bool_, copy=False)
 
+    def _observe_occ_flat(self) -> np.ndarray:
+        if self.obs_map_mode != "local":
+            return self._obs_occ_flat_global
+
+        if self._obs_local_grid_pad is None:
+            return self._obs_occ_flat_global
+
+        span = int(max(4, int(self._obs_local_span_cells)))
+        half = 0.5 * float(span)
+        cx = float(self._x_m) / float(self.cell_size_m)
+        cy = float(self._y_m) / float(self.cell_size_m)
+        x0 = int(math.floor(float(cx) - float(half)))
+        y0 = int(math.floor(float(cy) - float(half)))
+        px0 = int(x0 + int(self._obs_local_pad))
+        py0 = int(y0 + int(self._obs_local_pad))
+        patch = self._obs_local_grid_pad[py0:py0 + span, px0:px0 + span]
+        if patch.shape[0] != span or patch.shape[1] != span:
+            pad_y = max(0, int(span - int(patch.shape[0])))
+            pad_x = max(0, int(span - int(patch.shape[1])))
+            patch = np.pad(
+                patch.astype(np.uint8, copy=False),
+                pad_width=((0, int(pad_y)), (0, int(pad_x))),
+                mode="constant",
+                constant_values=1,
+            )
+            patch = patch[:span, :span]
+
+        occ_ds = cv2.resize(
+            patch.astype(np.float32, copy=False),
+            dsize=(int(self.obs_map_size), int(self.obs_map_size)),
+            interpolation=cv2.INTER_NEAREST,
+        ).astype(np.float32, copy=False)
+        return (2.0 * occ_ds.reshape(-1) - 1.0).astype(np.float32, copy=False)
+
     def _observe(self) -> np.ndarray:
         # Normalized (x,y) + goal (x,y) in [-1,1].
         max_x = max(1e-6, float(self._width - 1) * self.cell_size_m)
@@ -2279,7 +2337,7 @@ class AMRBicycleEnv(gym.Env):
                     [ax_n, ay_n, gx_n, gy_n, sin_psi, cos_psi, v_n, delta_n, alpha_n, od_n],
                     dtype=np.float32,
                 ),
-                self._obs_occ_flat,
+                self._observe_occ_flat(),
             ]
         )
         return obs.astype(np.float32, copy=False)
