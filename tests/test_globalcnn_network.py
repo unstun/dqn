@@ -14,7 +14,7 @@ def test_cnnqnetwork_backbones_output_shape() -> None:
     n_actions = 225
     layout = infer_flat_obs_cnn_layout(obs_dim)
 
-    for backbone in ("legacy", "globalcnn"):
+    for backbone in ("legacy", "globalcnn", "globalcnn_fusion"):
         net = CNNQNetwork(
             obs_dim,
             n_actions,
@@ -35,30 +35,31 @@ def test_cnnqnetwork_backbones_output_shape() -> None:
 def test_dqn_agent_globalcnn_save_load_roundtrip(tmp_path) -> None:
     obs_dim = 10 + 12 * 12
     n_actions = 225
-    cfg = replace(
-        AgentConfig(),
-        hidden_dim=64,
-        hidden_layers=2,
-        cnn_backbone="globalcnn",
-        globalcnn_width=16,
-        globalcnn_dropout=0.1,
-    )
+    for backbone in ("globalcnn", "globalcnn_fusion"):
+        cfg = replace(
+            AgentConfig(),
+            hidden_dim=64,
+            hidden_layers=2,
+            cnn_backbone=backbone,
+            globalcnn_width=16,
+            globalcnn_dropout=0.1,
+        )
 
-    agent = DQNFamilyAgent("cnn-ddqn", obs_dim, n_actions, config=cfg, seed=0, device="cpu")
-    obs = np.random.randn(obs_dim).astype(np.float32)
-    action = agent.act(obs, episode=0, explore=False)
-    assert 0 <= int(action) < n_actions
+        agent = DQNFamilyAgent("cnn-ddqn", obs_dim, n_actions, config=cfg, seed=0, device="cpu")
+        obs = np.random.randn(obs_dim).astype(np.float32)
+        action = agent.act(obs, episode=0, explore=False)
+        assert 0 <= int(action) < n_actions
 
-    ckpt = tmp_path / "cnn_ddqn_globalcnn.pt"
-    agent.save(ckpt)
+        ckpt = tmp_path / f"cnn_ddqn_{backbone}.pt"
+        agent.save(ckpt)
 
-    loaded = DQNFamilyAgent("cnn-ddqn", obs_dim, n_actions, config=AgentConfig(), seed=1, device="cpu")
-    loaded.load(ckpt)
+        loaded = DQNFamilyAgent("cnn-ddqn", obs_dim, n_actions, config=AgentConfig(), seed=1, device="cpu")
+        loaded.load(ckpt)
 
-    assert loaded.arch == "cnn"
-    assert str(loaded._net_kwargs.get("cnn_backbone")) == "globalcnn"
-    q = loaded.q(torch.from_numpy(obs).unsqueeze(0))
-    assert tuple(q.shape) == (1, n_actions)
+        assert loaded.arch == "cnn"
+        assert str(loaded._net_kwargs.get("cnn_backbone")) == backbone
+        q = loaded.q(torch.from_numpy(obs).unsqueeze(0))
+        assert tuple(q.shape) == (1, n_actions)
 
 
 def test_legacy_checkpoint_without_globalcnn_keys_still_loads(tmp_path) -> None:
@@ -82,4 +83,3 @@ def test_legacy_checkpoint_without_globalcnn_keys_still_loads(tmp_path) -> None:
     loaded = DQNFamilyAgent("cnn-ddqn", obs_dim, n_actions, config=AgentConfig(), seed=3, device="cpu")
     loaded.load(old_ckpt)
     assert str(loaded._net_kwargs.get("cnn_backbone")) == "legacy"
-

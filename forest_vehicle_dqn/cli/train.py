@@ -2423,21 +2423,25 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--cnn-backbone",
         type=str,
-        choices=("legacy", "globalcnn"),
+        choices=("legacy", "globalcnn", "globalcnn_fusion"),
         default="legacy",
-        help="CNN Q-network backbone: legacy (existing) or globalcnn (multi-scale global-map encoder).",
+        help=(
+            "CNN Q-network backbone: legacy (existing), "
+            "globalcnn (multi-scale global-map encoder), "
+            "or globalcnn_fusion (global + local dual-branch encoder)."
+        ),
     )
     ap.add_argument(
         "--cnn-global-width",
         type=int,
         default=32,
-        help="When --cnn-backbone=globalcnn: base channel width of the global CNN backbone.",
+        help="When --cnn-backbone is globalcnn/globalcnn_fusion: base channel width of the global CNN branch.",
     )
     ap.add_argument(
         "--cnn-global-dropout",
         type=float,
         default=0.0,
-        help="When --cnn-backbone=globalcnn: dropout probability on pooled map features.",
+        help="When --cnn-backbone is globalcnn/globalcnn_fusion: dropout probability on pooled map features.",
     )
     ap.add_argument(
         "--demo-mode",

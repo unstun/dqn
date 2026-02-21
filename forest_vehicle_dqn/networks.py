@@ -121,6 +121,8 @@ class CNNQNetwork(nn.Module):
         self.conv: nn.Sequential | None = None
         self._global_blocks: nn.ModuleList | None = None
         self._global_dropout: nn.Module | None = None
+        self._fusion_local_branch: nn.Sequential | None = None
+        self._fusion_gate: nn.Sequential | None = None
         conv_out_dim = 0
 
         if self.cnn_backbone == "legacy":
@@ -138,7 +140,7 @@ class CNNQNetwork(nn.Module):
                 dummy = torch.zeros((1, self.map_channels, self.map_size, self.map_size), dtype=torch.float32)
                 conv_out = self.conv(dummy)
                 conv_out_dim = int(conv_out.flatten(start_dim=1).shape[1])
-        elif self.cnn_backbone == "globalcnn":
+        elif self.cnn_backbone in {"globalcnn", "globalcnn_fusion"}:
             w = int(self.globalcnn_width)
             self._global_blocks = nn.ModuleList(
                 [
@@ -174,9 +176,33 @@ class CNNQNetwork(nn.Module):
                 else nn.Identity()
             )
             # avg pool + max pool for each stage.
-            conv_out_dim = int(2 * (w + 2 * w + 4 * w + 4 * w))
+            global_feat_dim = int(2 * (w + 2 * w + 4 * w + 4 * w))
+            if self.cnn_backbone == "globalcnn":
+                conv_out_dim = int(global_feat_dim)
+            else:
+                # Keep a high-resolution local branch to preserve near-obstacle geometry
+                # and fuse it with global multi-scale context.
+                self._fusion_local_branch = nn.Sequential(
+                    nn.Conv2d(self.map_channels, w, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                    nn.Conv2d(w, w, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                    nn.Conv2d(w, 2 * w, kernel_size=3, stride=2, padding=1),
+                    nn.ReLU(),
+                    nn.Conv2d(2 * w, 2 * w, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                )
+                local_feat_dim = int(2 * (2 * w))
+                fusion_dim = int(global_feat_dim + local_feat_dim)
+                self._fusion_gate = nn.Sequential(
+                    nn.Linear(fusion_dim, fusion_dim),
+                    nn.ReLU(),
+                    nn.Linear(fusion_dim, fusion_dim),
+                    nn.Sigmoid(),
+                )
+                conv_out_dim = int(fusion_dim)
         else:
-            raise ValueError("cnn_backbone must be one of: legacy, globalcnn")
+            raise ValueError("cnn_backbone must be one of: legacy, globalcnn, globalcnn_fusion")
 
         fc_in_dim = int(self.scalar_dim) + int(conv_out_dim)
 
@@ -189,7 +215,7 @@ class CNNQNetwork(nn.Module):
         layers.append(nn.Linear(int(hidden_dim), int(output_dim)))
         self.head = nn.Sequential(*layers)
 
-    def _forward_globalcnn(self, maps: torch.Tensor) -> torch.Tensor:
+    def _encode_globalcnn_features(self, maps: torch.Tensor) -> torch.Tensor:
         if self._global_blocks is None:
             raise RuntimeError("globalcnn backbone blocks are not initialized")
 
@@ -201,10 +227,34 @@ class CNNQNetwork(nn.Module):
             mx = F.adaptive_max_pool2d(x, output_size=1).flatten(start_dim=1)
             feats.append(torch.cat([avg, mx], dim=1))
 
-        out = torch.cat(feats, dim=1)
+        return torch.cat(feats, dim=1)
+
+    def _forward_globalcnn(self, maps: torch.Tensor) -> torch.Tensor:
+        out = self._encode_globalcnn_features(maps)
         if self._global_dropout is not None:
             out = self._global_dropout(out)
         return out
+
+    def _forward_globalcnn_fusion(self, maps: torch.Tensor) -> torch.Tensor:
+        if self._fusion_local_branch is None:
+            raise RuntimeError("globalcnn_fusion local branch is not initialized")
+
+        global_feat = self._encode_globalcnn_features(maps)
+        local_x = self._fusion_local_branch(maps)
+        local_feat = torch.cat(
+            [
+                F.adaptive_avg_pool2d(local_x, output_size=1).flatten(start_dim=1),
+                F.adaptive_max_pool2d(local_x, output_size=1).flatten(start_dim=1),
+            ],
+            dim=1,
+        )
+        fused = torch.cat([global_feat, local_feat], dim=1)
+        if self._fusion_gate is not None:
+            gate = self._fusion_gate(fused)
+            fused = fused * (1.0 + gate)
+        if self._global_dropout is not None:
+            fused = self._global_dropout(fused)
+        return fused
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 1:
@@ -222,7 +272,9 @@ class CNNQNetwork(nn.Module):
                 raise RuntimeError("legacy cnn backbone is not initialized")
             conv = self.conv(maps)
             map_feat = conv.flatten(start_dim=1)
-        else:
+        elif self.cnn_backbone == "globalcnn":
             map_feat = self._forward_globalcnn(maps)
+        else:
+            map_feat = self._forward_globalcnn_fusion(maps)
         feats = torch.cat([scalars, map_feat], dim=1)
         return self.head(feats)

@@ -122,8 +122,8 @@ conda run -n ros2py310 python infer.py --profile v7p1
 Experimental candidate (new module version, smoke gate):
 
 ```bash
-conda run -n ros2py310 python train.py --profile repro_20260221_v7p2p2_globalcnn_smoke
-conda run -n ros2py310 python infer.py --profile repro_20260221_v7p2p2_globalcnn_smoke --models v7p2p2_globalcnn_smoke --out v7p2p2_globalcnn_smoke
+conda run -n ros2py310 python train.py --profile repro_20260221_v7p2p3_globalcnn_fusion_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260221_v7p2p3_globalcnn_fusion_smoke --models v7p2p3_globalcnn_fusion_smoke --out v7p2p3_globalcnn_fusion_smoke
 ```
 
 Note: training now saves process logs to `<run_dir>/train_flow.log` by default; disable via `--no-save-train-log`.
@@ -243,9 +243,9 @@ Notes:
 - `fallback_rate`: fraction of steps where inference-time fallback/override triggered (diagnostic; should be `0` in `strict-argmax` by definition).
 - `failure_reason`: failure type label (only in `table2_kpis_raw.csv`).
 
-## 版本总索引（v1 → v7p2p2）
+## 版本总索引（v1 → v7p2p3）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2` 均为失败归档分支。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3` 均为失败归档分支。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -253,7 +253,7 @@ Notes:
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p2p2）
+### 增量版本（v3p1 → v7p2p3）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -272,6 +272,7 @@ Notes:
 | `v7p2` | `docs/versions/v7p2/` | `configs/v7p2.json` | `runs/v7p2_smoke/train_20260220_211732/infer/20260220_212137` | `1.00 / 1.00` | `1.00 / 1.00` | 已运行（micro-smoke：episodes=40, runs=3） |
 | `v7p2p1` | `docs/versions/v7p2p1/` | `configs/repro_20260220_v7p2p1_rollback_v7p1.json` | `runs/v7p2_es150/train_20260220_222056/infer/20260220_223016` | `0.85 / 0.65` | `0.95 / 1.00` | 失败归档，已回退到 `v7p1` |
 | `v7p2p2` | `docs/versions/v7p2p2/` | `configs/repro_20260221_v7p2p2_globalcnn_smoke.json` | `runs/v7p2p2_globalcnn_smoke/train_20260221_171611/infer/20260221_172943` | `0.667 / 0.333` | `1.00 / 1.00` | 失败归档（smoke 不达门，主线保持 `v7p1`） |
+| `v7p2p3` | `docs/versions/v7p2p3/` | `configs/repro_20260221_v7p2p3_globalcnn_fusion_smoke.json` | `runs/v7p2p3_globalcnn_fusion_smoke/train_20260221_174334/infer/20260221_180256` | `0.333 / 0.667` | `1.00 / 1.00` | 失败归档（smoke 不达门，主线保持 `v7p1`） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
@@ -312,7 +313,7 @@ conda run -n ros2py310 python infer.py --profile <candidate> --models <version>_
 
 5. Archive immediately:
 - Create `docs/versions/<version>/` four-doc bundle and log commands, run paths, KPIs, and failure reasons.
-- Prepare next iteration as `<version+1>` (example: `v7p2p2`).
+- Prepare next iteration as `<version+1>` (example: `v7p2p4`).
 
 ## Final acceptance gate (short/long suites, runs=20)
 
