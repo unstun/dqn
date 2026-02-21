@@ -37,6 +37,9 @@ class AgentConfig:
 
     hidden_layers: int = 3
     hidden_dim: int = 256
+    cnn_backbone: str = "legacy"
+    globalcnn_width: int = 32
+    globalcnn_dropout: float = 0.0
 
     # Expert margin loss (DQfD-style) for forest stabilization.
     demo_margin: float = 0.8
@@ -136,6 +139,9 @@ class DQNFamilyAgent:
                 "scalar_dim": int(layout.scalar_dim),
                 "map_channels": int(layout.map_channels),
                 "map_size": int(layout.map_size),
+                "cnn_backbone": str(getattr(config, "cnn_backbone", "legacy")).lower().strip(),
+                "globalcnn_width": int(getattr(config, "globalcnn_width", 32)),
+                "globalcnn_dropout": float(getattr(config, "globalcnn_dropout", 0.0)),
             }
         else:
             self._net_cls = MLPQNetwork
@@ -737,6 +743,7 @@ class DQNFamilyAgent:
         self.arch = arch
         self.base_algo = base_algo
 
+        cfg = payload.get("config") or {}
         network = str(payload.get("network", self.arch)).lower().strip()
         if network in {"plain", "qnetwork", "mlp"}:
             net_cls: type[nn.Module] = MLPQNetwork
@@ -749,9 +756,22 @@ class DQNFamilyAgent:
                 net_kwargs_raw = {}
             if not net_kwargs_raw:
                 layout = infer_flat_obs_cnn_layout(int(self._obs_dim))
-                net_kwargs = {"scalar_dim": layout.scalar_dim, "map_channels": layout.map_channels, "map_size": layout.map_size}
+                net_kwargs = {
+                    "scalar_dim": layout.scalar_dim,
+                    "map_channels": layout.map_channels,
+                    "map_size": layout.map_size,
+                }
             else:
                 net_kwargs = {str(k): v for k, v in net_kwargs_raw.items()}
+            net_kwargs.setdefault("cnn_backbone", str(cfg.get("cnn_backbone", getattr(self.config, "cnn_backbone", "legacy"))))
+            net_kwargs.setdefault(
+                "globalcnn_width",
+                int(cfg.get("globalcnn_width", getattr(self.config, "globalcnn_width", 32))),
+            )
+            net_kwargs.setdefault(
+                "globalcnn_dropout",
+                float(cfg.get("globalcnn_dropout", getattr(self.config, "globalcnn_dropout", 0.0))),
+            )
             self.arch = "cnn"
         else:
             raise ValueError(f"Unsupported network type in checkpoint: {network!r}")
@@ -759,7 +779,6 @@ class DQNFamilyAgent:
         self._net_cls = net_cls
         self._net_kwargs = dict(net_kwargs)
 
-        cfg = payload.get("config") or {}
         hidden_dim = int(cfg.get("hidden_dim", self.config.hidden_dim))
         hidden_layers = int(cfg.get("hidden_layers", self.config.hidden_layers))
 

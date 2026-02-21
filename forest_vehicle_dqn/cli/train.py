@@ -2421,6 +2421,25 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--hidden-layers", type=int, default=3, help="Q-network hidden layer count.")
     ap.add_argument("--hidden-dim", type=int, default=256, help="Q-network hidden width.")
     ap.add_argument(
+        "--cnn-backbone",
+        type=str,
+        choices=("legacy", "globalcnn"),
+        default="legacy",
+        help="CNN Q-network backbone: legacy (existing) or globalcnn (multi-scale global-map encoder).",
+    )
+    ap.add_argument(
+        "--cnn-global-width",
+        type=int,
+        default=32,
+        help="When --cnn-backbone=globalcnn: base channel width of the global CNN backbone.",
+    )
+    ap.add_argument(
+        "--cnn-global-dropout",
+        type=float,
+        default=0.0,
+        help="When --cnn-backbone=globalcnn: dropout probability on pooled map features.",
+    )
+    ap.add_argument(
         "--demo-mode",
         type=str,
         choices=("dqfd", "legacy"),
@@ -3390,6 +3409,9 @@ def main(argv: list[str] | None = None) -> int:
         eps_decay=int(getattr(args, "eps_decay", agent_cfg.eps_decay)),
         hidden_layers=int(getattr(args, "hidden_layers", agent_cfg.hidden_layers)),
         hidden_dim=int(getattr(args, "hidden_dim", agent_cfg.hidden_dim)),
+        cnn_backbone=str(getattr(args, "cnn_backbone", agent_cfg.cnn_backbone)),
+        globalcnn_width=int(getattr(args, "cnn_global_width", agent_cfg.globalcnn_width)),
+        globalcnn_dropout=float(getattr(args, "cnn_global_dropout", agent_cfg.globalcnn_dropout)),
         demo_mode=str(demo_mode),
         dqfd_lambda_n=float(getattr(args, "dqfd_lambda_n", 1.0)),
         l2_reg=float(getattr(args, "dqfd_l2", 0.0)),

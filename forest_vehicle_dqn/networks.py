@@ -5,6 +5,7 @@ import math
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 
 class MLPQNetwork(nn.Module):
@@ -82,6 +83,9 @@ class CNNQNetwork(nn.Module):
         map_size: int,
         hidden_dim: int = 256,
         hidden_layers: int = 2,
+        cnn_backbone: str = "legacy",
+        globalcnn_width: int = 32,
+        globalcnn_dropout: float = 0.0,
     ) -> None:
         super().__init__()
 
@@ -90,6 +94,9 @@ class CNNQNetwork(nn.Module):
         self.map_size = int(map_size)
         self.input_dim = int(input_dim)
         self.output_dim = int(output_dim)
+        self.cnn_backbone = str(cnn_backbone).lower().strip()
+        self.globalcnn_width = int(globalcnn_width)
+        self.globalcnn_dropout = float(globalcnn_dropout)
 
         if self.scalar_dim < 0:
             raise ValueError("scalar_dim must be >= 0")
@@ -99,6 +106,10 @@ class CNNQNetwork(nn.Module):
             raise ValueError("map_size must be >= 1")
         if hidden_layers < 1:
             raise ValueError("hidden_layers must be >= 1")
+        if self.globalcnn_width < 8:
+            raise ValueError("globalcnn_width must be >= 8")
+        if not (0.0 <= self.globalcnn_dropout < 1.0):
+            raise ValueError("globalcnn_dropout must be in [0,1)")
 
         expected = int(self.scalar_dim) + int(self.map_channels) * int(self.map_size) * int(self.map_size)
         if int(input_dim) != expected:
@@ -107,20 +118,66 @@ class CNNQNetwork(nn.Module):
                 f"map_channels={self.map_channels}, map_size={self.map_size}), got {int(input_dim)}"
             )
 
-        # A real 2D CNN over the downsampled global maps. Designed for small maps (e.g. 12x12).
-        self.conv = nn.Sequential(
-            nn.Conv2d(self.map_channels, 32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-        )
+        self.conv: nn.Sequential | None = None
+        self._global_blocks: nn.ModuleList | None = None
+        self._global_dropout: nn.Module | None = None
+        conv_out_dim = 0
 
-        with torch.no_grad():
-            dummy = torch.zeros((1, self.map_channels, self.map_size, self.map_size), dtype=torch.float32)
-            conv_out = self.conv(dummy)
-            conv_out_dim = int(conv_out.flatten(start_dim=1).shape[1])
+        if self.cnn_backbone == "legacy":
+            # A real 2D CNN over the downsampled global maps. Designed for small maps (e.g. 12x12).
+            self.conv = nn.Sequential(
+                nn.Conv2d(self.map_channels, 32, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+                nn.ReLU(),
+            )
+
+            with torch.no_grad():
+                dummy = torch.zeros((1, self.map_channels, self.map_size, self.map_size), dtype=torch.float32)
+                conv_out = self.conv(dummy)
+                conv_out_dim = int(conv_out.flatten(start_dim=1).shape[1])
+        elif self.cnn_backbone == "globalcnn":
+            w = int(self.globalcnn_width)
+            self._global_blocks = nn.ModuleList(
+                [
+                    nn.Sequential(
+                        nn.Conv2d(self.map_channels, w, kernel_size=3, stride=1, padding=1),
+                        nn.ReLU(),
+                        nn.Conv2d(w, w, kernel_size=3, stride=1, padding=1),
+                        nn.ReLU(),
+                    ),
+                    nn.Sequential(
+                        nn.Conv2d(w, 2 * w, kernel_size=3, stride=2, padding=1),
+                        nn.ReLU(),
+                        nn.Conv2d(2 * w, 2 * w, kernel_size=3, stride=1, padding=1),
+                        nn.ReLU(),
+                    ),
+                    nn.Sequential(
+                        nn.Conv2d(2 * w, 4 * w, kernel_size=3, stride=2, padding=1),
+                        nn.ReLU(),
+                        nn.Conv2d(4 * w, 4 * w, kernel_size=3, stride=1, padding=1),
+                        nn.ReLU(),
+                    ),
+                    nn.Sequential(
+                        nn.Conv2d(4 * w, 4 * w, kernel_size=3, stride=2, padding=1),
+                        nn.ReLU(),
+                        nn.Conv2d(4 * w, 4 * w, kernel_size=3, stride=1, padding=1),
+                        nn.ReLU(),
+                    ),
+                ]
+            )
+            self._global_dropout = (
+                nn.Dropout(p=float(self.globalcnn_dropout))
+                if float(self.globalcnn_dropout) > 0.0
+                else nn.Identity()
+            )
+            # avg pool + max pool for each stage.
+            conv_out_dim = int(2 * (w + 2 * w + 4 * w + 4 * w))
+        else:
+            raise ValueError("cnn_backbone must be one of: legacy, globalcnn")
+
         fc_in_dim = int(self.scalar_dim) + int(conv_out_dim)
 
         layers: list[nn.Module] = []
@@ -131,6 +188,23 @@ class CNNQNetwork(nn.Module):
             layers.append(nn.ReLU())
         layers.append(nn.Linear(int(hidden_dim), int(output_dim)))
         self.head = nn.Sequential(*layers)
+
+    def _forward_globalcnn(self, maps: torch.Tensor) -> torch.Tensor:
+        if self._global_blocks is None:
+            raise RuntimeError("globalcnn backbone blocks are not initialized")
+
+        feats: list[torch.Tensor] = []
+        x = maps
+        for block in self._global_blocks:
+            x = block(x)
+            avg = F.adaptive_avg_pool2d(x, output_size=1).flatten(start_dim=1)
+            mx = F.adaptive_max_pool2d(x, output_size=1).flatten(start_dim=1)
+            feats.append(torch.cat([avg, mx], dim=1))
+
+        out = torch.cat(feats, dim=1)
+        if self._global_dropout is not None:
+            out = self._global_dropout(out)
+        return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 1:
@@ -143,7 +217,12 @@ class CNNQNetwork(nn.Module):
         scalars = x[:, : self.scalar_dim]
         maps_flat = x[:, self.scalar_dim :]
         maps = maps_flat.reshape(int(x.shape[0]), self.map_channels, self.map_size, self.map_size)
-        conv = self.conv(maps)
-        conv_flat = conv.flatten(start_dim=1)
-        feats = torch.cat([scalars, conv_flat], dim=1)
+        if self.cnn_backbone == "legacy":
+            if self.conv is None:
+                raise RuntimeError("legacy cnn backbone is not initialized")
+            conv = self.conv(maps)
+            map_feat = conv.flatten(start_dim=1)
+        else:
+            map_feat = self._forward_globalcnn(maps)
+        feats = torch.cat([scalars, map_feat], dim=1)
         return self.head(feats)
