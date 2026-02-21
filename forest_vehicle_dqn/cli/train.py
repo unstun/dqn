@@ -919,6 +919,7 @@ def train_one(
     curriculum_ramp: float,
     forest_demo_prefill: bool,
     forest_demo_pretrain_steps: int,
+    forest_demo_pretrain_min_effective_steps: int,
     forest_demo_pretrain_eval_every: int,
     forest_demo_pretrain_val_runs: int,
     forest_demo_pretrain_early_stop_sr: float,
@@ -1109,7 +1110,12 @@ def train_one(
         f"[train] [{run_label}] train_one start: episodes={int(episodes)}, "
         f"learning_starts={int(learning_starts)}, demo_prefill={bool(forest_demo_prefill)}, "
         f"demo_target_mult={float(forest_demo_target_mult):.1f}, demo_target_cap={int(forest_demo_target_cap)}, "
-        f"demo_pretrain_steps={int(forest_demo_pretrain_steps)}, forest_adm_horizon={int(adm_h)}, "
+        f"demo_pretrain_steps={int(forest_demo_pretrain_steps)}, "
+        f"demo_pretrain_min_effective_steps={int(forest_demo_pretrain_min_effective_steps)}, "
+        f"reward_scale={float(getattr(agent_cfg, 'reward_scale', 1.0)):.4f}, "
+        f"reward_clip_abs={float(getattr(agent_cfg, 'reward_clip_abs', 0.0)):.4f}, "
+        f"grad_clip_norm={float(getattr(agent_cfg, 'grad_clip_norm', 0.0)):.4f}, "
+        f"forest_adm_horizon={int(adm_h)}, "
         f"forest_topk={int(topk_k)}, forest_min_od_m={float(min_od_m):.3f}, "
         f"forest_min_progress_m={float(min_prog_m):.4f}, strict_no_fallback={bool(strict_no_fallback)}"
     )
@@ -1159,6 +1165,10 @@ def train_one(
     expert_decisions = 0
     inadmissible_count = 0
     action_decisions = 0
+    grad_clip_hits = 0
+    grad_metric_steps = 0
+    grad_norm_ema = 0.0
+    grad_norm_ema_valid = False
 
     def episode_score(*, reached: bool, collision: bool, steps: int, ret: float) -> tuple[int, int, int]:
         """Prefer reach > survive (timeout) > collision (then higher return)."""
@@ -1375,15 +1385,18 @@ def train_one(
         if pre_steps > 0:
             t_pretrain_start = time.perf_counter()
             done_steps = 0
+            min_effective_steps = int(max(0, int(forest_demo_pretrain_min_effective_steps)))
             chunk = max(1, int(forest_demo_pretrain_eval_every))
             val_runs = max(1, int(forest_demo_pretrain_val_runs))
             sr_thr = float(np.clip(float(forest_demo_pretrain_early_stop_sr), 0.0, 1.0))
             patience = max(1, int(forest_demo_pretrain_early_stop_patience))
             sr_streak = 0
+            zero_update_streak = 0
+            zero_update_patience = 3
             log(
                 f"[train] [{run_label}] Demo pretrain start: steps={int(pre_steps)}, "
                 f"chunk={int(chunk)}, val_runs={int(val_runs)}, early_stop_sr={sr_thr:.2f}, "
-                f"patience={int(patience)}"
+                f"patience={int(patience)}, min_effective_steps={int(min_effective_steps)}"
             )
 
             def pretrain_validation_sr() -> float:
@@ -1405,25 +1418,48 @@ def train_one(
                 return float(succ) / float(max(1, int(val_runs)))
 
             while done_steps < pre_steps:
-                n = min(int(chunk), int(pre_steps - done_steps))
-                agent.pretrain_on_demos(steps=int(n))
-                done_steps += int(n)
+                n_req = min(int(chunk), int(pre_steps - done_steps))
+                n_trained = int(agent.pretrain_on_demos(steps=int(n_req)))
+                done_steps += int(n_trained)
+                if int(n_trained) <= 0:
+                    zero_update_streak += 1
+                else:
+                    zero_update_streak = 0
 
                 sr_val = pretrain_validation_sr()
                 pct = 100.0 * float(done_steps) / float(max(1, pre_steps))
+                pre_stats = dict(getattr(agent, "_last_pretrain_stats", {}))
+                grad_norm_mean = float(pre_stats.get("grad_norm_pre_clip_mean", 0.0))
+                grad_clip_hit_rate = float(pre_stats.get("grad_clip_hit_rate", 0.0))
                 log(
                     f"[train] [{run_label}] Demo pretrain progress: {int(done_steps)}/{int(pre_steps)} "
-                    f"({pct:.1f}%), val_sr={float(sr_val):.3f}, streak={int(sr_streak)}/{int(patience)}, "
+                    f"({pct:.1f}%), req={int(n_req)}, effective={int(n_trained)}, "
+                    f"val_sr={float(sr_val):.3f}, streak={int(sr_streak)}/{int(patience)}, "
+                    f"grad_norm={float(grad_norm_mean):.3f}, grad_clip_hit_rate={float(grad_clip_hit_rate):.3f}, "
                     f"elapsed={format_elapsed_s(time.perf_counter() - t_pretrain_start)}"
                 )
+
+                if int(zero_update_streak) >= int(zero_update_patience):
+                    log(
+                        f"[train] [{run_label}] Demo pretrain stop: no effective updates for "
+                        f"{int(zero_update_streak)} consecutive chunks."
+                    )
+                    break
+
+                allow_early_stop = int(done_steps) >= int(min_effective_steps)
                 if float(sr_val) >= float(sr_thr):
                     sr_streak += 1
                     if int(sr_streak) >= int(patience):
+                        if bool(allow_early_stop):
+                            log(
+                                f"[train] [{run_label}] Demo pretrain early-stop: val_sr={float(sr_val):.3f}, "
+                                f"streak={int(sr_streak)}, effective_steps={int(done_steps)}"
+                            )
+                            break
                         log(
-                            f"[train] [{run_label}] Demo pretrain early-stop: val_sr={float(sr_val):.3f}, "
-                            f"streak={int(sr_streak)}"
+                            f"[train] [{run_label}] Demo pretrain hold: early-stop gated by "
+                            f"min_effective_steps={int(min_effective_steps)} (current={int(done_steps)})."
                         )
-                        break
                 else:
                     sr_streak = 0
 
@@ -1929,7 +1965,18 @@ def train_one(
                 replay_flags=int(rf),
             )
         for _ in range(int(pending_updates)):
-            agent.update()
+            upd = agent.update()
+            if upd:
+                grad_norm = float(upd.get("grad_norm_pre_clip", 0.0))
+                if math.isfinite(float(grad_norm)):
+                    if bool(grad_norm_ema_valid):
+                        grad_norm_ema = 0.95 * float(grad_norm_ema) + 0.05 * float(grad_norm)
+                    else:
+                        grad_norm_ema = float(grad_norm)
+                        grad_norm_ema_valid = True
+                grad_hit = float(upd.get("grad_clip_hit", 0.0))
+                grad_clip_hits += int(grad_hit > 0.5)
+                grad_metric_steps += 1
 
         returns[ep] = float(ep_return)
         episodes_completed = int(ep + 1)
@@ -1966,10 +2013,20 @@ def train_one(
 
         if (ep + 1) % max(1, int(episodes // 20), 10) == 0 or ep == 0 or ep == int(episodes - 1):
             pct = 100.0 * float(ep + 1) / float(max(1, episodes))
+            grad_tail = ""
+            if int(grad_metric_steps) > 0:
+                clip_hit_rate = float(grad_clip_hits) / float(max(1, int(grad_metric_steps)))
+                if bool(grad_norm_ema_valid):
+                    grad_tail = (
+                        f", grad_norm_ema={float(grad_norm_ema):.3f}, "
+                        f"grad_clip_hit_rate={float(clip_hit_rate):.3f}"
+                    )
+                else:
+                    grad_tail = f", grad_clip_hit_rate={float(clip_hit_rate):.3f}"
             log(
                 f"[train] [{run_label}] RL progress: ep={int(ep + 1)}/{int(episodes)} "
                 f"({pct:.1f}%), last_ret={float(ep_return):.3f}, train_steps={int(agent._train_steps)}, "
-                f"elapsed={format_elapsed_s(time.perf_counter() - t_rl_train_start)}"
+                f"elapsed={format_elapsed_s(time.perf_counter() - t_rl_train_start)}{grad_tail}"
             )
 
         reached = bool(last_info.get("reached", False))
@@ -2415,6 +2472,18 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--target-update-steps", type=int, default=1000, help="Hard target-network update interval.")
     ap.add_argument("--target-update-tau", type=float, default=0.0, help="Soft target update tau (0 disables Polyak updates).")
     ap.add_argument("--grad-clip-norm", type=float, default=10.0, help="Gradient clipping norm.")
+    ap.add_argument(
+        "--reward-scale",
+        type=float,
+        default=1.0,
+        help="Scale factor applied to rewards before replay storage (reward' = reward * reward_scale).",
+    )
+    ap.add_argument(
+        "--reward-clip-abs",
+        type=float,
+        default=0.0,
+        help="If >0, clip scaled rewards to [-reward_clip_abs, +reward_clip_abs] before replay storage.",
+    )
     ap.add_argument("--eps-start", type=float, default=0.6, help="Epsilon-greedy start value.")
     ap.add_argument("--eps-final", type=float, default=0.01, help="Epsilon-greedy final value.")
     ap.add_argument("--eps-decay", type=int, default=2000, help="Epsilon linear decay episodes.")
@@ -2442,6 +2511,39 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.0,
         help="When --cnn-backbone is globalcnn/globalcnn_fusion: dropout probability on pooled map features.",
+    )
+    ap.add_argument(
+        "--cnn-global-spatial-prior",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "When --cnn-backbone is globalcnn/globalcnn_fusion: append spatial prior channels "
+            "(agent/goal heatmaps built from scalar ax/ay/gx/gy)."
+        ),
+    )
+    ap.add_argument(
+        "--cnn-global-prior-sigma",
+        type=float,
+        default=0.20,
+        help=(
+            "When --cnn-global-spatial-prior is enabled: Gaussian sigma in normalized map coordinates "
+            "for agent/goal heatmaps."
+        ),
+    )
+    ap.add_argument(
+        "--cnn-fusion-layernorm",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "When --cnn-backbone is globalcnn_fusion: apply LayerNorm on fused global+local features "
+            "before gating."
+        ),
+    )
+    ap.add_argument(
+        "--cnn-fusion-layernorm-eps",
+        type=float,
+        default=1e-5,
+        help="When --cnn-fusion-layernorm is enabled: LayerNorm epsilon.",
     )
     ap.add_argument(
         "--demo-mode",
@@ -2805,6 +2907,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=50_000,
         help="Forest-only: supervised warm-start steps on demo transitions (behavior cloning + margin).",
+    )
+    ap.add_argument(
+        "--forest-demo-pretrain-min-effective-steps",
+        type=int,
+        default=4000,
+        help="Forest-only: minimum effective pretrain update steps before early-stop is allowed.",
     )
     ap.add_argument(
         "--forest-demo-pretrain-eval-every",
@@ -3408,6 +3516,8 @@ def main(argv: list[str] | None = None) -> int:
         target_update_steps=int(getattr(args, "target_update_steps", agent_cfg.target_update_steps)),
         target_update_tau=float(getattr(args, "target_update_tau", agent_cfg.target_update_tau)),
         grad_clip_norm=float(getattr(args, "grad_clip_norm", agent_cfg.grad_clip_norm)),
+        reward_scale=float(getattr(args, "reward_scale", agent_cfg.reward_scale)),
+        reward_clip_abs=float(getattr(args, "reward_clip_abs", agent_cfg.reward_clip_abs)),
         eps_start=float(getattr(args, "eps_start", agent_cfg.eps_start)),
         eps_final=float(getattr(args, "eps_final", agent_cfg.eps_final)),
         eps_decay=int(getattr(args, "eps_decay", agent_cfg.eps_decay)),
@@ -3416,6 +3526,16 @@ def main(argv: list[str] | None = None) -> int:
         cnn_backbone=str(getattr(args, "cnn_backbone", agent_cfg.cnn_backbone)),
         globalcnn_width=int(getattr(args, "cnn_global_width", agent_cfg.globalcnn_width)),
         globalcnn_dropout=float(getattr(args, "cnn_global_dropout", agent_cfg.globalcnn_dropout)),
+        globalcnn_spatial_prior=bool(
+            getattr(args, "cnn_global_spatial_prior", agent_cfg.globalcnn_spatial_prior)
+        ),
+        globalcnn_prior_sigma=float(getattr(args, "cnn_global_prior_sigma", agent_cfg.globalcnn_prior_sigma)),
+        globalcnn_fusion_layernorm=bool(
+            getattr(args, "cnn_fusion_layernorm", agent_cfg.globalcnn_fusion_layernorm)
+        ),
+        globalcnn_fusion_layernorm_eps=float(
+            getattr(args, "cnn_fusion_layernorm_eps", agent_cfg.globalcnn_fusion_layernorm_eps)
+        ),
         demo_mode=str(demo_mode),
         dqfd_lambda_n=float(getattr(args, "dqfd_lambda_n", 1.0)),
         l2_reg=float(getattr(args, "dqfd_l2", 0.0)),
@@ -3625,6 +3745,9 @@ def main(argv: list[str] | None = None) -> int:
                     curriculum_ramp=float(args.curriculum_ramp),
                     forest_demo_prefill=bool(args.forest_demo_prefill),
                     forest_demo_pretrain_steps=int(args.forest_demo_pretrain_steps),
+                    forest_demo_pretrain_min_effective_steps=int(
+                        getattr(args, "forest_demo_pretrain_min_effective_steps", 0)
+                    ),
                     forest_demo_pretrain_eval_every=int(args.forest_demo_pretrain_eval_every),
                     forest_demo_pretrain_val_runs=int(args.forest_demo_pretrain_val_runs),
                     forest_demo_pretrain_early_stop_sr=float(args.forest_demo_pretrain_early_stop_sr),

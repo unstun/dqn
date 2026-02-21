@@ -40,7 +40,7 @@ REPORT_ARTIFACTS:
 
 - This repo is under active `vibe coding` iteration: small deltas, quick validation loops, and strict rollback/archive discipline.
 - Current stable mainline is `v7p1` (`configs/v7p1.json`).
-- `v7p2` and `v7p2p1` are archived failed attempts (Markov-observation fix branch), and are not the current mainline claim baseline.
+- `v7p2` to `v7p2p9` are archived failed/iterative attempts on the non-mainline branch, and are not the current stable claim baseline.
 - Final objective: make RL planning (`CNN-DDQN`) outperform classical planning (`Hybrid A*-MPC`) under fair and reproducible evaluation.
 - Core optimization targets: shorter paths (`avg_path_length`), shorter path time (`path_time_s`), and smoother trajectories (`avg_curvature_1_m`, lower is better).
 
@@ -90,7 +90,7 @@ Old checkpoints/configs with the previous forest observation/flag schema are not
 
 - As of 2026-02-21, the stable mainline remains `v7p1`.
 - `v7p2/v7p2p1` attempted a Markov-observation fix (adding `prev_a_n`) but did not show stable gains and was archived as a failed branch.
-- Mainline was rolled back to `v7p1` behavior (forest bicycle observation `10 + N*N`) for continued iteration.
+- `v7p1` remains the stable comparison baseline (forest bicycle observation `10 + N*N`), while new module versions iterate forward on separate version tracks.
 - Failure archive: `docs/versions/v7p2p1/`.
 
 ## Train / infer (recommended: config profiles)
@@ -122,8 +122,8 @@ conda run -n ros2py310 python infer.py --profile v7p1
 Experimental candidate (new module version, smoke gate):
 
 ```bash
-conda run -n ros2py310 python train.py --profile repro_20260221_v7p2p3_globalcnn_fusion_smoke
-conda run -n ros2py310 python infer.py --profile repro_20260221_v7p2p3_globalcnn_fusion_smoke --models v7p2p3_globalcnn_fusion_smoke --out v7p2p3_globalcnn_fusion_smoke
+conda run -n ros2py310 python train.py --profile repro_20260221_v7p2p9_ablate_expert_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260221_v7p2p9_ablate_expert_smoke --models v7p2p9_ablate_expert_smoke --out v7p2p9_ablate_expert_smoke
 ```
 
 Note: training now saves process logs to `<run_dir>/train_flow.log` by default; disable via `--no-save-train-log`.
@@ -243,9 +243,9 @@ Notes:
 - `fallback_rate`: fraction of steps where inference-time fallback/override triggered (diagnostic; should be `0` in `strict-argmax` by definition).
 - `failure_reason`: failure type label (only in `table2_kpis_raw.csv`).
 
-## 版本总索引（v1 → v7p2p3）
+## 版本总索引（v1 → v7p2p9）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3` 均为失败归档分支。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9` 为已归档迭代分支。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -253,7 +253,7 @@ Notes:
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p2p3）
+### 增量版本（v3p1 → v7p2p9）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -273,6 +273,12 @@ Notes:
 | `v7p2p1` | `docs/versions/v7p2p1/` | `configs/repro_20260220_v7p2p1_rollback_v7p1.json` | `runs/v7p2_es150/train_20260220_222056/infer/20260220_223016` | `0.85 / 0.65` | `0.95 / 1.00` | 失败归档，已回退到 `v7p1` |
 | `v7p2p2` | `docs/versions/v7p2p2/` | `configs/repro_20260221_v7p2p2_globalcnn_smoke.json` | `runs/v7p2p2_globalcnn_smoke/train_20260221_171611/infer/20260221_172943` | `0.667 / 0.333` | `1.00 / 1.00` | 失败归档（smoke 不达门，主线保持 `v7p1`） |
 | `v7p2p3` | `docs/versions/v7p2p3/` | `configs/repro_20260221_v7p2p3_globalcnn_fusion_smoke.json` | `runs/v7p2p3_globalcnn_fusion_smoke/train_20260221_174334/infer/20260221_180256` | `0.333 / 0.667` | `1.00 / 1.00` | 失败归档（smoke 不达门，主线保持 `v7p1`） |
+| `v7p2p4` | `docs/versions/v7p2p4/` | `configs/repro_20260221_v7p2p4_globalcnn_spatialprior_smoke.json` | `runs/v7p2p4_globalcnn_spatialprior_smoke/train_20260221_182908/infer/20260221_183926` | `0.667 / 1.000` | `1.00 / 1.00` | 失败归档（smoke 不达门，保持当前代码并继续前向迭代） |
+| `v7p2p5` | `docs/versions/v7p2p5/` | `configs/repro_20260221_v7p2p5_globalcnn_fusionnorm_smoke.json` | `runs/v7p2p5_globalcnn_fusionnorm_smoke/train_20260221_202023/infer/20260221_203626` | `0.333 / 0.667` | `1.00 / 1.00` | 失败归档（smoke 退化，不回退代码并继续前向迭代） |
+| `v7p2p6` | `docs/versions/v7p2p6/` | `configs/repro_20260221_v7p2p6_foundationfix_smoke.json` | `runs/v7p2p6_foundationfix_smoke/train_20260221_211603/infer/20260221_213248` | `1.000 / 0.000` | `1.00 / 1.00` | 失败归档（short 改善但 long 崩塌，继续前向迭代） |
+| `v7p2p7` | `docs/versions/v7p2p7/` | `configs/repro_20260221_v7p2p7_gradclip_recover_smoke.json` | `runs/v7p2p7_gradclip_recover_smoke/train_20260221_215452/infer/20260221_221008` | `0.333 / 0.333` | `1.00 / 1.00` | 失败归档（long 有恢复但 short 退化，继续前向迭代） |
+| `v7p2p8` | `docs/versions/v7p2p8/` | `configs/repro_20260221_v7p2p8_bold_dynamic_expert_smoke.json` | `runs/v7p2p8_bold_dynamic_expert_smoke/train_20260221_225358/infer/20260221_230426` | `0.000 / 1.000` | `1.00 / 1.00` | 失败归档（long 恢复到 1.0，但 short 崩塌到 0.0，继续前向迭代） |
+| `v7p2p9` | `docs/versions/v7p2p9/` | `configs/repro_20260221_v7p2p9_ablate_expert_smoke.json` | `runs/v7p2p9_ablate_expert_smoke/train_20260221_231402/infer/20260221_232825` | `0.667 / 0.000` | `1.00 / 1.00` | 失败归档（short 回升但 long 崩塌，继续前向迭代） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
@@ -309,11 +315,11 @@ conda run -n ros2py310 python infer.py --profile <candidate> --models <version>_
 
 4. Go/No-Go rule:
 - If smoke does not show clear gain, stop escalation and mark as failed version.
-- Roll back mainline to previous stable version (for example, `v7p1`).
+- Keep the latest code as current baseline (no rollback), and continue with a single-purpose forward iteration.
 
 5. Archive immediately:
 - Create `docs/versions/<version>/` four-doc bundle and log commands, run paths, KPIs, and failure reasons.
-- Prepare next iteration as `<version+1>` (example: `v7p2p4`).
+- Prepare next iteration as `<version+1>` (example: `v7p2p10`).
 
 ## Final acceptance gate (short/long suites, runs=20)
 

@@ -86,6 +86,10 @@ class CNNQNetwork(nn.Module):
         cnn_backbone: str = "legacy",
         globalcnn_width: int = 32,
         globalcnn_dropout: float = 0.0,
+        globalcnn_spatial_prior: bool = False,
+        globalcnn_prior_sigma: float = 0.20,
+        globalcnn_fusion_layernorm: bool = False,
+        globalcnn_fusion_layernorm_eps: float = 1e-5,
     ) -> None:
         super().__init__()
 
@@ -97,6 +101,10 @@ class CNNQNetwork(nn.Module):
         self.cnn_backbone = str(cnn_backbone).lower().strip()
         self.globalcnn_width = int(globalcnn_width)
         self.globalcnn_dropout = float(globalcnn_dropout)
+        self.globalcnn_spatial_prior = bool(globalcnn_spatial_prior)
+        self.globalcnn_prior_sigma = float(globalcnn_prior_sigma)
+        self.globalcnn_fusion_layernorm = bool(globalcnn_fusion_layernorm)
+        self.globalcnn_fusion_layernorm_eps = float(globalcnn_fusion_layernorm_eps)
 
         if self.scalar_dim < 0:
             raise ValueError("scalar_dim must be >= 0")
@@ -110,6 +118,12 @@ class CNNQNetwork(nn.Module):
             raise ValueError("globalcnn_width must be >= 8")
         if not (0.0 <= self.globalcnn_dropout < 1.0):
             raise ValueError("globalcnn_dropout must be in [0,1)")
+        if self.globalcnn_spatial_prior and self.scalar_dim < 4:
+            raise ValueError("globalcnn_spatial_prior requires scalar_dim >= 4 (ax/ay/gx/gy)")
+        if not (self.globalcnn_prior_sigma > 0.0):
+            raise ValueError("globalcnn_prior_sigma must be > 0")
+        if not (self.globalcnn_fusion_layernorm_eps > 0.0):
+            raise ValueError("globalcnn_fusion_layernorm_eps must be > 0")
 
         expected = int(self.scalar_dim) + int(self.map_channels) * int(self.map_size) * int(self.map_size)
         if int(input_dim) != expected:
@@ -123,6 +137,9 @@ class CNNQNetwork(nn.Module):
         self._global_dropout: nn.Module | None = None
         self._fusion_local_branch: nn.Sequential | None = None
         self._fusion_gate: nn.Sequential | None = None
+        self._fusion_norm: nn.Module | None = None
+        self.register_buffer("_spatial_grid_x", torch.empty(0), persistent=False)
+        self.register_buffer("_spatial_grid_y", torch.empty(0), persistent=False)
         conv_out_dim = 0
 
         if self.cnn_backbone == "legacy":
@@ -142,10 +159,17 @@ class CNNQNetwork(nn.Module):
                 conv_out_dim = int(conv_out.flatten(start_dim=1).shape[1])
         elif self.cnn_backbone in {"globalcnn", "globalcnn_fusion"}:
             w = int(self.globalcnn_width)
+            map_in_channels = int(self.map_channels)
+            if self.globalcnn_spatial_prior:
+                grid_lin = torch.linspace(-1.0, 1.0, steps=int(self.map_size), dtype=torch.float32)
+                gy, gx = torch.meshgrid(grid_lin, grid_lin, indexing="ij")
+                self._spatial_grid_x = gx.unsqueeze(0)
+                self._spatial_grid_y = gy.unsqueeze(0)
+                map_in_channels += 2
             self._global_blocks = nn.ModuleList(
                 [
                     nn.Sequential(
-                        nn.Conv2d(self.map_channels, w, kernel_size=3, stride=1, padding=1),
+                        nn.Conv2d(map_in_channels, w, kernel_size=3, stride=1, padding=1),
                         nn.ReLU(),
                         nn.Conv2d(w, w, kernel_size=3, stride=1, padding=1),
                         nn.ReLU(),
@@ -183,7 +207,7 @@ class CNNQNetwork(nn.Module):
                 # Keep a high-resolution local branch to preserve near-obstacle geometry
                 # and fuse it with global multi-scale context.
                 self._fusion_local_branch = nn.Sequential(
-                    nn.Conv2d(self.map_channels, w, kernel_size=3, stride=1, padding=1),
+                    nn.Conv2d(map_in_channels, w, kernel_size=3, stride=1, padding=1),
                     nn.ReLU(),
                     nn.Conv2d(w, w, kernel_size=3, stride=1, padding=1),
                     nn.ReLU(),
@@ -199,6 +223,11 @@ class CNNQNetwork(nn.Module):
                     nn.ReLU(),
                     nn.Linear(fusion_dim, fusion_dim),
                     nn.Sigmoid(),
+                )
+                self._fusion_norm = (
+                    nn.LayerNorm(int(fusion_dim), eps=float(self.globalcnn_fusion_layernorm_eps))
+                    if self.globalcnn_fusion_layernorm
+                    else None
                 )
                 conv_out_dim = int(fusion_dim)
         else:
@@ -249,12 +278,43 @@ class CNNQNetwork(nn.Module):
             dim=1,
         )
         fused = torch.cat([global_feat, local_feat], dim=1)
+        if self._fusion_norm is not None:
+            fused = self._fusion_norm(fused)
         if self._fusion_gate is not None:
             gate = self._fusion_gate(fused)
             fused = fused * (1.0 + gate)
         if self._global_dropout is not None:
             fused = self._global_dropout(fused)
         return fused
+
+    def _build_spatial_prior_maps(self, scalars: torch.Tensor) -> torch.Tensor:
+        if not self.globalcnn_spatial_prior:
+            raise RuntimeError("spatial prior is disabled")
+        if self._spatial_grid_x.numel() == 0 or self._spatial_grid_y.numel() == 0:
+            raise RuntimeError("spatial prior grids are not initialized")
+        if scalars.shape[1] < 4:
+            raise RuntimeError("spatial prior requires scalar features [ax, ay, gx, gy]")
+
+        gx = self._spatial_grid_x.to(device=scalars.device, dtype=scalars.dtype)
+        gy = self._spatial_grid_y.to(device=scalars.device, dtype=scalars.dtype)
+
+        ax = scalars[:, 0].view(-1, 1, 1)
+        ay = scalars[:, 1].view(-1, 1, 1)
+        tx = scalars[:, 2].view(-1, 1, 1)
+        ty = scalars[:, 3].view(-1, 1, 1)
+
+        sigma2 = max(1e-6, float(self.globalcnn_prior_sigma) ** 2)
+        agent_d2 = (gx - ax) ** 2 + (gy - ay) ** 2
+        goal_d2 = (gx - tx) ** 2 + (gy - ty) ** 2
+        agent_hm = torch.exp(-0.5 * (agent_d2 / float(sigma2)))
+        goal_hm = torch.exp(-0.5 * (goal_d2 / float(sigma2)))
+        return torch.stack([agent_hm, goal_hm], dim=1)
+
+    def _prepare_backbone_maps(self, maps: torch.Tensor, scalars: torch.Tensor) -> torch.Tensor:
+        if not self.globalcnn_spatial_prior:
+            return maps
+        prior = self._build_spatial_prior_maps(scalars)
+        return torch.cat([maps, prior], dim=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 1:
@@ -273,8 +333,8 @@ class CNNQNetwork(nn.Module):
             conv = self.conv(maps)
             map_feat = conv.flatten(start_dim=1)
         elif self.cnn_backbone == "globalcnn":
-            map_feat = self._forward_globalcnn(maps)
+            map_feat = self._forward_globalcnn(self._prepare_backbone_maps(maps, scalars))
         else:
-            map_feat = self._forward_globalcnn_fusion(maps)
+            map_feat = self._forward_globalcnn_fusion(self._prepare_backbone_maps(maps, scalars))
         feats = torch.cat([scalars, map_feat], dim=1)
         return self.head(feats)

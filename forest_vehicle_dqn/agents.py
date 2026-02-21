@@ -30,6 +30,10 @@ class AgentConfig:
     # When 0, use periodic hard updates every `target_update_steps`.
     target_update_tau: float = 0.0
     grad_clip_norm: float = 10.0
+    # Training reward transform applied before writing transitions to replay:
+    #   r' = clip(r * reward_scale, [-reward_clip_abs, +reward_clip_abs]) when reward_clip_abs > 0
+    reward_scale: float = 1.0
+    reward_clip_abs: float = 0.0
 
     eps_start: float = 0.9
     eps_final: float = 0.01
@@ -40,6 +44,10 @@ class AgentConfig:
     cnn_backbone: str = "legacy"
     globalcnn_width: int = 32
     globalcnn_dropout: float = 0.0
+    globalcnn_spatial_prior: bool = False
+    globalcnn_prior_sigma: float = 0.20
+    globalcnn_fusion_layernorm: bool = False
+    globalcnn_fusion_layernorm_eps: float = 1e-5
 
     # Expert margin loss (DQfD-style) for forest stabilization.
     demo_margin: float = 0.8
@@ -142,6 +150,10 @@ class DQNFamilyAgent:
                 "cnn_backbone": str(getattr(config, "cnn_backbone", "legacy")).lower().strip(),
                 "globalcnn_width": int(getattr(config, "globalcnn_width", 32)),
                 "globalcnn_dropout": float(getattr(config, "globalcnn_dropout", 0.0)),
+                "globalcnn_spatial_prior": bool(getattr(config, "globalcnn_spatial_prior", False)),
+                "globalcnn_prior_sigma": float(getattr(config, "globalcnn_prior_sigma", 0.20)),
+                "globalcnn_fusion_layernorm": bool(getattr(config, "globalcnn_fusion_layernorm", False)),
+                "globalcnn_fusion_layernorm_eps": float(getattr(config, "globalcnn_fusion_layernorm_eps", 1e-5)),
             }
         else:
             self._net_cls = MLPQNetwork
@@ -185,6 +197,16 @@ class DQNFamilyAgent:
         self._n_step = int(max(1, int(getattr(config, "n_step", 1))))
         # (obs_t, action_t, reward_t, next_obs_{t+1}, done_{t+1}, demo, next_action_mask_{t+1}, replay_flags)
         self._nstep_buffer: deque[tuple[np.ndarray, int, float, np.ndarray, bool, bool, np.ndarray | None, int]] = deque()
+        self._reward_scale = float(getattr(config, "reward_scale", 1.0))
+        if (not np.isfinite(self._reward_scale)) or (not (self._reward_scale > 0.0)):
+            raise ValueError("reward_scale must be finite and > 0")
+        self._reward_clip_abs = float(getattr(config, "reward_clip_abs", 0.0))
+        if (not np.isfinite(self._reward_clip_abs)) or (not (self._reward_clip_abs >= 0.0)):
+            raise ValueError("reward_clip_abs must be finite and >= 0")
+        self._last_pretrain_stats: dict[str, float] = {
+            "grad_norm_pre_clip_mean": 0.0,
+            "grad_clip_hit_rate": 0.0,
+        }
 
     def _optimizer_params(self) -> list[nn.Parameter]:
         params: list[nn.Parameter] = list(self.q.parameters())
@@ -206,6 +228,31 @@ class DQNFamilyAgent:
             return 1.0
         t = float(np.clip(float(self._train_steps) / float(max(1, int(beta_steps))), 0.0, 1.0))
         return float(beta0 + (1.0 - beta0) * t)
+
+    def _transform_reward(self, reward: float) -> float:
+        r = float(reward) * float(self._reward_scale)
+        clip_abs = float(self._reward_clip_abs)
+        if clip_abs > 0.0:
+            r = float(np.clip(r, -clip_abs, +clip_abs))
+        return float(r)
+
+    def _grad_total_norm(self) -> float:
+        total_sq = 0.0
+        for p in self._optimizer_params():
+            if p.grad is None:
+                continue
+            g = p.grad.detach().float()
+            total_sq += float(torch.sum(g * g).item())
+        return float(np.sqrt(max(0.0, total_sq)))
+
+    def _apply_grad_clip(self) -> tuple[float, float]:
+        max_norm = float(getattr(self.config, "grad_clip_norm", 0.0))
+        if max_norm > 0.0:
+            raw_norm = nn.utils.clip_grad_norm_(self._optimizer_params(), max_norm=max_norm)
+            raw_norm_f = float(raw_norm.item()) if isinstance(raw_norm, torch.Tensor) else float(raw_norm)
+            hit = 1.0 if (np.isfinite(raw_norm_f) and raw_norm_f > max_norm) else 0.0
+            return float(raw_norm_f), float(hit)
+        return float(self._grad_total_norm()), 0.0
 
     def _rebuild_networks(
         self,
@@ -337,16 +384,17 @@ class DQNFamilyAgent:
         for time-limit episode ends so the n-step buffer does not leak across episodes while
         still allowing bootstrapping from the final state.
         """
+        reward_t = self._transform_reward(float(reward))
 
         if int(self._n_step) <= 1:
             self._add_to_replay(
                 obs,
                 int(action),
-                float(reward),
+                float(reward_t),
                 next_obs,
                 bool(done),
                 next_action_mask_1=next_action_mask,
-                reward_n=float(reward),
+                reward_n=float(reward_t),
                 next_obs_n=next_obs,
                 done_n=bool(done),
                 next_action_mask_n=next_action_mask,
@@ -359,7 +407,7 @@ class DQNFamilyAgent:
             return
 
         self._nstep_buffer.append(
-            (obs, int(action), float(reward), next_obs, bool(done), bool(demo), next_action_mask, int(replay_flags))
+            (obs, int(action), float(reward_t), next_obs, bool(done), bool(demo), next_action_mask, int(replay_flags))
         )
 
         episode_end = bool(done) or bool(truncated)
@@ -433,9 +481,21 @@ class DQNFamilyAgent:
 
         n_steps = int(steps)
         if n_steps <= 0:
+            self._last_pretrain_stats = {
+                "grad_norm_pre_clip_mean": 0.0,
+                "grad_clip_hit_rate": 0.0,
+            }
             return 0
         if len(self.replay) < int(self.config.batch_size):
+            self._last_pretrain_stats = {
+                "grad_norm_pre_clip_mean": 0.0,
+                "grad_clip_hit_rate": 0.0,
+            }
             return 0
+
+        grad_norm_sum = 0.0
+        grad_clip_hits = 0.0
+        grad_steps = 0
 
         if self._demo_mode() == "dqfd":
             trained = 0
@@ -444,6 +504,22 @@ class DQNFamilyAgent:
                 if not out:
                     break
                 trained += 1
+                grad_norm = float(out.get("grad_norm_pre_clip", 0.0))
+                grad_hit = float(out.get("grad_clip_hit", 0.0))
+                if np.isfinite(grad_norm):
+                    grad_norm_sum += float(grad_norm)
+                grad_clip_hits += float(grad_hit)
+                grad_steps += 1
+            if grad_steps > 0:
+                self._last_pretrain_stats = {
+                    "grad_norm_pre_clip_mean": float(grad_norm_sum) / float(grad_steps),
+                    "grad_clip_hit_rate": float(grad_clip_hits) / float(grad_steps),
+                }
+            else:
+                self._last_pretrain_stats = {
+                    "grad_norm_pre_clip_mean": 0.0,
+                    "grad_clip_hit_rate": 0.0,
+                }
             return int(trained)
 
         demo_lambda = float(getattr(self.config, "demo_lambda", 0.0))
@@ -482,13 +558,26 @@ class DQNFamilyAgent:
 
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            if self.config.grad_clip_norm > 0:
-                nn.utils.clip_grad_norm_(self._optimizer_params(), max_norm=self.config.grad_clip_norm)
+            grad_norm_pre_clip, grad_clip_hit = self._apply_grad_clip()
             self.optimizer.step()
             trained += 1
+            if np.isfinite(grad_norm_pre_clip):
+                grad_norm_sum += float(grad_norm_pre_clip)
+            grad_clip_hits += float(grad_clip_hit)
+            grad_steps += 1
 
         if trained > 0:
             self.q_target.load_state_dict(self.q.state_dict())
+        if grad_steps > 0:
+            self._last_pretrain_stats = {
+                "grad_norm_pre_clip_mean": float(grad_norm_sum) / float(grad_steps),
+                "grad_clip_hit_rate": float(grad_clip_hits) / float(grad_steps),
+            }
+        else:
+            self._last_pretrain_stats = {
+                "grad_norm_pre_clip_mean": 0.0,
+                "grad_clip_hit_rate": 0.0,
+            }
         return int(trained)
 
     def update(self) -> dict[str, float]:
@@ -581,8 +670,7 @@ class DQNFamilyAgent:
 
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            if self.config.grad_clip_norm > 0:
-                nn.utils.clip_grad_norm_(self._optimizer_params(), max_norm=self.config.grad_clip_norm)
+            grad_norm_pre_clip, grad_clip_hit = self._apply_grad_clip()
             self.optimizer.step()
 
             self._train_steps += 1
@@ -600,6 +688,8 @@ class DQNFamilyAgent:
                 "margin_loss": float(margin_loss.item()),
                 "ce_loss": float(ce_loss.item()),
                 "aux_adm_loss": float(aux_adm_loss.item()),
+                "grad_norm_pre_clip": float(grad_norm_pre_clip),
+                "grad_clip_hit": float(grad_clip_hit),
             }
 
         # Strict DQfD-style update (PER + 1-step TD + n-step TD + margin + L2; no CE).
@@ -675,8 +765,7 @@ class DQNFamilyAgent:
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        if self.config.grad_clip_norm > 0:
-            nn.utils.clip_grad_norm_(self._optimizer_params(), max_norm=self.config.grad_clip_norm)
+        grad_norm_pre_clip, grad_clip_hit = self._apply_grad_clip()
         self.optimizer.step()
 
         self._train_steps += 1
@@ -710,6 +799,8 @@ class DQNFamilyAgent:
             "aux_adm_loss": float(aux_adm_loss.item()),
             "per_beta": float(self._per_beta()),
             "is_w_mean": float(is_w.mean().item()),
+            "grad_norm_pre_clip": float(grad_norm_pre_clip),
+            "grad_clip_hit": float(grad_clip_hit),
         }
 
     def save(self, path: str | Path) -> None:
@@ -771,6 +862,32 @@ class DQNFamilyAgent:
             net_kwargs.setdefault(
                 "globalcnn_dropout",
                 float(cfg.get("globalcnn_dropout", getattr(self.config, "globalcnn_dropout", 0.0))),
+            )
+            net_kwargs.setdefault(
+                "globalcnn_spatial_prior",
+                bool(cfg.get("globalcnn_spatial_prior", getattr(self.config, "globalcnn_spatial_prior", False))),
+            )
+            net_kwargs.setdefault(
+                "globalcnn_prior_sigma",
+                float(cfg.get("globalcnn_prior_sigma", getattr(self.config, "globalcnn_prior_sigma", 0.20))),
+            )
+            net_kwargs.setdefault(
+                "globalcnn_fusion_layernorm",
+                bool(
+                    cfg.get(
+                        "globalcnn_fusion_layernorm",
+                        getattr(self.config, "globalcnn_fusion_layernorm", False),
+                    )
+                ),
+            )
+            net_kwargs.setdefault(
+                "globalcnn_fusion_layernorm_eps",
+                float(
+                    cfg.get(
+                        "globalcnn_fusion_layernorm_eps",
+                        getattr(self.config, "globalcnn_fusion_layernorm_eps", 1e-5),
+                    )
+                ),
             )
             self.arch = "cnn"
         else:
