@@ -40,7 +40,7 @@ REPORT_ARTIFACTS:
 
 - This repo is under active `vibe coding` iteration: small deltas, quick validation loops, and strict rollback/archive discipline.
 - Current stable mainline is `v7p1` (`configs/v7p1.json`).
-- `v7p2` to `v7p2p9` are archived failed/iterative attempts on the non-mainline branch, and are not the current stable claim baseline.
+- `v7p2` to `v7p2p10` are archived failed/iterative attempts on the non-mainline branch, and are not the current stable claim baseline.
 - Final objective: make RL planning (`CNN-DDQN`) outperform classical planning (`Hybrid A*-MPC`) under fair and reproducible evaluation.
 - Core optimization targets: shorter paths (`avg_path_length`), shorter path time (`path_time_s`), and smoother trajectories (`avg_curvature_1_m`, lower is better).
 
@@ -122,8 +122,8 @@ conda run -n ros2py310 python infer.py --profile v7p1
 Experimental candidate (new module version, smoke gate):
 
 ```bash
-conda run -n ros2py310 python train.py --profile repro_20260221_v7p2p9_ablate_expert_smoke
-conda run -n ros2py310 python infer.py --profile repro_20260221_v7p2p9_ablate_expert_smoke --models v7p2p9_ablate_expert_smoke --out v7p2p9_ablate_expert_smoke
+conda run -n ros2py310 python train.py --profile repro_20260221_v7p2p10_penalty035_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260221_v7p2p10_penalty035_smoke --models v7p2p10_penalty035_smoke --out v7p2p10_penalty035_smoke
 ```
 
 Note: training now saves process logs to `<run_dir>/train_flow.log` by default; disable via `--no-save-train-log`.
@@ -243,9 +243,9 @@ Notes:
 - `fallback_rate`: fraction of steps where inference-time fallback/override triggered (diagnostic; should be `0` in `strict-argmax` by definition).
 - `failure_reason`: failure type label (only in `table2_kpis_raw.csv`).
 
-## 版本总索引（v1 → v7p2p9）
+## 版本总索引（v1 → v7p2p10）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9` 为已归档迭代分支。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10` 为已归档迭代分支。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -253,7 +253,7 @@ Notes:
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p2p9）
+### 增量版本（v3p1 → v7p2p10）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -279,6 +279,7 @@ Notes:
 | `v7p2p7` | `docs/versions/v7p2p7/` | `configs/repro_20260221_v7p2p7_gradclip_recover_smoke.json` | `runs/v7p2p7_gradclip_recover_smoke/train_20260221_215452/infer/20260221_221008` | `0.333 / 0.333` | `1.00 / 1.00` | 失败归档（long 有恢复但 short 退化，继续前向迭代） |
 | `v7p2p8` | `docs/versions/v7p2p8/` | `configs/repro_20260221_v7p2p8_bold_dynamic_expert_smoke.json` | `runs/v7p2p8_bold_dynamic_expert_smoke/train_20260221_225358/infer/20260221_230426` | `0.000 / 1.000` | `1.00 / 1.00` | 失败归档（long 恢复到 1.0，但 short 崩塌到 0.0，继续前向迭代） |
 | `v7p2p9` | `docs/versions/v7p2p9/` | `configs/repro_20260221_v7p2p9_ablate_expert_smoke.json` | `runs/v7p2p9_ablate_expert_smoke/train_20260221_231402/infer/20260221_232825` | `0.667 / 0.000` | `1.00 / 1.00` | 失败归档（short 回升但 long 崩塌，继续前向迭代） |
+| `v7p2p10` | `docs/versions/v7p2p10/` | `configs/repro_20260221_v7p2p10_penalty035_smoke.json` | `runs/v7p2p10_penalty035_smoke/train_20260221_234022/infer/20260221_235340` | `0.667 / 0.333` | `1.00 / 1.00` | 失败归档（long 回升但 short 路径与平滑性退化，继续前向迭代） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
@@ -319,7 +320,7 @@ conda run -n ros2py310 python infer.py --profile <candidate> --models <version>_
 
 5. Archive immediately:
 - Create `docs/versions/<version>/` four-doc bundle and log commands, run paths, KPIs, and failure reasons.
-- Prepare next iteration as `<version+1>` (example: `v7p2p10`).
+- Prepare next iteration as `<version+1>` (example: `v7p2p11`).
 
 ## Final acceptance gate (short/long suites, runs=20)
 
