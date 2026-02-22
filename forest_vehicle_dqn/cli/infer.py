@@ -948,6 +948,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Forest-only: minimum goal-distance progress required by admissible-action gating.",
     )
     ap.add_argument(
+        "--forest-progress-dist-mode",
+        choices=("euclid", "grid4"),
+        default="euclid",
+        help=(
+            "Forest-only: goal-progress distance mode used by reward progress and admissible-action gating "
+            "(default: euclid)."
+        ),
+    )
+    ap.add_argument(
         "--forest-min-od-m",
         type=float,
         default=0.0,
@@ -1567,6 +1576,7 @@ def main(argv: list[str] | None = None) -> int:
                 action_delta_dot_bins=int(args.forest_action_delta_dot_bins),
                 action_accel_bins=int(args.forest_action_accel_bins),
                 action_grid_power=float(args.forest_action_grid_power),
+                progress_dist_mode=str(args.forest_progress_dist_mode),
             )
             cell_size_m = 0.1
             diag_m = max(1e-6, float(getattr(env, "_diag_m", 1.0)))
