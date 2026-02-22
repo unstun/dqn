@@ -55,6 +55,28 @@ def format_elapsed_s(seconds: float) -> str:
     return f"{int(hours)}h{int(rem_minutes):02d}m{sec:04.1f}s"
 
 
+def _resolve_train_suite_no_progress_penalties(
+    *,
+    base_penalty: float,
+    enabled: bool,
+    short_penalty: float | None,
+    long_penalty: float | None,
+) -> tuple[bool, float, float]:
+    base = max(0.0, float(base_penalty))
+
+    def _resolve(raw: float | None) -> float:
+        if raw is None:
+            return float(base)
+        val = float(raw)
+        if (not math.isfinite(float(val))) or float(val) < 0.0:
+            return float(base)
+        return float(val)
+
+    if not bool(enabled):
+        return False, float(base), float(base)
+    return True, _resolve(short_penalty), _resolve(long_penalty)
+
+
 def make_progress_writer(progress: bool, *, flow_log_fp: TextIO | None = None) -> Callable[[str], None]:
     tqdm_cls = None
     if progress:
@@ -955,6 +977,9 @@ def train_one(
     forest_train_dynamic_k: float,
     forest_train_dynamic_min_short_prob: float,
     forest_train_dynamic_max_short_prob: float,
+    forest_train_suite_no_progress_penalty: bool,
+    forest_train_short_no_progress_penalty: float | None,
+    forest_train_long_no_progress_penalty: float | None,
     forest_train_short_min_dist_m: float,
     forest_train_short_max_dist_m: float | None,
     forest_train_long_min_dist_m: float,
@@ -1033,6 +1058,17 @@ def train_one(
     if float(train_dynamic_max_short_prob) < float(train_dynamic_min_short_prob):
         train_dynamic_min_short_prob, train_dynamic_max_short_prob = train_dynamic_max_short_prob, train_dynamic_min_short_prob
     dynamic_short_prob = float(np.clip(float(train_short_prob), train_dynamic_min_short_prob, train_dynamic_max_short_prob))
+    base_no_progress_penalty = max(0.0, float(getattr(env, "reward_no_progress_penalty", 0.0)))
+    suite_no_progress_requested = bool(forest_train_suite_no_progress_penalty)
+    suite_no_progress_penalty_enabled, suite_no_progress_penalty_short, suite_no_progress_penalty_long = (
+        _resolve_train_suite_no_progress_penalties(
+            base_penalty=float(base_no_progress_penalty),
+            enabled=bool(suite_no_progress_requested and train_two_suites and isinstance(env, AMRBicycleEnv)),
+            short_penalty=forest_train_short_no_progress_penalty,
+            long_penalty=forest_train_long_no_progress_penalty,
+        )
+    )
+    active_no_progress_penalty = float(base_no_progress_penalty)
     dynamic_last_update_ep = -1
     train_short_max_dist_m = _maybe_max_dist(forest_train_short_max_dist_m)
     train_long_max_dist_m = _maybe_max_dist(forest_train_long_max_dist_m)
@@ -1073,6 +1109,19 @@ def train_one(
             f"k={float(train_dynamic_k):.3f}, "
             f"short_prob_range=[{float(train_dynamic_min_short_prob):.2f},{float(train_dynamic_max_short_prob):.2f}], "
             f"init_short_prob={float(dynamic_short_prob):.2f}"
+        )
+    if bool(suite_no_progress_requested and (not suite_no_progress_penalty_enabled)):
+        log(
+            f"[train] [{run_label}] Suite-specific no-progress penalty disabled "
+            f"(requires AMRBicycleEnv + --forest-train-two-suites + --forest-random-start-goal). "
+            f"fallback_to_base={float(base_no_progress_penalty):.3f}"
+        )
+    if bool(suite_no_progress_penalty_enabled):
+        log(
+            f"[train] [{run_label}] Suite-specific no-progress penalty enabled: "
+            f"short={float(suite_no_progress_penalty_short):.3f}, "
+            f"long={float(suite_no_progress_penalty_long):.3f}, "
+            f"base={float(base_no_progress_penalty):.3f}"
         )
 
     def random_reset_options_for_training(
@@ -1752,8 +1801,18 @@ def train_one(
                         mix = float(np.clip(float(ep) / float(ramp_episodes), 0.0, 1.0))
                         p_short = float((1.0 - float(mix)) * 1.0 + float(mix) * float(train_short_prob))
                 ep_suite = "short" if float(explore_rng.random()) < float(np.clip(p_short, 0.0, 1.0)) else "long"
+                if bool(suite_no_progress_penalty_enabled):
+                    active_no_progress_penalty = (
+                        float(suite_no_progress_penalty_short)
+                        if str(ep_suite) == "short"
+                        else float(suite_no_progress_penalty_long)
+                    )
+                    env.reward_no_progress_penalty = float(active_no_progress_penalty)
                 reset_options = random_reset_options_for_training(suite=ep_suite, curriculum_progress=None)
             else:
+                if bool(suite_no_progress_penalty_enabled):
+                    active_no_progress_penalty = float(base_no_progress_penalty)
+                    env.reward_no_progress_penalty = float(active_no_progress_penalty)
                 p_curriculum = None
                 if bool(forest_curriculum):
                     p_raw = float(ep) / float(max(1, episodes - 1))
@@ -2026,7 +2085,8 @@ def train_one(
             log(
                 f"[train] [{run_label}] RL progress: ep={int(ep + 1)}/{int(episodes)} "
                 f"({pct:.1f}%), last_ret={float(ep_return):.3f}, train_steps={int(agent._train_steps)}, "
-                f"elapsed={format_elapsed_s(time.perf_counter() - t_rl_train_start)}{grad_tail}"
+                f"elapsed={format_elapsed_s(time.perf_counter() - t_rl_train_start)}, "
+                f"no_progress_penalty={float(active_no_progress_penalty):.3f}{grad_tail}"
             )
 
         reached = bool(last_info.get("reached", False))
@@ -2383,6 +2443,10 @@ def train_one(
         "dynamic_curriculum_enabled": bool(train_dynamic_curriculum),
         "dynamic_short_prob_final": float(dynamic_short_prob),
         "dynamic_last_update_episode": int(dynamic_last_update_ep),
+        "suite_no_progress_penalty_enabled": bool(suite_no_progress_penalty_enabled),
+        "suite_no_progress_penalty_short": float(suite_no_progress_penalty_short),
+        "suite_no_progress_penalty_long": float(suite_no_progress_penalty_long),
+        "base_no_progress_penalty": float(base_no_progress_penalty),
         "save_ckpt_long_sr_floor": float(ckpt_long_sr_floor),
     }
     return agent, returns, eval_history, {"meta": train_meta, "train_progress": list(train_progress_history)}
@@ -3298,6 +3362,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Forest-only: long suite maximum start-goal distance (meters) for training sampling (<=0 disables).",
     )
     ap.add_argument(
+        "--forest-train-suite-no-progress-penalty",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Forest-only: enable suite-specific no-progress penalties in two-suite training. "
+            "When enabled, short/long episodes can use different no-progress penalties."
+        ),
+    )
+    ap.add_argument(
+        "--forest-train-short-no-progress-penalty",
+        type=float,
+        default=-1.0,
+        help=(
+            "Forest-only: short-suite no-progress penalty override (>=0). "
+            "Negative value means fallback to --forest-reward-no-progress-penalty."
+        ),
+    )
+    ap.add_argument(
+        "--forest-train-long-no-progress-penalty",
+        type=float,
+        default=-1.0,
+        help=(
+            "Forest-only: long-suite no-progress penalty override (>=0). "
+            "Negative value means fallback to --forest-reward-no-progress-penalty."
+        ),
+    )
+    ap.add_argument(
         "--forest-expert-prob-start",
         type=float,
         default=0.7,
@@ -3790,6 +3881,19 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     forest_train_dynamic_max_short_prob=float(
                         getattr(args, "forest_train_dynamic_max_short_prob", 0.9)
+                    ),
+                    forest_train_suite_no_progress_penalty=bool(
+                        getattr(args, "forest_train_suite_no_progress_penalty", False)
+                    ),
+                    forest_train_short_no_progress_penalty=(
+                        None
+                        if float(getattr(args, "forest_train_short_no_progress_penalty", -1.0)) < 0.0
+                        else float(getattr(args, "forest_train_short_no_progress_penalty", -1.0))
+                    ),
+                    forest_train_long_no_progress_penalty=(
+                        None
+                        if float(getattr(args, "forest_train_long_no_progress_penalty", -1.0)) < 0.0
+                        else float(getattr(args, "forest_train_long_no_progress_penalty", -1.0))
                     ),
                     forest_train_short_min_dist_m=float(getattr(args, "forest_train_short_min_dist_m", 6.0)),
                     forest_train_short_max_dist_m=(

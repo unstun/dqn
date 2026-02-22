@@ -7,6 +7,7 @@
 | 类别 | 文件 | 用途 | 状态 |
 |---|---|---|---|
 | 稳定主线 | `configs/v7p1.json` | 当前训练/推理默认主线 | 推荐 |
+| 失败分支归档 | `configs/v7p3.json` | `v7p3` short/long 分离 no-progress 惩罚方案 | 仅复盘 |
 | 失败分支归档 | `configs/v7p2.json` | `v7p2` 试验分支留档 | 仅复盘 |
 | 回退对照 | `configs/v6p2p3.json` | 主线前一稳定代口径对照 | 仅对照 |
 
@@ -20,6 +21,7 @@
 - `configs/v6p2p3.json`
 - `configs/v7p1.json`
 - `configs/v7p2.json`
+- `configs/v7p3.json`
 
 > 规则：新增版本时，优先新增 `v*.json`，再在四件套中记录它与 `run_dir`（运行目录）的映射。
 
