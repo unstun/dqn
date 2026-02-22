@@ -1791,7 +1791,7 @@ class AMRBicycleEnv(gym.Env):
             a_m_s2=accel,
             horizon_steps=h,
         )
-        dist1 = self._goal_dist_pose_m_vec(x, y, psi)
+        dist1 = self._progress_dist_pose_m_vec(x, y, psi)
 
         ok = (~coll) & (min_od >= float(min_od_thr)) & np.isfinite(dist1)
         if bool(ok.any()):
@@ -2177,10 +2177,10 @@ class AMRBicycleEnv(gym.Env):
                 return float("inf"), float(v), float(min_od), True, False
 
             if float(math.hypot(float(gx_m) - float(x), float(gy_m) - float(y))) <= float(tol_m):
-                goal_dist = float(self._goal_dist_pose_m(x, y, psi))
+                goal_dist = float(self._progress_dist_pose_m(x, y, psi))
                 return float(goal_dist), float(v), float(min_od), False, True
 
-        goal_dist = float(self._goal_dist_pose_m(x, y, psi))
+        goal_dist = float(self._progress_dist_pose_m(x, y, psi))
         return float(goal_dist), float(v), float(min_od), False, False
 
     def is_action_safe(
@@ -2206,7 +2206,7 @@ class AMRBicycleEnv(gym.Env):
         min_progress_m: float = 1e-4,
         allow_reverse: bool = True,
     ) -> bool:
-        dist0 = float(self._goal_dist_pose_m(float(self._x_m), float(self._y_m), float(self._psi_rad)))
+        dist0 = float(self._progress_dist_pose_m(float(self._x_m), float(self._y_m), float(self._psi_rad)))
         if not math.isfinite(dist0):
             return True
         reached_pose_now = bool(
@@ -2283,7 +2283,7 @@ class AMRBicycleEnv(gym.Env):
     ) -> np.ndarray:
         """Mask actions that are safe and make goal-distance progress (optionally allow reverse)."""
 
-        dist0 = float(self._goal_dist_pose_m(float(self._x_m), float(self._y_m), float(self._psi_rad)))
+        dist0 = float(self._progress_dist_pose_m(float(self._x_m), float(self._y_m), float(self._psi_rad)))
         out = np.zeros((int(self.action_table.shape[0]),), dtype=np.bool_)
         if not math.isfinite(dist0):
             out[:] = True
@@ -2307,7 +2307,7 @@ class AMRBicycleEnv(gym.Env):
             a_m_s2=accel,
             horizon_steps=h,
         )
-        dist1 = self._goal_dist_pose_m_vec(x, y, psi)
+        dist1 = self._progress_dist_pose_m_vec(x, y, psi)
 
         safe = (~coll) & (min_od >= float(min_od_thr)) & np.isfinite(dist1)
         prog = ((float(dist0) - dist1) >= float(min_prog)) | reached
