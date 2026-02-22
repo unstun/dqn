@@ -699,6 +699,7 @@ class AMRBicycleEnv(gym.Env):
         action_delta_dot_bins: int = 7,
         action_accel_bins: int = 5,
         action_grid_power: float = 1.0,
+        progress_dist_mode: str = "euclid",
     ) -> None:
         super().__init__()
 
@@ -757,6 +758,13 @@ class AMRBicycleEnv(gym.Env):
             raise ValueError("goal_stop_delta_deg must be >= 0")
         self.goal_stop_delta_rad = min(self.goal_stop_delta_rad, float(self.model.delta_max_rad))
 
+        self.progress_dist_mode = str(progress_dist_mode).strip()
+        if self.progress_dist_mode not in ("euclid", "grid4"):
+            raise ValueError("progress_dist_mode must be one of: euclid, grid4")
+        self._progress_goal_xy: tuple[int, int] | None = None
+        self._progress_dist_m = np.zeros((1, 1), dtype=np.float32)
+        self._progress_dist_fill_m = float("inf")
+
         # Precompute EDT + distance fields once (forest maps are static).
         self._eps_cell_m = float(math.sqrt(2.0) * 0.5 * self.cell_size_m)
         self._dist_m = compute_edt_distance_m(self._grid, cell_size_m=self.cell_size_m)
@@ -792,6 +800,7 @@ class AMRBicycleEnv(gym.Env):
 
         # Goal-dependent fields (distance field + curriculum candidates).
         self._set_goal_xy(self.goal_xy)
+        self._ensure_progress_dist_field()
         # Start-dependent normalization.
         self._update_start_dependent_fields(start_xy=self.start_xy)
 
@@ -984,6 +993,35 @@ class AMRBicycleEnv(gym.Env):
         cand_y, cand_x = np.where(cand_mask)
         self._curriculum_start_xy = np.stack([cand_x, cand_y], axis=1).astype(np.int32, copy=False)
         self._curriculum_start_dists_m = self._goal_dist_m[cand_y, cand_x].astype(np.float32, copy=False)
+
+        self._progress_goal_xy = None
+        if str(self.progress_dist_mode) == "euclid":
+            self._progress_goal_xy = (int(gx), int(gy))
+            self._progress_dist_m = self._goal_dist_m
+            self._progress_dist_fill_m = float(self._goal_dist_fill_m)
+
+    def _ensure_progress_dist_field(self) -> None:
+        goal_xy = (int(self.goal_xy[0]), int(self.goal_xy[1]))
+        if str(self.progress_dist_mode) == "euclid":
+            self._progress_goal_xy = goal_xy
+            self._progress_dist_m = self._goal_dist_m
+            self._progress_dist_fill_m = float(self._goal_dist_fill_m)
+            return
+
+        if self._progress_goal_xy == goal_xy:
+            return
+
+        mode = str(self.progress_dist_mode)
+        if mode == "grid4":
+            self._progress_dist_m = grid4_goal_dist_m(
+                self._traversable_base,
+                goal_xy=goal_xy,
+                cell_size_m=float(self.cell_size_m),
+            )
+            self._progress_dist_fill_m = float(self._goal_dist_fill_m)
+            self._progress_goal_xy = goal_xy
+            return
+        raise ValueError("progress_dist_mode must be one of: euclid, grid4")
 
     def _update_start_dependent_fields(self, *, start_xy: tuple[int, int]) -> None:
         sx, sy = int(start_xy[0]), int(start_xy[1])
@@ -1200,6 +1238,7 @@ class AMRBicycleEnv(gym.Env):
 
         self.start_xy = (int(start_xy[0]), int(start_xy[1]))
         self.goal_xy = (int(goal_xy[0]), int(goal_xy[1]))
+        self._ensure_progress_dist_field()
 
         ha_start_xy = (int(self.start_xy[0]), int(self.start_xy[1]))
         ha_progress_idx = 0
@@ -1314,7 +1353,7 @@ class AMRBicycleEnv(gym.Env):
 
         x_before = float(self._x_m)
         y_before = float(self._y_m)
-        dist_before = self._goal_dist_pose_m(x_before, y_before, float(self._psi_rad))
+        dist_before = self._progress_dist_pose_m(x_before, y_before, float(self._psi_rad))
         d_goal_before = self._distance_to_goal_m()
         delta_before = float(self._delta_rad)
 
@@ -1338,7 +1377,7 @@ class AMRBicycleEnv(gym.Env):
         )
         self._last_od_m, self._last_collision = self._od_and_collision_m()
 
-        dist_after = self._goal_dist_pose_m(self._x_m, self._y_m, float(self._psi_rad))
+        dist_after = self._progress_dist_pose_m(self._x_m, self._y_m, float(self._psi_rad))
         d_goal_after = self._distance_to_goal_m()
         alpha = self._goal_relative_angle_rad()
         reached_pose = self._goal_pose_reached(d_goal_m=d_goal_after, alpha_rad=alpha)
@@ -1599,6 +1638,17 @@ class AMRBicycleEnv(gym.Env):
             default=float(self._goal_dist_fill_m),
         )
 
+    def _progress_dist_at_m_vec(self, x_m: np.ndarray, y_m: np.ndarray) -> np.ndarray:
+        self._ensure_progress_dist_field()
+        xi = np.asarray(x_m, dtype=np.float64) / float(self.cell_size_m)
+        yi = np.asarray(y_m, dtype=np.float64) / float(self.cell_size_m)
+        return bilinear_sample_2d_vec(
+            self._progress_dist_m,
+            x=xi,
+            y=yi,
+            default=float(self._progress_dist_fill_m),
+        )
+
     def _goal_dist_pose_m_vec(self, x_m: np.ndarray, y_m: np.ndarray, psi_rad: np.ndarray) -> np.ndarray:
         xv = np.asarray(x_m, dtype=np.float64)
         yv = np.asarray(y_m, dtype=np.float64)
@@ -1611,6 +1661,20 @@ class AMRBicycleEnv(gym.Env):
         c2y = yv + s * float(self.footprint.x2_m)
         c1 = self._goal_dist_at_m_vec(c1x, c1y)
         c2 = self._goal_dist_at_m_vec(c2x, c2y)
+        return np.maximum(c1, c2).astype(np.float64, copy=False)
+
+    def _progress_dist_pose_m_vec(self, x_m: np.ndarray, y_m: np.ndarray, psi_rad: np.ndarray) -> np.ndarray:
+        xv = np.asarray(x_m, dtype=np.float64)
+        yv = np.asarray(y_m, dtype=np.float64)
+        psiv = np.asarray(psi_rad, dtype=np.float64)
+        c = np.cos(psiv)
+        s = np.sin(psiv)
+        c1x = xv + c * float(self.footprint.x1_m)
+        c1y = yv + s * float(self.footprint.x1_m)
+        c2x = xv + c * float(self.footprint.x2_m)
+        c2y = yv + s * float(self.footprint.x2_m)
+        c1 = self._progress_dist_at_m_vec(c1x, c1y)
+        c2 = self._progress_dist_at_m_vec(c2x, c2y)
         return np.maximum(c1, c2).astype(np.float64, copy=False)
 
     def _bicycle_integrate_one_step_vec(
@@ -2318,6 +2382,17 @@ class AMRBicycleEnv(gym.Env):
         yi = float(y_m) / self.cell_size_m
         return bilinear_sample_2d(self._goal_dist_m, x=xi, y=yi, default=float(self._goal_dist_fill_m))
 
+    def _progress_dist_at_m(self, x_m: float, y_m: float) -> float:
+        self._ensure_progress_dist_field()
+        xi = float(x_m) / self.cell_size_m
+        yi = float(y_m) / self.cell_size_m
+        return bilinear_sample_2d(
+            self._progress_dist_m,
+            x=xi,
+            y=yi,
+            default=float(self._progress_dist_fill_m),
+        )
+
     def _goal_dist_pose_m(self, x_m: float, y_m: float, psi_rad: float) -> float:
         """Goal distance for the whole vehicle footprint (two circles).
 
@@ -2332,6 +2407,18 @@ class AMRBicycleEnv(gym.Env):
         c2y = float(y_m) + s * float(self.footprint.x2_m)
         c1 = self._goal_dist_at_m(c1x, c1y)
         c2 = self._goal_dist_at_m(c2x, c2y)
+        return float(max(float(c1), float(c2)))
+
+    def _progress_dist_pose_m(self, x_m: float, y_m: float, psi_rad: float) -> float:
+        self._ensure_progress_dist_field()
+        c = math.cos(float(psi_rad))
+        s = math.sin(float(psi_rad))
+        c1x = float(x_m) + c * float(self.footprint.x1_m)
+        c1y = float(y_m) + s * float(self.footprint.x1_m)
+        c2x = float(x_m) + c * float(self.footprint.x2_m)
+        c2y = float(y_m) + s * float(self.footprint.x2_m)
+        c1 = self._progress_dist_at_m(c1x, c1y)
+        c2 = self._progress_dist_at_m(c2x, c2y)
         return float(max(float(c1), float(c2)))
 
     def _in_world_bounds(self, x_m: float, y_m: float) -> bool:
