@@ -363,12 +363,57 @@ def forest_stop_action(env: AMRBicycleEnv) -> int:
     return int(best_action)
 
 
+def _forest_topk_candidate_q_score(
+    env: AMRBicycleEnv,
+    q: torch.Tensor,
+    *,
+    action_id: int,
+    topk_turn_penalty: float,
+) -> float:
+    """Score admissible candidates with optional turn-aggressiveness penalty."""
+    a_id = int(action_id)
+    base = float(q[a_id].item())
+    penalty_w = max(0.0, float(topk_turn_penalty))
+    if not (penalty_w > 0.0):
+        return float(base)
+
+    x0 = float(env._x_m)
+    y0 = float(env._y_m)
+    psi0 = float(env._psi_rad)
+    v0 = float(env._v_m_s)
+    delta0 = float(env._delta_rad)
+    delta_dot = float(env.action_table[a_id, 0])
+    accel = float(env.action_table[a_id, 1])
+    x1, y1, psi1, _v1, delta1 = bicycle_integrate_one_step(
+        x_m=x0,
+        y_m=y0,
+        psi_rad=psi0,
+        v_m_s=v0,
+        delta_rad=delta0,
+        delta_dot_rad_s=delta_dot,
+        a_m_s2=accel,
+        params=env.model,
+    )
+    _od, coll = env._od_and_collision_at_pose_m(x1, y1, psi1)
+    if bool(coll):
+        return -float("inf")
+
+    delta_max = max(1e-9, float(env.model.delta_max_rad))
+    delta_dot_max = max(1e-9, float(env.model.delta_dot_max_rad_s))
+    turn_cost = (
+        abs(float(delta1)) / float(delta_max)
+        + 0.5 * abs(float(delta_dot)) / float(delta_dot_max)
+    )
+    return float(base) - float(penalty_w) * float(turn_cost)
+
+
 def _forest_policy_action_from_q(
     env: AMRBicycleEnv,
     q: torch.Tensor,
     *,
     forest_adm_horizon: int,
     forest_topk: int,
+    forest_topk_turn_penalty: float,
     forest_min_od_m: float,
     forest_min_progress_m: float,
     forest_no_fallback: bool,
@@ -376,6 +421,7 @@ def _forest_policy_action_from_q(
     """Infer-style forest policy action from Q values; returns (action, argmax_inadmissible)."""
     adm_h = max(1, int(forest_adm_horizon))
     topk_k = max(1, int(forest_topk))
+    topk_turn_penalty = max(0.0, float(forest_topk_turn_penalty))
     strict_no_fallback = bool(forest_no_fallback)
     min_od = float(forest_min_od_m)
     min_prog = float(forest_min_progress_m)
@@ -404,6 +450,7 @@ def _forest_policy_action_from_q(
 
     if (not bool(strict_no_fallback)) and (not bool(a0_adm)):
         chosen: int | None = None
+        admissible_topk: list[int] = []
         kk = int(min(int(topk_k), int(q.numel())))
         topk = torch.topk(q, k=kk, dim=0).indices.detach().cpu().numpy()
         for cand in topk.tolist():
@@ -418,8 +465,23 @@ def _forest_policy_action_from_q(
                     min_progress_m=float(min_prog),
                 )
             ):
-                chosen = int(cand_i)
-                break
+                admissible_topk.append(int(cand_i))
+
+        if admissible_topk:
+            if float(topk_turn_penalty) <= 0.0:
+                chosen = int(admissible_topk[0])
+            else:
+                chosen = int(
+                    max(
+                        admissible_topk,
+                        key=lambda c: _forest_topk_candidate_q_score(
+                            env,
+                            q,
+                            action_id=int(c),
+                            topk_turn_penalty=float(topk_turn_penalty),
+                        ),
+                    )
+                )
 
         if chosen is None:
             prog_mask = env.admissible_action_mask(
@@ -429,9 +491,24 @@ def _forest_policy_action_from_q(
                 fallback_to_safe=False,
             )
             if bool(prog_mask.any()):
-                q_masked = q.clone()
-                q_masked[torch.from_numpy(~prog_mask).to(q.device)] = torch.finfo(q_masked.dtype).min
-                chosen = int(torch.argmax(q_masked).item())
+                if float(topk_turn_penalty) <= 0.0:
+                    q_masked = q.clone()
+                    q_masked[torch.from_numpy(~prog_mask).to(q.device)] = torch.finfo(q_masked.dtype).min
+                    chosen = int(torch.argmax(q_masked).item())
+                else:
+                    cand_idx = np.nonzero(prog_mask)[0].astype(np.int64).tolist()
+                    if cand_idx:
+                        chosen = int(
+                            max(
+                                cand_idx,
+                                key=lambda c: _forest_topk_candidate_q_score(
+                                    env,
+                                    q,
+                                    action_id=int(c),
+                                    topk_turn_penalty=float(topk_turn_penalty),
+                                ),
+                            )
+                        )
 
         if chosen is not None:
             a = int(chosen)
@@ -582,6 +659,7 @@ def _eval_train_progress_suites(
     max_steps: int,
     adm_horizon: int,
     topk: int,
+    topk_turn_penalty: float,
     min_od_m: float,
     min_progress_m: float,
     forest_no_fallback: bool,
@@ -630,6 +708,7 @@ def _eval_train_progress_suites(
                     q,
                     forest_adm_horizon=int(adm_horizon),
                     forest_topk=int(topk),
+                    forest_topk_turn_penalty=float(topk_turn_penalty),
                     forest_min_od_m=float(min_od_m),
                     forest_min_progress_m=float(min_progress_m),
                     forest_no_fallback=bool(forest_no_fallback),
@@ -1006,6 +1085,7 @@ def train_one(
     forest_action_shield: bool,
     forest_adm_horizon: int,
     forest_topk: int,
+    forest_topk_turn_penalty: float,
     forest_min_od_m: float,
     forest_min_progress_m: float,
     forest_no_fallback: bool,
@@ -1084,6 +1164,7 @@ def train_one(
     t_train_one_start = time.perf_counter()
     adm_h = max(1, int(forest_adm_horizon))
     topk_k = max(1, int(forest_topk))
+    topk_turn_penalty = max(0.0, float(forest_topk_turn_penalty))
     min_od_m = float(forest_min_od_m)
     min_prog_m = float(forest_min_progress_m)
     strict_no_fallback = bool(forest_no_fallback)
@@ -1252,7 +1333,9 @@ def train_one(
         f"grad_clip_norm={float(getattr(agent_cfg, 'grad_clip_norm', 0.0)):.4f}, "
         f"forest_adm_horizon={int(adm_h)}, "
         f"forest_topk={int(topk_k)}, forest_min_od_m={float(min_od_m):.3f}, "
-        f"forest_min_progress_m={float(min_prog_m):.4f}, strict_no_fallback={bool(strict_no_fallback)}"
+        f"forest_min_progress_m={float(min_prog_m):.4f}, "
+        f"forest_topk_turn_penalty={float(topk_turn_penalty):.3f}, "
+        f"strict_no_fallback={bool(strict_no_fallback)}"
     )
 
     obs_dim = int(env.observation_space.shape[0])
@@ -1381,6 +1464,7 @@ def train_one(
                 q,
                 forest_adm_horizon=int(adm_h),
                 forest_topk=int(topk_k),
+                forest_topk_turn_penalty=float(topk_turn_penalty),
                 forest_min_od_m=float(min_od_m),
                 forest_min_progress_m=float(min_prog_m),
                 forest_no_fallback=bool(strict_no_fallback),
@@ -1776,6 +1860,7 @@ def train_one(
             max_steps=int(eval_max_steps),
             adm_horizon=int(adm_h),
             topk=int(topk_k),
+            topk_turn_penalty=float(topk_turn_penalty),
             min_od_m=float(min_od_m),
             min_progress_m=float(min_prog_m),
             forest_no_fallback=bool(strict_no_fallback),
@@ -2029,6 +2114,7 @@ def train_one(
                             q,
                             forest_adm_horizon=int(adm_h),
                             forest_topk=int(topk_k),
+                            forest_topk_turn_penalty=float(topk_turn_penalty),
                             forest_min_od_m=float(min_od_m),
                             forest_min_progress_m=float(min_prog_m),
                             forest_no_fallback=bool(strict_no_fallback),
@@ -2557,6 +2643,7 @@ def train_one(
             None if adaptive_no_progress_penalty_max is None else float(adaptive_no_progress_penalty_max)
         ),
         "base_no_progress_penalty": float(base_no_progress_penalty),
+        "forest_topk_turn_penalty": float(topk_turn_penalty),
         "active_no_progress_penalty_mean": (
             float(np.mean(no_progress_penalty_history)) if no_progress_penalty_history else float(base_no_progress_penalty)
         ),
@@ -3189,6 +3276,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=10,
         help="Forest-only: try the top-k greedy actions before applying full admissible-progress masking.",
+    )
+    ap.add_argument(
+        "--forest-topk-turn-penalty",
+        type=float,
+        default=0.0,
+        help=(
+            "Forest-only: penalty weight used to rank admissible replacement actions in top-k/mask "
+            "(higher => prefer smoother and less aggressive steering)."
+        ),
     )
     ap.add_argument(
         "--forest-adm-horizon",
@@ -4006,6 +4102,7 @@ def main(argv: list[str] | None = None) -> int:
                     forest_action_shield=bool(args.forest_action_shield),
                     forest_adm_horizon=int(args.forest_adm_horizon),
                     forest_topk=int(args.forest_topk),
+                    forest_topk_turn_penalty=float(getattr(args, "forest_topk_turn_penalty", 0.0)),
                     forest_min_od_m=float(args.forest_min_od_m),
                     forest_min_progress_m=float(args.forest_min_progress_m),
                     forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
