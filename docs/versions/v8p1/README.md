@@ -29,10 +29,10 @@
 - `conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_smoke`
 
 ## 代表 run（待回填）
-- infer-only：`N/A`
+- infer-only（grid4）：`runs/v8p1_navdist_infer_smoke/20260223_021151`
+- infer-only（euclid 对照）：`runs/v8p1_navdist_infer_smoke/20260223_021220`
 - train：`N/A`
 - infer：`N/A`
 
 ## 结论（待回填）
-- `N/A`
-
+- infer-only：`grid4` 能显著压 long 的 `avg_path_length/path_time_s`，但 mid/long 出现碰撞导致 `SR<1.0`（不可直接作为推理期替换）；需继续 `train+infer smoke` 验证训练侧对齐后 SR 是否能恢复。
