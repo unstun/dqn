@@ -40,7 +40,7 @@ REPORT_ARTIFACTS:
 
 - This repo is under active `vibe coding` iteration: small deltas, quick validation loops, and strict rollback/archive discipline.
 - Current stable mainline is `v7p1` (`configs/v7p1.json`).
-- `v7p2` to `v7p3p3` are archived failed/iterative attempts on the non-mainline branch, and `v7p1` remains the stable claim baseline.
+- `v7p2` to `v7p3p4` are archived failed/iterative attempts on the non-mainline branch, and `v7p1` remains the stable claim baseline.
 - Final objective: make RL planning (`CNN-DDQN`) outperform classical planning (`Hybrid A*-MPC`) under fair and reproducible evaluation.
 - Core optimization targets: shorter paths (`avg_path_length`), shorter path time (`path_time_s`), and smoother trajectories (`avg_curvature_1_m`, lower is better).
 
@@ -94,6 +94,7 @@ Old checkpoints/configs with the previous forest observation/flag schema are not
 - `v7p3p1` replaced suite-specific penalties with adaptive no-progress penalty by distance ratio; smoke shows SR recovery on mid/long but path/time/smoothness regressed, so it is archived as failed.
 - `v7p3p2` added turn-aware top-k replacement scoring to suppress aggressive obstacle-turning; smoke reduced path/time but SR dropped sharply, so it is archived as failed.
 - `v7p3p3` tuned inference-gating params for turn-aware replacement (`tp=0.3`, `min_prog=0.0`); smoke recovered long SR but short collapsed to 0 with collision/timeout, so it is archived as failed.
+- `v7p3p4` patched safe fallback for admissible gating (avoid keeping inadmissible `argmax(Q)` when progress-mask is empty) and fixed `fallback_rate`; infer-only smoke (fixed v7p3p2 checkpoint) recovered SR to `0.667/0.667/1.000` with zero collisions, but still lags baseline on short/mid SR and path/time, so it is archived as failed.
 - `v7p1` remains the stable comparison baseline (forest bicycle observation `10 + N*N`), while new module versions iterate forward on separate version tracks.
 - Failure archive: `docs/versions/v7p2p1/`.
 
@@ -126,8 +127,7 @@ conda run -n ros2py310 python infer.py --profile v7p1
 Latest archived candidate (for replay, smoke NO-GO):
 
 ```bash
-conda run -n ros2py310 python train.py --profile repro_20260222_v7p3p3_infergate_smoke
-conda run -n ros2py310 python infer.py --profile repro_20260222_v7p3p3_infergate_smoke --models v7p3p3_infergate_smoke --out v7p3p3_infergate_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260222_v7p3p4_safe_fallback_infer_smoke
 ```
 
 Note: training now saves process logs to `<run_dir>/train_flow.log` by default; disable via `--no-save-train-log`.
@@ -247,9 +247,9 @@ Notes:
 - `fallback_rate`: fraction of steps where inference-time fallback/override triggered (diagnostic; should be `0` in `strict-argmax` by definition).
 - `failure_reason`: failure type label (only in `table2_kpis_raw.csv`).
 
-## 版本总索引（v1 → v7p3p3）
+## 版本总索引（v1 → v7p3p4）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3` 为已归档迭代分支。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4` 为已归档迭代分支。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -257,7 +257,7 @@ Notes:
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p3p3）
+### 增量版本（v3p1 → v7p3p4）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -288,6 +288,7 @@ Notes:
 | `v7p3p1` | `docs/versions/v7p3p1/` | `configs/repro_20260222_v7p3p1_adaptive_penalty_smoke.json` | `runs/v7p3p1_adaptive_penalty_smoke/train_20260222_091303/infer/20260222_093552` | `0.667 / 1.000` | `1.00 / 1.00` | 失败归档（mid/long SR 提升至 1.0，但 path/time/smoothness 全面退化） |
 | `v7p3p2` | `docs/versions/v7p3p2/` | `configs/repro_20260222_v7p3p2_turnaware_smoke.json` | `runs/v7p3p2_turnaware_smoke/train_20260222_101744/infer/20260222_103842` | `0.333 / 0.333` | `1.00 / 1.00` | 失败归档（路径/时间有所回落，但三套件 SR 显著下降，未过 smoke 门） |
 | `v7p3p3` | `docs/versions/v7p3p3/` | `configs/repro_20260222_v7p3p3_infergate_smoke.json` | `runs/v7p3p3_infergate_smoke/train_20260222_112955/infer/20260222_114657` | `0.000 / 0.667` | `1.00 / 1.00` | 失败归档（long SR 回升，但 short=0 且出现碰撞/超时，未过 smoke 门） |
+| `v7p3p4` | `docs/versions/v7p3p4/` | `configs/repro_20260222_v7p3p4_safe_fallback_infer_smoke.json` | `runs/v7p3p4_safe_fallback_infer_smoke/20260222_141513` | `0.667 / 1.000` | `1.00 / 1.00` | 失败归档（safe fallback 补丁修复碰撞回潮；但 short/mid SR 仍落后 baseline，且 path/time 更差；infer-only smoke） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
@@ -328,7 +329,7 @@ conda run -n ros2py310 python infer.py --profile <candidate> --models <version>_
 
 5. Archive immediately:
 - Create `docs/versions/<version>/` four-doc bundle and log commands, run paths, KPIs, and failure reasons.
-- Prepare next iteration as `<version+1>` (example: `v7p3p4`).
+- Prepare next iteration as `<version+1>` (example: `v7p3p5`).
 
 ## Final acceptance gate (short/long suites, runs=20)
 
