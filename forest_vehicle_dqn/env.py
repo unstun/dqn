@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 import json
 import math
@@ -571,6 +572,71 @@ def euclidean_goal_dist_m(
     y2 = np.square(ys, dtype=np.float32).reshape(-1, 1)
     dist = np.sqrt(x2 + y2, dtype=np.float32)
     return dist.astype(np.float32, copy=False)
+
+
+def grid4_goal_dist_m(
+    traversable: np.ndarray,
+    *,
+    goal_xy: tuple[int, int],
+    cell_size_m: float,
+) -> np.ndarray:
+    """Compute an obstacle-aware shortest-path goal-distance field (4-connected BFS).
+
+    Args:
+        traversable: (H, W) boolean array where True indicates free/traversable cells.
+        goal_xy: Goal cell coordinates as (x, y).
+        cell_size_m: Grid cell size in meters.
+
+    Returns:
+        (H, W) float32 array of shortest-path distances in meters. Unreachable or
+        non-traversable cells have distance `inf`.
+    """
+    if traversable.ndim != 2:
+        raise ValueError("traversable must be a 2D array")
+    h, w = int(traversable.shape[0]), int(traversable.shape[1])
+    if h <= 0 or w <= 0:
+        raise ValueError("traversable must be non-empty")
+    cell = float(cell_size_m)
+    if not (cell > 0.0):
+        raise ValueError("cell_size_m must be > 0")
+
+    gx, gy = int(goal_xy[0]), int(goal_xy[1])
+    if not (0 <= gx < w and 0 <= gy < h):
+        raise ValueError("goal_xy is out of bounds")
+
+    dist_steps = np.full((h, w), -1, dtype=np.int32)
+    if bool(traversable[gy, gx]):
+        dist_steps[gy, gx] = 0
+        q: deque[tuple[int, int]] = deque()
+        q.append((gx, gy))
+
+        while q:
+            x, y = q.popleft()
+            d_next = int(dist_steps[y, x]) + 1
+
+            x0 = x - 1
+            if x0 >= 0 and bool(traversable[y, x0]) and int(dist_steps[y, x0]) < 0:
+                dist_steps[y, x0] = int(d_next)
+                q.append((x0, y))
+
+            x1 = x + 1
+            if x1 < w and bool(traversable[y, x1]) and int(dist_steps[y, x1]) < 0:
+                dist_steps[y, x1] = int(d_next)
+                q.append((x1, y))
+
+            y0 = y - 1
+            if y0 >= 0 and bool(traversable[y0, x]) and int(dist_steps[y0, x]) < 0:
+                dist_steps[y0, x] = int(d_next)
+                q.append((x, y0))
+
+            y1 = y + 1
+            if y1 < h and bool(traversable[y1, x]) and int(dist_steps[y1, x]) < 0:
+                dist_steps[y1, x] = int(d_next)
+                q.append((x, y1))
+
+    dist_m = dist_steps.astype(np.float32) * float(cell)
+    dist_m = np.where(dist_steps >= 0, dist_m, float("inf")).astype(np.float32, copy=False)
+    return dist_m
 
 
 class AMRBicycleEnv(gym.Env):
