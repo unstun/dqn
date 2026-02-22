@@ -77,6 +77,58 @@ def _resolve_train_suite_no_progress_penalties(
     return True, _resolve(short_penalty), _resolve(long_penalty)
 
 
+def _compute_adaptive_no_progress_penalty(
+    *,
+    base_penalty: float,
+    enabled: bool,
+    dist_ratio: float | None,
+    dist_gain: float,
+    min_penalty: float | None,
+    max_penalty: float | None,
+) -> float:
+    base = max(0.0, float(base_penalty))
+    if not bool(enabled):
+        return float(base)
+
+    ratio = 0.0
+    if dist_ratio is not None:
+        raw_ratio = float(dist_ratio)
+        if math.isfinite(float(raw_ratio)):
+            ratio = float(np.clip(float(raw_ratio), 0.0, 1.0))
+
+    gain = float(dist_gain)
+    if not math.isfinite(float(gain)):
+        gain = 0.0
+
+    raw_penalty = float(base) + float(gain) * float(ratio)
+
+    def _resolve_min(raw: float | None) -> float:
+        if raw is None:
+            return float(base)
+        val = float(raw)
+        if (not math.isfinite(float(val))) or float(val) < 0.0:
+            return float(base)
+        return float(val)
+
+    def _resolve_max(raw: float | None) -> float | None:
+        if raw is None:
+            return None
+        val = float(raw)
+        if (not math.isfinite(float(val))) or float(val) < 0.0:
+            return None
+        return float(val)
+
+    lo = _resolve_min(min_penalty)
+    hi = _resolve_max(max_penalty)
+    if hi is not None and float(hi) < float(lo):
+        lo, hi = float(hi), float(lo)
+
+    penalty = max(float(raw_penalty), float(lo))
+    if hi is not None:
+        penalty = min(float(penalty), float(hi))
+    return float(penalty)
+
+
 def make_progress_writer(progress: bool, *, flow_log_fp: TextIO | None = None) -> Callable[[str], None]:
     tqdm_cls = None
     if progress:
@@ -980,6 +1032,10 @@ def train_one(
     forest_train_suite_no_progress_penalty: bool,
     forest_train_short_no_progress_penalty: float | None,
     forest_train_long_no_progress_penalty: float | None,
+    forest_train_adaptive_no_progress_penalty: bool,
+    forest_train_no_progress_penalty_dist_gain: float,
+    forest_train_no_progress_penalty_min: float | None,
+    forest_train_no_progress_penalty_max: float | None,
     forest_train_short_min_dist_m: float,
     forest_train_short_max_dist_m: float | None,
     forest_train_long_min_dist_m: float,
@@ -1068,7 +1124,14 @@ def train_one(
             long_penalty=forest_train_long_no_progress_penalty,
         )
     )
+    adaptive_no_progress_requested = bool(forest_train_adaptive_no_progress_penalty)
+    adaptive_no_progress_penalty_enabled = bool(adaptive_no_progress_requested and isinstance(env, AMRBicycleEnv))
+    adaptive_no_progress_dist_gain = float(forest_train_no_progress_penalty_dist_gain)
+    adaptive_no_progress_penalty_min = forest_train_no_progress_penalty_min
+    adaptive_no_progress_penalty_max = forest_train_no_progress_penalty_max
     active_no_progress_penalty = float(base_no_progress_penalty)
+    no_progress_penalty_history: list[float] = []
+    adaptive_dist_ratio_history: list[float] = []
     dynamic_last_update_ep = -1
     train_short_max_dist_m = _maybe_max_dist(forest_train_short_max_dist_m)
     train_long_max_dist_m = _maybe_max_dist(forest_train_long_max_dist_m)
@@ -1123,6 +1186,29 @@ def train_one(
             f"long={float(suite_no_progress_penalty_long):.3f}, "
             f"base={float(base_no_progress_penalty):.3f}"
         )
+    if bool(adaptive_no_progress_requested and (not adaptive_no_progress_penalty_enabled)):
+        log(
+            f"[train] [{run_label}] Adaptive no-progress penalty disabled "
+            f"(requires AMRBicycleEnv). fallback_to_base={float(base_no_progress_penalty):.3f}"
+        )
+    if bool(adaptive_no_progress_penalty_enabled):
+        min_disp = (
+            f"{float(adaptive_no_progress_penalty_min):.3f}"
+            if adaptive_no_progress_penalty_min is not None
+            else "base"
+        )
+        max_disp = (
+            f"{float(adaptive_no_progress_penalty_max):.3f}"
+            if adaptive_no_progress_penalty_max is not None
+            else "none"
+        )
+        log(
+            f"[train] [{run_label}] Adaptive no-progress penalty enabled: "
+            f"gain={float(adaptive_no_progress_dist_gain):.3f}, min={min_disp}, max={max_disp}, "
+            f"base={float(base_no_progress_penalty):.3f}"
+        )
+    if bool(suite_no_progress_penalty_enabled and adaptive_no_progress_penalty_enabled):
+        log(f"[train] [{run_label}] Adaptive no-progress penalty overrides suite-specific penalty per episode.")
 
     def random_reset_options_for_training(
         *,
@@ -1789,6 +1875,9 @@ def train_one(
     ep_iter = pbar if pbar is not None else range(episodes)
     for ep in ep_iter:
         reset_options = None
+        active_no_progress_penalty = float(base_no_progress_penalty)
+        if isinstance(env, AMRBicycleEnv):
+            env.reward_no_progress_penalty = float(active_no_progress_penalty)
         if bool(forest_random_start_goal) and isinstance(env, AMRBicycleEnv):
             if bool(train_two_suites):
                 if bool(train_dynamic_curriculum) and int(dynamic_last_update_ep) > 0:
@@ -1825,6 +1914,19 @@ def train_one(
             p = float(np.clip(p_raw / ramp, 0.0, 1.0))
             reset_options = {"curriculum_progress": p, "curriculum_band_m": float(curriculum_band_m)}
         obs, reset_info = env.reset(seed=seed + ep, options=reset_options)
+        if bool(adaptive_no_progress_penalty_enabled) and isinstance(env, AMRBicycleEnv):
+            dist_ratio = float(_forest_pair_dist_ratio(env))
+            active_no_progress_penalty = _compute_adaptive_no_progress_penalty(
+                base_penalty=float(base_no_progress_penalty),
+                enabled=True,
+                dist_ratio=float(dist_ratio),
+                dist_gain=float(adaptive_no_progress_dist_gain),
+                min_penalty=adaptive_no_progress_penalty_min,
+                max_penalty=adaptive_no_progress_penalty_max,
+            )
+            env.reward_no_progress_penalty = float(active_no_progress_penalty)
+            adaptive_dist_ratio_history.append(float(dist_ratio))
+        no_progress_penalty_history.append(float(active_no_progress_penalty))
         if live_viewer is not None and isinstance(env, AMRBicycleEnv):
             live_viewer.start_episode(
                 env=env,
@@ -2446,7 +2548,27 @@ def train_one(
         "suite_no_progress_penalty_enabled": bool(suite_no_progress_penalty_enabled),
         "suite_no_progress_penalty_short": float(suite_no_progress_penalty_short),
         "suite_no_progress_penalty_long": float(suite_no_progress_penalty_long),
+        "adaptive_no_progress_penalty_enabled": bool(adaptive_no_progress_penalty_enabled),
+        "adaptive_no_progress_dist_gain": float(adaptive_no_progress_dist_gain),
+        "adaptive_no_progress_penalty_min": (
+            None if adaptive_no_progress_penalty_min is None else float(adaptive_no_progress_penalty_min)
+        ),
+        "adaptive_no_progress_penalty_max": (
+            None if adaptive_no_progress_penalty_max is None else float(adaptive_no_progress_penalty_max)
+        ),
         "base_no_progress_penalty": float(base_no_progress_penalty),
+        "active_no_progress_penalty_mean": (
+            float(np.mean(no_progress_penalty_history)) if no_progress_penalty_history else float(base_no_progress_penalty)
+        ),
+        "active_no_progress_penalty_min": (
+            float(np.min(no_progress_penalty_history)) if no_progress_penalty_history else float(base_no_progress_penalty)
+        ),
+        "active_no_progress_penalty_max": (
+            float(np.max(no_progress_penalty_history)) if no_progress_penalty_history else float(base_no_progress_penalty)
+        ),
+        "adaptive_dist_ratio_mean": (
+            float(np.mean(adaptive_dist_ratio_history)) if adaptive_dist_ratio_history else None
+        ),
         "save_ckpt_long_sr_floor": float(ckpt_long_sr_floor),
     }
     return agent, returns, eval_history, {"meta": train_meta, "train_progress": list(train_progress_history)}
@@ -3389,6 +3511,39 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     ap.add_argument(
+        "--forest-train-adaptive-no-progress-penalty",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Forest-only: enable generalized no-progress penalty adaptation by pair distance ratio "
+            "(independent of short/long suite labels)."
+        ),
+    )
+    ap.add_argument(
+        "--forest-train-no-progress-penalty-dist-gain",
+        type=float,
+        default=0.0,
+        help="Forest-only: additive gain for adaptive no-progress penalty: base + gain * dist_ratio.",
+    )
+    ap.add_argument(
+        "--forest-train-no-progress-penalty-min",
+        type=float,
+        default=-1.0,
+        help=(
+            "Forest-only: adaptive no-progress penalty lower bound (>=0). "
+            "Negative value means fallback to base penalty."
+        ),
+    )
+    ap.add_argument(
+        "--forest-train-no-progress-penalty-max",
+        type=float,
+        default=-1.0,
+        help=(
+            "Forest-only: adaptive no-progress penalty upper bound (>=0). "
+            "Negative value means no explicit upper bound."
+        ),
+    )
+    ap.add_argument(
         "--forest-expert-prob-start",
         type=float,
         default=0.7,
@@ -3894,6 +4049,22 @@ def main(argv: list[str] | None = None) -> int:
                         None
                         if float(getattr(args, "forest_train_long_no_progress_penalty", -1.0)) < 0.0
                         else float(getattr(args, "forest_train_long_no_progress_penalty", -1.0))
+                    ),
+                    forest_train_adaptive_no_progress_penalty=bool(
+                        getattr(args, "forest_train_adaptive_no_progress_penalty", False)
+                    ),
+                    forest_train_no_progress_penalty_dist_gain=float(
+                        getattr(args, "forest_train_no_progress_penalty_dist_gain", 0.0)
+                    ),
+                    forest_train_no_progress_penalty_min=(
+                        None
+                        if float(getattr(args, "forest_train_no_progress_penalty_min", -1.0)) < 0.0
+                        else float(getattr(args, "forest_train_no_progress_penalty_min", -1.0))
+                    ),
+                    forest_train_no_progress_penalty_max=(
+                        None
+                        if float(getattr(args, "forest_train_no_progress_penalty_max", -1.0)) < 0.0
+                        else float(getattr(args, "forest_train_no_progress_penalty_max", -1.0))
                     ),
                     forest_train_short_min_dist_m=float(getattr(args, "forest_train_short_min_dist_m", 6.0)),
                     forest_train_short_max_dist_m=(

@@ -36,11 +36,11 @@ REPORT_ARTIFACTS:
 - Run artifact map: `docs/runs/README.md`
 - Candidate cleanup list: `docs/runs/CANDIDATES_TO_ARCHIVE_20260221.md`
 
-## Research objective and current status (2026-02-21)
+## Research objective and current status (2026-02-22)
 
 - This repo is under active `vibe coding` iteration: small deltas, quick validation loops, and strict rollback/archive discipline.
 - Current stable mainline is `v7p1` (`configs/v7p1.json`).
-- `v7p2` to `v7p3` are archived failed/iterative attempts on the non-mainline branch, and `v7p1` remains the stable claim baseline.
+- `v7p2` to `v7p3p1` are archived failed/iterative attempts on the non-mainline branch, and `v7p1` remains the stable claim baseline.
 - Final objective: make RL planning (`CNN-DDQN`) outperform classical planning (`Hybrid A*-MPC`) under fair and reproducible evaluation.
 - Core optimization targets: shorter paths (`avg_path_length`), shorter path time (`path_time_s`), and smoother trajectories (`avg_curvature_1_m`, lower is better).
 
@@ -86,11 +86,12 @@ conda run -n ros2py310 python -m pip install -r requirements-optional.txt
 
 Old checkpoints/configs with the previous forest observation/flag schema are not backward compatible.
 
-## Version note (2026-02-21)
+## Version note (2026-02-22)
 
-- As of 2026-02-21, the stable mainline remains `v7p1`.
+- As of 2026-02-22, the stable mainline remains `v7p1`.
 - `v7p2/v7p2p1` attempted a Markov-observation fix (adding `prev_a_n`) but did not show stable gains and was archived as a failed branch.
 - `v7p3` introduced suite-specific no-progress penalties (short/long) in two-suite training; smoke verdict is NO-GO and it is archived as failed.
+- `v7p3p1` replaced suite-specific penalties with adaptive no-progress penalty by distance ratio; smoke shows SR recovery on mid/long but path/time/smoothness regressed, so it is archived as failed.
 - `v7p1` remains the stable comparison baseline (forest bicycle observation `10 + N*N`), while new module versions iterate forward on separate version tracks.
 - Failure archive: `docs/versions/v7p2p1/`.
 
@@ -112,7 +113,7 @@ python infer.py --profile forest_a_all6_300_cuda
 
 ### Latest train/infer commands (keep updated)
 
-Last updated: 2026-02-21  
+Last updated: 2026-02-22  
 Current recommended train profile: `v7p1`
 
 ```bash
@@ -123,8 +124,8 @@ conda run -n ros2py310 python infer.py --profile v7p1
 Latest archived candidate (for replay, smoke NO-GO):
 
 ```bash
-conda run -n ros2py310 python train.py --profile repro_20260221_v7p3_suite_penalty_smoke
-conda run -n ros2py310 python infer.py --profile repro_20260221_v7p3_suite_penalty_smoke --models v7p3_suite_penalty_smoke --out v7p3_suite_penalty_smoke
+conda run -n ros2py310 python train.py --profile repro_20260222_v7p3p1_adaptive_penalty_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260222_v7p3p1_adaptive_penalty_smoke --models v7p3p1_adaptive_penalty_smoke --out v7p3p1_adaptive_penalty_smoke
 ```
 
 Note: training now saves process logs to `<run_dir>/train_flow.log` by default; disable via `--no-save-train-log`.
@@ -244,9 +245,9 @@ Notes:
 - `fallback_rate`: fraction of steps where inference-time fallback/override triggered (diagnostic; should be `0` in `strict-argmax` by definition).
 - `failure_reason`: failure type label (only in `table2_kpis_raw.csv`).
 
-## 版本总索引（v1 → v7p3）
+## 版本总索引（v1 → v7p3p1）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3` 为已归档迭代分支。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1` 为已归档迭代分支。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -254,7 +255,7 @@ Notes:
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p3）
+### 增量版本（v3p1 → v7p3p1）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -282,6 +283,7 @@ Notes:
 | `v7p2p9` | `docs/versions/v7p2p9/` | `configs/repro_20260221_v7p2p9_ablate_expert_smoke.json` | `runs/v7p2p9_ablate_expert_smoke/train_20260221_231402/infer/20260221_232825` | `0.667 / 0.000` | `1.00 / 1.00` | 失败归档（short 回升但 long 崩塌，继续前向迭代） |
 | `v7p2p10` | `docs/versions/v7p2p10/` | `configs/repro_20260221_v7p2p10_penalty035_smoke.json` | `runs/v7p2p10_penalty035_smoke/train_20260221_234022/infer/20260221_235340` | `0.667 / 0.333` | `1.00 / 1.00` | 失败归档（long 回升但 short 路径与平滑性退化，继续前向迭代） |
 | `v7p3` | `docs/versions/v7p3/` | `configs/repro_20260221_v7p3_suite_penalty_smoke.json` | `runs/v7p3_suite_penalty_smoke/train_20260222_012415/infer/20260222_014023` | `0.667 / 0.333` | `1.00 / 1.00` | 失败归档（short/mid 局部改善但 long path/time 退化，未过 smoke 门） |
+| `v7p3p1` | `docs/versions/v7p3p1/` | `configs/repro_20260222_v7p3p1_adaptive_penalty_smoke.json` | `runs/v7p3p1_adaptive_penalty_smoke/train_20260222_091303/infer/20260222_093552` | `0.667 / 1.000` | `1.00 / 1.00` | 失败归档（mid/long SR 提升至 1.0，但 path/time/smoothness 全面退化） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
@@ -322,7 +324,7 @@ conda run -n ros2py310 python infer.py --profile <candidate> --models <version>_
 
 5. Archive immediately:
 - Create `docs/versions/<version>/` four-doc bundle and log commands, run paths, KPIs, and failure reasons.
-- Prepare next iteration as `<version+1>` (example: `v7p2p11`).
+- Prepare next iteration as `<version+1>` (example: `v7p3p2`).
 
 ## Final acceptance gate (short/long suites, runs=20)
 
