@@ -1,9 +1,9 @@
-# 版本留档索引（v1 → v7p3p2，含 v7p1 补档）
+# 版本留档索引（v1 → v7p3p3，含 v7p1 补档）
 
-- 归档入口：仓库根目录 `README.md` 的“版本总索引（v1 → v7p3p2）”。
+- 归档入口：仓库根目录 `README.md` 的“版本总索引（v1 → v7p3p3）”。
 - 本文件保留为 `docs/versions/` 内部快速导航，与根 README 保持同一口径。
 - 历史目录 `v3p1`~`v3p11` 保留原始记录，未纳入本轮重编号。
-- 早期误混入版本链已于 2026-02-09 清理，当前主线编号延续至 `v7p3p2`。
+- 早期误混入版本链已于 2026-02-09 清理，当前主线编号延续至 `v7p3p3`。
 - 当前主线对外口径（`v6p2p3` 及后续）统一为 `CNN-DDQN (shielded/hybrid inference)`；`strict-argmax` 仅用于诊断/消融，不作为主结论口径。
 - `v7p1` 已按版本四件套补档，作为当前稳定主线归档入口。
 
@@ -13,7 +13,7 @@
 | `v2` | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0` / `0.0` | `1.0` / `1.0` | 未通过 |
 | `v3` | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5` / `0.1` | `0.9` / `1.0` | 未通过 |
 
-## 增量版本（v3p1 → v7p3p2）
+## 增量版本（v3p1 → v7p3p3）
 
 | 版本 | 历史来源 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|---|
@@ -43,6 +43,7 @@
 | `v7p3` | `v7p3` | `docs/versions/v7p3/` | `configs/repro_20260221_v7p3_suite_penalty_smoke.json` | `runs/v7p3_suite_penalty_smoke/train_20260222_012415/infer/20260222_014023` | `0.667` / `0.333` | `1.00` / `1.00` | 失败归档（short/mid 局部改善但 long path/time 退化，未过 smoke 门） |
 | `v7p3p1` | `v7p3p1` | `docs/versions/v7p3p1/` | `configs/repro_20260222_v7p3p1_adaptive_penalty_smoke.json` | `runs/v7p3p1_adaptive_penalty_smoke/train_20260222_091303/infer/20260222_093552` | `0.667` / `1.000` | `1.00` / `1.00` | 失败归档（mid/long SR 提升至 1.0，但 path/time/smoothness 全面退化） |
 | `v7p3p2` | `v7p3p2` | `docs/versions/v7p3p2/` | `configs/repro_20260222_v7p3p2_turnaware_smoke.json` | `runs/v7p3p2_turnaware_smoke/train_20260222_101744/infer/20260222_103842` | `0.333` / `0.333` | `1.00` / `1.00` | 失败归档（路径/时间有所回落，但三套件 SR 显著下降，未过 smoke 门） |
+| `v7p3p3` | `v7p3p3` | `docs/versions/v7p3p3/` | `configs/repro_20260222_v7p3p3_infergate_smoke.json` | `runs/v7p3p3_infergate_smoke/train_20260222_112955/infer/20260222_114657` | `0.000` / `0.667` | `1.00` / `1.00` | 失败归档（long SR 回升，但 short=0 且出现碰撞/超时，未过 smoke 门） |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。
