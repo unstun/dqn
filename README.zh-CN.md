@@ -39,6 +39,7 @@ REPORT_ARTIFACTS:
 
 - 本仓库正在采用 `vibe coding` 持续迭代：小步改动、快速验证、严格回退与归档。
 - 当前稳定主线版本为 `v7p1`（`configs/v7p1.json`）。
+- 当前 V8 迭代入口为 `v8p1`（`configs/v8p1.json`）（navdist progress distance；待 smoke）。
 - `v7p2` 到 `v7p3p7` 属于非主线迭代分支的失败/探索版本，稳定结论口径仍为 `v7p1`。
 - 最终目标：在公平、可复现的评测条件下，使 RL 规划器（`CNN-DDQN`）整体超过传统方法（`Hybrid A*-MPC`）。
 - 核心优化方向：路径更短（`avg_path_length` 更小）、时间更短（`path_time_s` 更小）、曲线更平滑（`avg_curvature_1_m` 更小）。
@@ -123,6 +124,18 @@ python infer.py --profile forest_a_all6_300_cuda
 ```bash
 conda run -n ros2py310 python train.py --profile v7p1
 conda run -n ros2py310 python infer.py --profile v7p1
+```
+
+当前 V8 smoke profiles（navdist progress distance，实验性）：
+
+```bash
+# infer-only A/B（固定 v7p1 checkpoint）：grid4 vs euclid
+conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_infer_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_infer_smoke --forest-progress-dist-mode euclid
+
+# train+infer smoke（episodes=150, runs=3）
+conda run -n ros2py310 python train.py --profile repro_20260222_v8p1_navdist_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_smoke
 ```
 
 最新归档候选（用于复盘，smoke NO-GO）：
@@ -248,9 +261,9 @@ runs/<out>/
 - `fallback_rate`：推理期 fallback/override 触发比例（诊断指标；在 `strict-argmax` 口径下理论应为 `0`）。
 - `failure_reason`：失败原因标签（仅在 `table2_kpis_raw.csv` 中提供）。
 
-## 版本总索引（v1 → v7p3p7）
+## 版本总索引（v1 → v8p1）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p1` 为当前 V8 迭代入口（进行中）。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -258,7 +271,7 @@ runs/<out>/
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p3p7）
+### 增量版本（v3p1 → v8p1）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -292,6 +305,7 @@ runs/<out>/
 | `v7p3p4` | `docs/versions/v7p3p4/` | `configs/repro_20260222_v7p3p4_safe_fallback_infer_smoke.json` | `runs/v7p3p4_safe_fallback_infer_smoke/20260222_141513` | `0.667 / 1.000` | `1.00 / 1.00` | 失败归档（safe fallback 补丁修复碰撞回潮；但 short/mid SR 仍落后 baseline，且 path/time 更差；infer-only smoke） |
 | `v7p3p6` | `docs/versions/v7p3p6/` | `configs/repro_20260222_v7p3p6_obsmap128_tune_smoke.json` | `runs/v7p3p6_obsmap128_tune_smoke/train_20260222_215007/infer/20260222_223831` | `0.667 / 0.333` | `1.00 / 1.00` | 失败归档（long 从 0.000 回升到 0.333，但 short/long 仍未过门） |
 | `v7p3p7` | `docs/versions/v7p3p7/` | `configs/repro_20260222_v7p3p7_obsmap128_timeoutcut_smoke.json` | `runs/v7p3p7_obsmap128_timeoutcut_smoke/train_20260222_230248/infer/20260222_235329` | `1.000 / 0.333` | `1.00 / 1.00` | 失败归档（short/mid SR 升至 1.0 且 CNN 总 timeout 从 5 降到 2；但 long 仍 2/3 timeout，short/long path-time 仍落后 baseline） |
+| `v8p1` | `docs/versions/v8p1/` | `configs/v8p1.json` | `N/A` | `N/A / N/A` | `1.00 / 1.00` | 进行中（navdist progress distance；待 smoke） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。

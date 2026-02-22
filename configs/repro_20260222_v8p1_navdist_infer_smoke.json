@@ -1,0 +1,64 @@
+{
+  "_meta": {
+    "title": "v8p1 reproducible infer-only smoke (navdist progress distance grid4, fixed v7p1 checkpoint)",
+    "date": "2026-02-22",
+    "summary": "Infer-only A/B for V8: keep v7p1 checkpoint fixed and switch progress distance to obstacle-aware grid shortest-path (grid4 BFS) to measure path/time impact without retraining.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_infer_smoke",
+      "conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_infer_smoke --forest-progress-dist-mode euclid"
+    ],
+    "notes": [
+      "This profile is infer-only (no train section).",
+      "Compare grid4 vs euclid by overriding --forest-progress-dist-mode on the CLI.",
+      "Sampling/suite constraints remain Euclidean-based (same as v7p1) to avoid distribution drift."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::short",
+      "forest_a::mid",
+      "forest_a::long"
+    ],
+    "models": "runs/v7p1_train300_esbest/train_20260221_010743",
+    "out": "v8p1_navdist_infer_smoke",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "runs": 3,
+    "progress": true,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_topk": 10,
+    "forest_min_progress_m": 0.01,
+    "forest_progress_dist_mode": "grid4",
+    "forest_min_od_m": 0.02,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "rand_min_dist_m": 14.0,
+    "rand_max_dist_m": 42.0,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
+    "rand_edge_margin_m": 3.0,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "none",
+    "rand_tries": 400,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 33
+  }
+}
+

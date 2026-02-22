@@ -40,6 +40,7 @@ REPORT_ARTIFACTS:
 
 - This repo is under active `vibe coding` iteration: small deltas, quick validation loops, and strict rollback/archive discipline.
 - Current stable mainline is `v7p1` (`configs/v7p1.json`).
+- Active V8 iteration is `v8p1` (`configs/v8p1.json`) (navdist progress distance; smoke pending).
 - `v7p2` to `v7p3p7` are archived failed/iterative attempts on the non-mainline branch, and `v7p1` remains the stable claim baseline.
 - Final objective: make RL planning (`CNN-DDQN`) outperform classical planning (`Hybrid A*-MPC`) under fair and reproducible evaluation.
 - Core optimization targets: shorter paths (`avg_path_length`), shorter path time (`path_time_s`), and smoother trajectories (`avg_curvature_1_m`, lower is better).
@@ -124,6 +125,18 @@ Current recommended train profile: `v7p1`
 ```bash
 conda run -n ros2py310 python train.py --profile v7p1
 conda run -n ros2py310 python infer.py --profile v7p1
+```
+
+Active V8 smoke profiles (navdist progress distance, experimental):
+
+```bash
+# Infer-only A/B (fixed v7p1 checkpoint): grid4 vs euclid
+conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_infer_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_infer_smoke --forest-progress-dist-mode euclid
+
+# Train+infer smoke (episodes=150, runs=3)
+conda run -n ros2py310 python train.py --profile repro_20260222_v8p1_navdist_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_smoke
 ```
 
 Latest archived candidate (for replay, smoke NO-GO):
@@ -249,9 +262,9 @@ Notes:
 - `fallback_rate`: fraction of steps where inference-time fallback/override triggered (diagnostic; should be `0` in `strict-argmax` by definition).
 - `failure_reason`: failure type label (only in `table2_kpis_raw.csv`).
 
-## 版本总索引（v1 → v7p3p7）
+## 版本总索引（v1 → v8p1）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p1` 为当前 V8 迭代入口（进行中）。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -259,7 +272,7 @@ Notes:
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p3p7）
+### 增量版本（v3p1 → v8p1）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -293,6 +306,7 @@ Notes:
 | `v7p3p4` | `docs/versions/v7p3p4/` | `configs/repro_20260222_v7p3p4_safe_fallback_infer_smoke.json` | `runs/v7p3p4_safe_fallback_infer_smoke/20260222_141513` | `0.667 / 1.000` | `1.00 / 1.00` | 失败归档（safe fallback 补丁修复碰撞回潮；但 short/mid SR 仍落后 baseline，且 path/time 更差；infer-only smoke） |
 | `v7p3p6` | `docs/versions/v7p3p6/` | `configs/repro_20260222_v7p3p6_obsmap128_tune_smoke.json` | `runs/v7p3p6_obsmap128_tune_smoke/train_20260222_215007/infer/20260222_223831` | `0.667 / 0.333` | `1.00 / 1.00` | 失败归档（long 从 0.000 回升到 0.333，但 short/long 仍未过门） |
 | `v7p3p7` | `docs/versions/v7p3p7/` | `configs/repro_20260222_v7p3p7_obsmap128_timeoutcut_smoke.json` | `runs/v7p3p7_obsmap128_timeoutcut_smoke/train_20260222_230248/infer/20260222_235329` | `1.000 / 0.333` | `1.00 / 1.00` | 失败归档（short/mid SR 升至 1.0 且 CNN 总 timeout 从 5 降到 2；但 long 仍 2/3 timeout，short/long path-time 仍落后 baseline） |
+| `v8p1` | `docs/versions/v8p1/` | `configs/v8p1.json` | `N/A` | `N/A / N/A` | `1.00 / 1.00` | 进行中（navdist progress distance；待 smoke） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
