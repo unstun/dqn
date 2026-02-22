@@ -3,7 +3,7 @@
 - 版本类型：**Major（v+1）**
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**进行中（待 smoke）**
+- 状态：**已跑 smoke（NO-GO，SR 退化）**
 
 ## 本版目标
 - 在 `success_rate≈1.0` 前提下（优先 long），压 `avg_path_length` / `path_time_s`。
@@ -28,11 +28,13 @@
 - `conda run -n ros2py310 python train.py --profile repro_20260222_v8p1_navdist_smoke`
 - `conda run -n ros2py310 python infer.py --profile repro_20260222_v8p1_navdist_smoke`
 
-## 代表 run（待回填）
+## 代表 run（已回填）
 - infer-only（grid4）：`runs/v8p1_navdist_infer_smoke/20260223_021151`
 - infer-only（euclid 对照）：`runs/v8p1_navdist_infer_smoke/20260223_021220`
-- train：`N/A`
-- infer：`N/A`
+- train：`runs/v8p1_navdist_smoke/train_20260223_021339`
+- infer：`runs/v8p1_navdist_smoke/train_20260223_021339/infer/20260223_023932`
 
-## 结论（待回填）
-- infer-only：`grid4` 能显著压 long 的 `avg_path_length/path_time_s`，但 mid/long 出现碰撞导致 `SR<1.0`（不可直接作为推理期替换）；需继续 `train+infer smoke` 验证训练侧对齐后 SR 是否能恢复。
+## 结论（已回填）
+- infer-only：`grid4` 能显著压 long 的 `avg_path_length/path_time_s`，但 mid/long 出现碰撞导致 `SR<1.0`（不可直接作为推理期替换）。
+- train+infer smoke：SR 进一步退化（short/mid/long：`0.667/0.333/0.333`；baseline 均为 `1.0`），且 long 的 `avg_path_length/path_time_s` 劣于 baseline（见 `docs/versions/v8p1/RESULTS.md`）。
+- 结论：`NO-GO`；不进入 full。下一轮按 `v8p2` 方向继续做数值稳定性排查与“解耦消融”（reward 用 `grid4`，推理期 gating/fallback 先回到 `euclid`）。
