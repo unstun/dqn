@@ -1,0 +1,62 @@
+{
+  "_meta": {
+    "title": "v7p3p4 infer smoke (safe fallback when admissible-progress mask is empty)",
+    "date": "2026-02-22",
+    "summary": "Quick inference-only smoke on a fixed v7p3p2 checkpoint to validate the v7p3p4 safe-fallback patch: when argmax(Q) is inadmissible and no progress-admissible actions exist, fall back to collision-safe actions instead of keeping the original argmax.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260222_v7p3p4_safe_fallback_infer_smoke"
+    ],
+    "notes": [
+      "Inference-only smoke: runs=3 (short/mid/long). No training in this profile.",
+      "This profile expects `infer.models` to point to an existing checkpoint directory (e.g. v7p3p2 smoke).",
+      "Key parameters for turn-aware replacement and gating follow the v7p3p2 ablation sweet spot: `forest_topk_turn_penalty=0.3`, `forest_min_progress_m=0.0`."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::short",
+      "forest_a::mid",
+      "forest_a::long"
+    ],
+    "models": "runs/v7p3p2_turnaware_smoke/train_20260222_101744",
+    "out": "v7p3p4_safe_fallback_infer_smoke",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "runs": 3,
+    "progress": true,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_topk": 10,
+    "forest_min_progress_m": 0.0,
+    "forest_min_od_m": 0.02,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "rand_min_dist_m": 14.0,
+    "rand_max_dist_m": 42.0,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
+    "rand_edge_margin_m": 3.0,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "none",
+    "rand_tries": 400,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 33,
+    "forest_topk_turn_penalty": 0.3
+  }
+}

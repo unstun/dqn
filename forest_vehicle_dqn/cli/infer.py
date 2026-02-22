@@ -346,20 +346,29 @@ def rollout_agent(
 
                     if chosen is None:
                         # If there are no admissible top-k alternatives, try masked argmax over
-                        # admissible-progress actions. If mask is empty, keep original argmax(a0).
+                        # admissible-progress actions. If the progress mask is empty, fall back to
+                        # collision-safe actions instead of keeping the original argmax(a0).
                         prog_mask = env.admissible_action_mask(
                             horizon_steps=adm_h,
                             min_od_m=min_od,
                             min_progress_m=min_prog,
                             fallback_to_safe=False,
                         )
-                        if bool(prog_mask.any()):
+                        mask = prog_mask
+                        if not bool(mask.any()):
+                            mask = env.admissible_action_mask(
+                                horizon_steps=adm_h,
+                                min_od_m=min_od,
+                                min_progress_m=min_prog,
+                                fallback_to_safe=True,
+                            )
+                        if bool(mask.any()):
                             if float(topk_turn_penalty) <= 0.0:
                                 q_masked = q.clone()
-                                q_masked[torch.from_numpy(~prog_mask).to(q.device)] = torch.finfo(q_masked.dtype).min
+                                q_masked[torch.from_numpy(~mask).to(q.device)] = torch.finfo(q_masked.dtype).min
                                 chosen = int(torch.argmax(q_masked).item())
                             else:
-                                cand_idx = np.nonzero(prog_mask)[0].astype(np.int64).tolist()
+                                cand_idx = np.nonzero(mask)[0].astype(np.int64).tolist()
                                 if cand_idx:
                                     chosen = int(
                                         max(
@@ -373,9 +382,15 @@ def rollout_agent(
                                         )
                                     )
                             replacement_mask_steps += 1
+                        else:
+                            # Last resort: pick a collision-free action that best reduces goal distance
+                            # after a short constant-action rollout.
+                            chosen = int(env._fallback_action_short_rollout(horizon_steps=adm_h, min_od_m=min_od))
 
                     if chosen is not None:
                         a = int(chosen)
+                        if int(a) != int(a0):
+                            fallback_steps += 1
         else:
             a = agent.act(obs, episode=0, explore=False)
         if time_mode == "policy":

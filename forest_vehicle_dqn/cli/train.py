@@ -484,19 +484,29 @@ def _forest_policy_action_from_q(
                 )
 
         if chosen is None:
+            # Prefer progress-admissible actions; if none exist, fall back to collision-safe actions
+            # instead of keeping the original argmax(a0).
             prog_mask = env.admissible_action_mask(
                 horizon_steps=int(adm_h),
                 min_od_m=float(min_od),
                 min_progress_m=float(min_prog),
                 fallback_to_safe=False,
             )
-            if bool(prog_mask.any()):
+            mask = prog_mask
+            if not bool(mask.any()):
+                mask = env.admissible_action_mask(
+                    horizon_steps=int(adm_h),
+                    min_od_m=float(min_od),
+                    min_progress_m=float(min_prog),
+                    fallback_to_safe=True,
+                )
+            if bool(mask.any()):
                 if float(topk_turn_penalty) <= 0.0:
                     q_masked = q.clone()
-                    q_masked[torch.from_numpy(~prog_mask).to(q.device)] = torch.finfo(q_masked.dtype).min
+                    q_masked[torch.from_numpy(~mask).to(q.device)] = torch.finfo(q_masked.dtype).min
                     chosen = int(torch.argmax(q_masked).item())
                 else:
-                    cand_idx = np.nonzero(prog_mask)[0].astype(np.int64).tolist()
+                    cand_idx = np.nonzero(mask)[0].astype(np.int64).tolist()
                     if cand_idx:
                         chosen = int(
                             max(
@@ -509,6 +519,8 @@ def _forest_policy_action_from_q(
                                 ),
                             )
                         )
+            else:
+                chosen = int(env._fallback_action_short_rollout(horizon_steps=int(adm_h), min_od_m=float(min_od)))
 
         if chosen is not None:
             a = int(chosen)
