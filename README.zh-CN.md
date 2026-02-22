@@ -39,7 +39,7 @@ REPORT_ARTIFACTS:
 
 - 本仓库正在采用 `vibe coding` 持续迭代：小步改动、快速验证、严格回退与归档。
 - 当前稳定主线版本为 `v7p1`（`configs/v7p1.json`）。
-- `v7p2` 到 `v7p3p4` 属于非主线迭代分支的失败/探索版本，稳定结论口径仍为 `v7p1`。
+- `v7p2` 到 `v7p3p6` 属于非主线迭代分支的失败/探索版本，稳定结论口径仍为 `v7p1`。
 - 最终目标：在公平、可复现的评测条件下，使 RL 规划器（`CNN-DDQN`）整体超过传统方法（`Hybrid A*-MPC`）。
 - 核心优化方向：路径更短（`avg_path_length` 更小）、时间更短（`path_time_s` 更小）、曲线更平滑（`avg_curvature_1_m` 更小）。
 
@@ -94,6 +94,7 @@ conda run -n ros2py310 python -m pip install -r requirements-optional.txt
 - `v7p3p2` 引入 turn-aware top-k 替换评分以抑制遇障急拐；smoke 中 path/time 回落但 SR 明显下滑，已按失败版本归档。
 - `v7p3p3` 针对 turn-aware 替换调参（`tp=0.3`, `min_prog=0.0`）；smoke 中 long SR 回升但 short=0 且出现碰撞/超时，已按失败版本归档。
 - `v7p3p4` 修复 admissible gating 的 safe fallback（progress mask 为空时不再保持 inadmissible 的 `argmax(Q)`）并修复 `fallback_rate` 统计；infer-only smoke（固定 v7p3p2 checkpoint）恢复 SR 到 `0.667/0.667/1.000` 且无碰撞，但 short/mid SR 与 path/time 仍显著落后 baseline，已按失败版本归档。
+- `v7p3p6` 在 `obs_map_size=128` 下加入 long 恢复向调参（`forest_topk_turn_penalty=0.3`、`forest_min_progress_m=0.0` 与 long 偏置课程）；smoke 相比 v7p3p5 将 long SR 从 `0.000` 提升到 `0.333`，但 short/long 仍未通过 baseline 门槛，已按失败版本归档。
 - `v7p1` 仍作为稳定对照基线（forest bicycle 观测维度 `10 + N*N`），新模块版本在独立版本链上持续前向迭代。
 - 失败留档见：`docs/versions/v7p2p1/`。
 
@@ -126,7 +127,7 @@ conda run -n ros2py310 python infer.py --profile v7p1
 最新归档候选（用于复盘，smoke NO-GO）：
 
 ```bash
-conda run -n ros2py310 python infer.py --profile repro_20260222_v7p3p4_safe_fallback_infer_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260222_v7p3p6_obsmap128_tune_smoke --models runs/v7p3p6_obsmap128_tune_smoke/train_20260222_215007
 ```
 
 说明：训练默认会将流程日志保存到 `<run_dir>/train_flow.log`；如需关闭可加 `--no-save-train-log`。
@@ -246,9 +247,9 @@ runs/<out>/
 - `fallback_rate`：推理期 fallback/override 触发比例（诊断指标；在 `strict-argmax` 口径下理论应为 `0`）。
 - `failure_reason`：失败原因标签（仅在 `table2_kpis_raw.csv` 中提供）。
 
-## 版本总索引（v1 → v7p3p4）
+## 版本总索引（v1 → v7p3p6）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4` 为已归档迭代分支。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6` 为已归档迭代分支。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -256,7 +257,7 @@ runs/<out>/
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v7p3p4）
+### 增量版本（v3p1 → v7p3p6）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -288,6 +289,7 @@ runs/<out>/
 | `v7p3p2` | `docs/versions/v7p3p2/` | `configs/repro_20260222_v7p3p2_turnaware_smoke.json` | `runs/v7p3p2_turnaware_smoke/train_20260222_101744/infer/20260222_103842` | `0.333 / 0.333` | `1.00 / 1.00` | 失败归档（路径/时间有所回落，但三套件 SR 显著下降，未过 smoke 门） |
 | `v7p3p3` | `docs/versions/v7p3p3/` | `configs/repro_20260222_v7p3p3_infergate_smoke.json` | `runs/v7p3p3_infergate_smoke/train_20260222_112955/infer/20260222_114657` | `0.000 / 0.667` | `1.00 / 1.00` | 失败归档（long SR 回升，但 short=0 且出现碰撞/超时，未过 smoke 门） |
 | `v7p3p4` | `docs/versions/v7p3p4/` | `configs/repro_20260222_v7p3p4_safe_fallback_infer_smoke.json` | `runs/v7p3p4_safe_fallback_infer_smoke/20260222_141513` | `0.667 / 1.000` | `1.00 / 1.00` | 失败归档（safe fallback 补丁修复碰撞回潮；但 short/mid SR 仍落后 baseline，且 path/time 更差；infer-only smoke） |
+| `v7p3p6` | `docs/versions/v7p3p6/` | `configs/repro_20260222_v7p3p6_obsmap128_tune_smoke.json` | `runs/v7p3p6_obsmap128_tune_smoke/train_20260222_215007/infer/20260222_223831` | `0.667 / 0.333` | `1.00 / 1.00` | 失败归档（long 从 0.000 回升到 0.333，但 short/long 仍未过门） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
