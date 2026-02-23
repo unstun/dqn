@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+import heapq
 import json
 import math
 from pathlib import Path
@@ -639,6 +640,94 @@ def grid4_goal_dist_m(
     return dist_m
 
 
+def dijkstra8_nocorner_goal_dist_m(
+    traversable: np.ndarray,
+    *,
+    goal_xy: tuple[int, int],
+    cell_size_m: float,
+    cost_factor: np.ndarray | None = None,
+) -> np.ndarray:
+    """Compute an obstacle-aware shortest-path goal-distance field (8-connected Dijkstra, no corner-cutting).
+
+    This computes a dense cost-to-go field on a 2D grid graph whose nodes are traversable cells.
+    Edges connect 8-neighbors; diagonal moves are only allowed when both adjacent cardinal cells
+    are traversable (no corner-cutting).
+
+    The per-edge cost is:
+        step_length_m * cost_factor[ny, nx]
+
+    where step_length_m is `cell_size_m` (cardinal) or `sqrt(2)*cell_size_m` (diagonal). When
+    `cost_factor` is None (or all ones), the field approximates an 8-connected geometric shortest-path
+    distance in meters.
+
+    Returns:
+        (H, W) float32 array of cost-to-go in meters-equivalent units. Unreachable or non-traversable
+        cells have distance `inf`.
+    """
+    if traversable.ndim != 2:
+        raise ValueError("traversable must be a 2D array")
+    h, w = int(traversable.shape[0]), int(traversable.shape[1])
+    if h <= 0 or w <= 0:
+        raise ValueError("traversable must be non-empty")
+    cell = float(cell_size_m)
+    if not (cell > 0.0):
+        raise ValueError("cell_size_m must be > 0")
+
+    gx, gy = int(goal_xy[0]), int(goal_xy[1])
+    if not (0 <= gx < w and 0 <= gy < h):
+        raise ValueError("goal_xy is out of bounds")
+
+    if cost_factor is None:
+        cost = np.ones((h, w), dtype=np.float32)
+    else:
+        cost = np.asarray(cost_factor, dtype=np.float32)
+        if cost.shape != (h, w):
+            raise ValueError("cost_factor must have the same shape as traversable")
+
+    step_card = float(cell)
+    step_diag = float(math.sqrt(2.0) * cell)
+    neigh: tuple[tuple[int, int, float], ...] = (
+        (-1, 0, step_card),
+        (1, 0, step_card),
+        (0, -1, step_card),
+        (0, 1, step_card),
+        (-1, -1, step_diag),
+        (-1, 1, step_diag),
+        (1, -1, step_diag),
+        (1, 1, step_diag),
+    )
+
+    dist = np.full((h, w), float("inf"), dtype=np.float64)
+    if bool(traversable[gy, gx]):
+        dist[gy, gx] = 0.0
+        heap: list[tuple[float, int, int]] = [(0.0, int(gx), int(gy))]
+
+        while heap:
+            d, x, y = heapq.heappop(heap)
+            if float(d) > float(dist[y, x]):
+                continue
+
+            for dx, dy, step_len in neigh:
+                nx = int(x + dx)
+                ny = int(y + dy)
+                if nx < 0 or nx >= w or ny < 0 or ny >= h:
+                    continue
+                if not bool(traversable[ny, nx]):
+                    continue
+                if dx != 0 and dy != 0:
+                    # No corner-cutting: diagonal requires both adjacent cardinal cells to be free.
+                    if not (bool(traversable[y, nx]) and bool(traversable[ny, x])):
+                        continue
+                nd = float(d) + float(step_len) * float(cost[ny, nx])
+                if nd < float(dist[ny, nx]):
+                    dist[ny, nx] = float(nd)
+                    heapq.heappush(heap, (float(nd), int(nx), int(ny)))
+
+    out = dist.astype(np.float32, copy=False)
+    out = np.where(traversable.astype(bool, copy=False), out, float("inf")).astype(np.float32, copy=False)
+    return out
+
+
 class AMRBicycleEnv(gym.Env):
     """Ackermann/bicycle dynamics on a grid occupancy map using EDT for collision + clearance (OD)."""
 
@@ -700,6 +789,8 @@ class AMRBicycleEnv(gym.Env):
         action_accel_bins: int = 5,
         action_grid_power: float = 1.0,
         progress_dist_mode: str = "euclid",
+        progress_cost_w_clearance: float = 2.0,
+        progress_cost_sigma_m: float = 0.5,
     ) -> None:
         super().__init__()
 
@@ -759,11 +850,18 @@ class AMRBicycleEnv(gym.Env):
         self.goal_stop_delta_rad = min(self.goal_stop_delta_rad, float(self.model.delta_max_rad))
 
         self.progress_dist_mode = str(progress_dist_mode).strip()
-        if self.progress_dist_mode not in ("euclid", "grid4"):
-            raise ValueError("progress_dist_mode must be one of: euclid, grid4")
+        if self.progress_dist_mode not in ("euclid", "grid4", "dijkstra8_nocorner"):
+            raise ValueError("progress_dist_mode must be one of: euclid, grid4, dijkstra8_nocorner")
         self._progress_goal_xy: tuple[int, int] | None = None
         self._progress_dist_m = np.zeros((1, 1), dtype=np.float32)
         self._progress_dist_fill_m = float("inf")
+        self.progress_cost_w_clearance = float(progress_cost_w_clearance)
+        if not (self.progress_cost_w_clearance >= 0.0):
+            raise ValueError("progress_cost_w_clearance must be >= 0")
+        self.progress_cost_sigma_m = float(progress_cost_sigma_m)
+        if not (self.progress_cost_sigma_m > 0.0):
+            raise ValueError("progress_cost_sigma_m must be > 0")
+        self._progress_cost_factor = np.ones((1, 1), dtype=np.float32)
 
         # Precompute EDT + distance fields once (forest maps are static).
         self._eps_cell_m = float(math.sqrt(2.0) * 0.5 * self.cell_size_m)
@@ -793,6 +891,11 @@ class AMRBicycleEnv(gym.Env):
         # Ensure the canonical start/goal cells are always treated as traversable.
         self._traversable_base[self._canonical_start_xy[1], self._canonical_start_xy[0]] = True
         self._traversable_base[self._canonical_goal_xy[1], self._canonical_goal_xy[0]] = True
+        od_base_m = np.maximum(0.0, self._dist_m - float(self._clearance_thr_m)).astype(np.float32, copy=False)
+        penalty = np.exp(-od_base_m / float(self.progress_cost_sigma_m)).astype(np.float32, copy=False)
+        self._progress_cost_factor = (1.0 + float(self.progress_cost_w_clearance) * penalty).astype(
+            np.float32, copy=False
+        )
 
         # Candidate free cells for random start/goal sampling.
         free_y, free_x = np.where(self._traversable_base)
@@ -1021,7 +1124,17 @@ class AMRBicycleEnv(gym.Env):
             self._progress_dist_fill_m = float(self._goal_dist_fill_m)
             self._progress_goal_xy = goal_xy
             return
-        raise ValueError("progress_dist_mode must be one of: euclid, grid4")
+        if mode == "dijkstra8_nocorner":
+            self._progress_dist_m = dijkstra8_nocorner_goal_dist_m(
+                self._traversable_base,
+                goal_xy=goal_xy,
+                cell_size_m=float(self.cell_size_m),
+                cost_factor=self._progress_cost_factor,
+            )
+            self._progress_dist_fill_m = float(self._goal_dist_fill_m)
+            self._progress_goal_xy = goal_xy
+            return
+        raise ValueError("progress_dist_mode must be one of: euclid, grid4, dijkstra8_nocorner")
 
     def _update_start_dependent_fields(self, *, start_xy: tuple[int, int]) -> None:
         sx, sy = int(start_xy[0]), int(start_xy[1])
@@ -1642,10 +1755,11 @@ class AMRBicycleEnv(gym.Env):
         self._ensure_progress_dist_field()
         xi = np.asarray(x_m, dtype=np.float64) / float(self.cell_size_m)
         yi = np.asarray(y_m, dtype=np.float64) / float(self.cell_size_m)
-        return bilinear_sample_2d_vec(
+        return bilinear_sample_2d_finite_vec(
             self._progress_dist_m,
             x=xi,
             y=yi,
+            fill_value=float(self._progress_dist_fill_m),
             default=float(self._progress_dist_fill_m),
         )
 
@@ -2386,10 +2500,11 @@ class AMRBicycleEnv(gym.Env):
         self._ensure_progress_dist_field()
         xi = float(x_m) / self.cell_size_m
         yi = float(y_m) / self.cell_size_m
-        return bilinear_sample_2d(
+        return bilinear_sample_2d_finite(
             self._progress_dist_m,
             x=xi,
             y=yi,
+            fill_value=float(self._progress_dist_fill_m),
             default=float(self._progress_dist_fill_m),
         )
 

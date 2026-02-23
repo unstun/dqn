@@ -3321,11 +3321,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--forest-progress-dist-mode",
-        choices=("euclid", "grid4"),
+        choices=("euclid", "grid4", "dijkstra8_nocorner"),
         default="euclid",
         help=(
             "Forest-only: goal-progress distance mode used by reward progress and admissible-action gating "
             "(default: euclid)."
+        ),
+    )
+    ap.add_argument(
+        "--forest-progress-cost-w-clearance",
+        type=float,
+        default=2.0,
+        help=(
+            "Forest-only: for progress_dist_mode=dijkstra8_nocorner, clearance penalty weight (>=0). "
+            "Higher => prefer paths with larger obstacle clearance."
+        ),
+    )
+    ap.add_argument(
+        "--forest-progress-cost-sigma-m",
+        type=float,
+        default=0.5,
+        help=(
+            "Forest-only: for progress_dist_mode=dijkstra8_nocorner, clearance penalty decay length (meters, >0). "
+            "Larger => penalty decays more slowly with clearance."
         ),
     )
     ap.add_argument(
@@ -4007,6 +4025,8 @@ def main(argv: list[str] | None = None) -> int:
                 action_accel_bins=int(args.forest_action_accel_bins),
                 action_grid_power=float(args.forest_action_grid_power),
                 progress_dist_mode=str(args.forest_progress_dist_mode),
+                progress_cost_w_clearance=float(args.forest_progress_cost_w_clearance),
+                progress_cost_sigma_m=float(args.forest_progress_cost_sigma_m),
             )
             forest_demo_data = None
             if bool(args.forest_demo_prefill) and int(args.learning_starts) > 0:
