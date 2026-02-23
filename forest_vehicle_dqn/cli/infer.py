@@ -181,6 +181,94 @@ def _forest_topk_candidate_q_score(
     return float(base) - float(penalty_w) * float(turn_cost)
 
 
+def _forest_choose_replacement_candidate(
+    env: AMRBicycleEnv,
+    q: torch.Tensor,
+    *,
+    candidates: list[int],
+    ranking: str,
+    topk_turn_penalty: float,
+) -> int | None:
+    """Pick a replacement action from candidates when argmax(Q) is inadmissible.
+
+    ranking:
+    - "q": maximize Q (optionally penalize aggressive turning)
+    - "progress_clearance_q": minimize next-step progress_dist, then maximize clearance (OD), then Q
+    - "clearance_progress_q": maximize clearance (OD), then minimize next-step progress_dist, then Q
+    """
+
+    if not candidates:
+        return None
+
+    mode = str(ranking).lower().strip()
+    if mode == "q":
+        return int(
+            max(
+                candidates,
+                key=lambda c: _forest_topk_candidate_q_score(
+                    env,
+                    q,
+                    action_id=int(c),
+                    topk_turn_penalty=float(topk_turn_penalty),
+                ),
+            )
+        )
+
+    if mode not in {"progress_clearance_q", "clearance_progress_q"}:
+        raise ValueError("forest_replace_ranking must be one of: q, progress_clearance_q, clearance_progress_q")
+
+    x0 = float(env._x_m)
+    y0 = float(env._y_m)
+    psi0 = float(env._psi_rad)
+    v0 = float(env._v_m_s)
+    delta0 = float(env._delta_rad)
+
+    penalty_w = max(0.0, float(topk_turn_penalty))
+    delta_max = max(1e-9, float(env.model.delta_max_rad))
+    delta_dot_max = max(1e-9, float(env.model.delta_dot_max_rad_s))
+
+    best: int | None = None
+    best_key: tuple[float, float, float] | None = None
+    for a_id in candidates:
+        a_i = int(a_id)
+        delta_dot = float(env.action_table[a_i, 0])
+        accel = float(env.action_table[a_i, 1])
+        x1, y1, psi1, _v1, delta1 = bicycle_integrate_one_step(
+            x_m=x0,
+            y_m=y0,
+            psi_rad=psi0,
+            v_m_s=v0,
+            delta_rad=delta0,
+            delta_dot_rad_s=delta_dot,
+            a_m_s2=accel,
+            params=env.model,
+        )
+        od, coll = env._od_and_collision_at_pose_m(x1, y1, psi1)
+        if bool(coll):
+            continue
+
+        dist1 = float(env._progress_dist_pose_m(x1, y1, psi1))
+        if not math.isfinite(dist1):
+            continue
+
+        od1 = float(od) if math.isfinite(float(od)) else -float("inf")
+        q_score = float(q[a_i].item())
+        if float(penalty_w) > 0.0:
+            turn_cost = abs(float(delta1)) / float(delta_max) + 0.5 * abs(float(delta_dot)) / float(delta_dot_max)
+            q_score -= float(penalty_w) * float(turn_cost)
+
+        if mode == "progress_clearance_q":
+            key = (float(dist1), -float(od1), -float(q_score))
+        else:
+            key = (-float(od1), float(dist1), -float(q_score))
+
+        if best_key is None or key < best_key:
+            best_key = key
+            best = int(a_i)
+
+    return int(best) if best is not None else None
+
+
 def rollout_agent(
     env: gym.Env,
     agent: DQNFamilyAgent,
@@ -193,6 +281,7 @@ def rollout_agent(
     forest_adm_horizon: int = 15,
     forest_topk: int = 10,
     forest_topk_turn_penalty: float = 0.0,
+    forest_replace_ranking: str = "q",
     forest_min_od_m: float = 0.0,
     forest_min_progress_m: float = 1e-4,
     forest_no_fallback: bool = False,
@@ -273,6 +362,9 @@ def rollout_agent(
     adm_h = max(1, int(forest_adm_horizon))
     topk_k = max(1, int(forest_topk))
     topk_turn_penalty = max(0.0, float(forest_topk_turn_penalty))
+    replace_ranking = str(forest_replace_ranking).lower().strip()
+    if replace_ranking not in {"q", "progress_clearance_q", "clearance_progress_q"}:
+        raise ValueError("forest_replace_ranking must be one of: q, progress_clearance_q, clearance_progress_q")
     strict_no_fallback = bool(forest_no_fallback)
     min_od = float(forest_min_od_m)
     min_prog = float(forest_min_progress_m)
@@ -328,20 +420,13 @@ def rollout_agent(
                             admissible_topk.append(int(cand_i))
 
                     if admissible_topk:
-                        if float(topk_turn_penalty) <= 0.0:
-                            chosen = int(admissible_topk[0])
-                        else:
-                            chosen = int(
-                                max(
-                                    admissible_topk,
-                                    key=lambda c: _forest_topk_candidate_q_score(
-                                        env,
-                                        q,
-                                        action_id=int(c),
-                                        topk_turn_penalty=float(topk_turn_penalty),
-                                    ),
-                                )
-                            )
+                        chosen = _forest_choose_replacement_candidate(
+                            env,
+                            q,
+                            candidates=list(admissible_topk),
+                            ranking=str(replace_ranking),
+                            topk_turn_penalty=float(topk_turn_penalty),
+                        )
                         replacement_topk_steps += 1
 
                     if chosen is None:
@@ -363,24 +448,15 @@ def rollout_agent(
                                 fallback_to_safe=True,
                             )
                         if bool(mask.any()):
-                            if float(topk_turn_penalty) <= 0.0:
-                                q_masked = q.clone()
-                                q_masked[torch.from_numpy(~mask).to(q.device)] = torch.finfo(q_masked.dtype).min
-                                chosen = int(torch.argmax(q_masked).item())
-                            else:
-                                cand_idx = np.nonzero(mask)[0].astype(np.int64).tolist()
-                                if cand_idx:
-                                    chosen = int(
-                                        max(
-                                            cand_idx,
-                                            key=lambda c: _forest_topk_candidate_q_score(
-                                                env,
-                                                q,
-                                                action_id=int(c),
-                                                topk_turn_penalty=float(topk_turn_penalty),
-                                            ),
-                                        )
-                                    )
+                            cand_idx = np.nonzero(mask)[0].astype(np.int64).tolist()
+                            if cand_idx:
+                                chosen = _forest_choose_replacement_candidate(
+                                    env,
+                                    q,
+                                    candidates=list(cand_idx),
+                                    ranking=str(replace_ranking),
+                                    topk_turn_penalty=float(topk_turn_penalty),
+                                )
                             replacement_mask_steps += 1
                         else:
                             # Last resort: pick a collision-free action that best reduces goal distance
@@ -939,6 +1015,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Forest-only: penalty weight used to rank admissible replacement actions in top-k/mask "
             "(higher => prefer smoother and less aggressive steering)."
+        ),
+    )
+    ap.add_argument(
+        "--forest-replace-ranking",
+        choices=("q", "progress_clearance_q", "clearance_progress_q"),
+        default="q",
+        help=(
+            "Forest-only: when argmax(Q) is inadmissible, how to rank admissible replacement candidates. "
+            "'q' keeps pure Q-based ranking; the other modes use next-step progress_dist/clearance as tie-breakers."
         ),
     )
     ap.add_argument(
@@ -1910,6 +1995,7 @@ def main(argv: list[str] | None = None) -> int:
                         forest_adm_horizon=int(args.forest_adm_horizon),
                         forest_topk=int(args.forest_topk),
                         forest_topk_turn_penalty=float(getattr(args, "forest_topk_turn_penalty", 0.0)),
+                        forest_replace_ranking=str(getattr(args, "forest_replace_ranking", "q")),
                         forest_min_od_m=float(args.forest_min_od_m),
                         forest_min_progress_m=float(args.forest_min_progress_m),
                         forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
@@ -2114,6 +2200,7 @@ def main(argv: list[str] | None = None) -> int:
                         forest_adm_horizon=int(args.forest_adm_horizon),
                         forest_topk=int(args.forest_topk),
                         forest_topk_turn_penalty=float(getattr(args, "forest_topk_turn_penalty", 0.0)),
+                        forest_replace_ranking=str(getattr(args, "forest_replace_ranking", "q")),
                         forest_min_od_m=float(args.forest_min_od_m),
                         forest_min_progress_m=float(args.forest_min_progress_m),
                         forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),

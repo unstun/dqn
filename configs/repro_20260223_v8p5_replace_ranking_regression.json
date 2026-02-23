@@ -1,0 +1,66 @@
+{
+  "_meta": {
+    "title": "v8p5 regression (replace-ranking ablation on v8p3 smoke failure pairs)",
+    "date": "2026-02-23",
+    "summary": "Infer-only regression on the mid collision + long timeout samples observed in v8p3 smoke. Replays fixed (start,goal) pairs from `configs/pairs_v8p3_smoke_failures.json` to ablate the new `--forest-replace-ranking` option (how to rank admissible replacement candidates when argmax(Q) is inadmissible).",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_regression",
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_regression --forest-replace-ranking clearance_progress_q",
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_regression --forest-replace-ranking q"
+    ],
+    "notes": [
+      "Models are fixed to v8p3 smoke checkpoint for ablation clarity.",
+      "This config sets forest_replace_ranking=progress_clearance_q by default; override on the CLI to compare."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::mid",
+      "forest_a::long"
+    ],
+    "models": "v8p3_fallback_safety_smoke",
+    "out": "v8p5_replace_ranking_regression",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "rand_pairs_json": "configs/pairs_v8p3_smoke_failures.json",
+    "runs": 2,
+    "progress": true,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_topk": 10,
+    "forest_topk_turn_penalty": 0.0,
+    "forest_replace_ranking": "progress_clearance_q",
+    "forest_min_progress_m": 0.01,
+    "forest_progress_dist_mode": "dijkstra8_nocorner",
+    "forest_progress_cost_w_clearance": 2.0,
+    "forest_progress_cost_sigma_m": 0.5,
+    "forest_min_od_m": 0.02,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "rand_min_dist_m": 14.0,
+    "rand_max_dist_m": 42.0,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
+    "rand_edge_margin_m": 3.0,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "none",
+    "rand_tries": 400,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 33
+  }
+}
+
