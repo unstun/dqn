@@ -4,7 +4,7 @@
 - 上一版本：`v8p5`
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**待评测（infer-only smoke / train+infer smoke 均未回填）**
+- 状态：**infer-only smoke 已通过（topq=1/2/3；seed=33；runs=3）；train+infer smoke 未跑**
 
 ## 本版目标
 
@@ -52,10 +52,14 @@ conda run -n ros2py310 python infer.py --profile v8p6
 
 ## 代表 run
 
-- infer-only smoke：`N/A`
+- infer-only smoke（固定 `v7p1` checkpoint；同一随机对；runs=3）：
+  - topq=2（默认）：`runs/v8p6_replace_topq_infer_smoke/20260223_185519`
+  - topq=1（≈纯 Q replacement 对照）：`runs/v8p6_replace_topq_infer_smoke/20260223_185553`
+  - topq=3（本轮更优候选）：`runs/v8p6_replace_topq_infer_smoke/20260223_185628`
 - train+infer smoke：`N/A`
 
-## 结论（待回填）
+## 结论（当前仅含 infer-only smoke）
 
-- `N/A`
-
+- `--forest-replace-topq` 在该随机分布样本上**修复了 v8p5 tie-break 的 short collision 回潮**（short/mid/long 均 `SR=1.0`）。
+- 相对 topq=1（≈纯 Q replacement），topq=2/3 能明显压 long 的 `avg_path_length/path_time_s`；其中 topq=3 的三套件均值更优（见 `RESULTS.md`）。
+- 当前仍未超过 baseline（Hybrid A*-MPC）的 mid/long L/T；下一步建议按 smoke 门继续跑 `v8p6` 的 train+infer（episodes=150, runs=3），并优先以 topq=3 作为候选。

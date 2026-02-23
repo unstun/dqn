@@ -39,7 +39,7 @@ REPORT_ARTIFACTS:
 
 - 本仓库正在采用 `vibe coding` 持续迭代：小步改动、快速验证、严格回退与归档。
 - 当前稳定主线版本为 `v7p1`（`configs/v7p1.json`）。
-- 当前 V8 迭代入口为 `v8p6`（`configs/v8p6.json`）（待评测：replace-topq；目标修复 tie-break short `collision=1/3` 回潮并尽量保留 long L/T）。
+- 当前 V8 迭代入口为 `v8p6`（`configs/v8p6.json`）（infer-only smoke PASS：topq=1/2/3；推荐 topq=3；train+infer smoke 未跑）。
 - `v8p5` 为上一版（回归 PASS；infer-only：tie-break short `collision=1/3`）。
 - `v8p1` 已归档为 NO-GO（navdist progress distance；smoke SR 退化）。
 - `v7p2` 到 `v7p3p7` 属于非主线迭代分支的失败/探索版本，稳定结论口径仍为 `v7p1`。
@@ -285,7 +285,7 @@ runs/<out>/
 
 ## 版本总索引（v1 → v8p6）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p6` 为当前 V8 迭代入口（待评测：replace-topq；目标：修复 tie-break short `collision=1/3` 回潮并尽量保留 long L/T），`v8p5` 为上一版（回归 PASS；infer-only：`q` PASS、tie-break short `collision=1/3`；train+infer smoke 未跑），`v8p4` 为更上一版（回归 FAIL：collision+timeout；暂不 smoke），`v8p3` 为更更上一版（smoke 失败：mid collision + long timeout），`v8p2` 为更更更上一版（short 有 collision）。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p6` 为当前 V8 迭代入口（infer-only smoke PASS：topq=2/3 修复 tie-break short `collision=1/3` 回潮且 long L/T 下降；推荐 topq=3；train+infer smoke 未跑），`v8p5` 为上一版（回归 PASS；infer-only：`q` PASS、tie-break short `collision=1/3`；train+infer smoke 未跑），`v8p4` 为更上一版（回归 FAIL：collision+timeout；暂不 smoke），`v8p3` 为更更上一版（smoke 失败：mid collision + long timeout），`v8p2` 为更更更上一版（short 有 collision）。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -332,7 +332,7 @@ runs/<out>/
 | `v8p3` | `docs/versions/v8p3/` | `configs/v8p3.json` | `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153` | `1.000 / 0.667` | `1.00 / 1.00` | 失败归档（smoke：mid collision=1/3；long timeout=1/3） |
 | `v8p4` | `docs/versions/v8p4/` | `configs/v8p4.json` | `runs/v8p4_smoke_failures_regression/20260223_142739` | `N/A / N/A` | `N/A / N/A` | 失败归档（回归 FAIL：collision+timeout；暂不 smoke） |
 | `v8p5` | `docs/versions/v8p5/` | `configs/v8p5.json` | `runs/v8p5_replace_ranking_infer_smoke/20260223_172217` | `1.000 / 1.000` | `1.00 / 1.00` | infer-only：`q` PASS；tie-break short `collision=1/3`（NO-GO）；train+infer smoke 未跑 |
-| `v8p6` | `docs/versions/v8p6/` | `configs/v8p6.json` | `N/A` | `N/A / N/A` | `N/A / N/A` | 待评测（replace-topq：目标修复 tie-break short collision 并保 long L/T） |
+| `v8p6` | `docs/versions/v8p6/` | `configs/v8p6.json` | `runs/v8p6_replace_topq_infer_smoke/20260223_185628` | `1.000 / 1.000` | `1.00 / 1.00` | infer-only：topq=1/2/3 均 PASS（推荐 topq=3）；train+infer smoke 未跑 |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
