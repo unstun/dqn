@@ -188,6 +188,7 @@ def _forest_choose_replacement_candidate(
     candidates: list[int],
     ranking: str,
     topk_turn_penalty: float,
+    replace_topq: int,
 ) -> int | None:
     """Pick a replacement action from candidates when argmax(Q) is inadmissible.
 
@@ -201,10 +202,31 @@ def _forest_choose_replacement_candidate(
         return None
 
     mode = str(ranking).lower().strip()
+    topq = max(0, int(replace_topq))
+    cand_list = [int(c) for c in candidates]
+    if topq > 0 and int(len(cand_list)) > int(topq):
+        scored: list[tuple[float, int]] = []
+        for c in cand_list:
+            score = float(
+                _forest_topk_candidate_q_score(
+                    env,
+                    q,
+                    action_id=int(c),
+                    topk_turn_penalty=float(topk_turn_penalty),
+                )
+            )
+            if not math.isfinite(float(score)):
+                score = -float("inf")
+            scored.append((float(score), int(c)))
+        scored.sort(key=lambda x: float(x[0]), reverse=True)
+        cand_list = [int(a_id) for _score, a_id in scored[: int(topq)]]
+        if not cand_list:
+            return None
+
     if mode == "q":
         return int(
             max(
-                candidates,
+                cand_list,
                 key=lambda c: _forest_topk_candidate_q_score(
                     env,
                     q,
@@ -229,7 +251,7 @@ def _forest_choose_replacement_candidate(
 
     best: int | None = None
     best_key: tuple[float, float, float] | None = None
-    for a_id in candidates:
+    for a_id in cand_list:
         a_i = int(a_id)
         delta_dot = float(env.action_table[a_i, 0])
         accel = float(env.action_table[a_i, 1])
@@ -282,6 +304,7 @@ def rollout_agent(
     forest_topk: int = 10,
     forest_topk_turn_penalty: float = 0.0,
     forest_replace_ranking: str = "q",
+    forest_replace_topq: int = 0,
     forest_min_od_m: float = 0.0,
     forest_min_progress_m: float = 1e-4,
     forest_no_fallback: bool = False,
@@ -365,6 +388,7 @@ def rollout_agent(
     replace_ranking = str(forest_replace_ranking).lower().strip()
     if replace_ranking not in {"q", "progress_clearance_q", "clearance_progress_q"}:
         raise ValueError("forest_replace_ranking must be one of: q, progress_clearance_q, clearance_progress_q")
+    replace_topq = max(0, int(forest_replace_topq))
     strict_no_fallback = bool(forest_no_fallback)
     min_od = float(forest_min_od_m)
     min_prog = float(forest_min_progress_m)
@@ -426,6 +450,7 @@ def rollout_agent(
                             candidates=list(admissible_topk),
                             ranking=str(replace_ranking),
                             topk_turn_penalty=float(topk_turn_penalty),
+                            replace_topq=int(replace_topq),
                         )
                         replacement_topk_steps += 1
 
@@ -456,6 +481,7 @@ def rollout_agent(
                                     candidates=list(cand_idx),
                                     ranking=str(replace_ranking),
                                     topk_turn_penalty=float(topk_turn_penalty),
+                                    replace_topq=int(replace_topq),
                                 )
                             replacement_mask_steps += 1
                         else:
@@ -1024,6 +1050,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Forest-only: when argmax(Q) is inadmissible, how to rank admissible replacement candidates. "
             "'q' keeps pure Q-based ranking; the other modes use next-step progress_dist/clearance as tie-breakers."
+        ),
+    )
+    ap.add_argument(
+        "--forest-replace-topq",
+        type=int,
+        default=0,
+        help=(
+            "Forest-only: when selecting a replacement action (argmax(Q) inadmissible), restrict admissible "
+            "replacement candidates to top-Q by Q score before applying replace-ranking tie-break. "
+            "0 disables; 1 approximates pure-Q replacement even under tie-break ranking."
         ),
     )
     ap.add_argument(
@@ -1996,6 +2032,7 @@ def main(argv: list[str] | None = None) -> int:
                         forest_topk=int(args.forest_topk),
                         forest_topk_turn_penalty=float(getattr(args, "forest_topk_turn_penalty", 0.0)),
                         forest_replace_ranking=str(getattr(args, "forest_replace_ranking", "q")),
+                        forest_replace_topq=int(getattr(args, "forest_replace_topq", 0)),
                         forest_min_od_m=float(args.forest_min_od_m),
                         forest_min_progress_m=float(args.forest_min_progress_m),
                         forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
@@ -2201,6 +2238,7 @@ def main(argv: list[str] | None = None) -> int:
                         forest_topk=int(args.forest_topk),
                         forest_topk_turn_penalty=float(getattr(args, "forest_topk_turn_penalty", 0.0)),
                         forest_replace_ranking=str(getattr(args, "forest_replace_ranking", "q")),
+                        forest_replace_topq=int(getattr(args, "forest_replace_topq", 0)),
                         forest_min_od_m=float(args.forest_min_od_m),
                         forest_min_progress_m=float(args.forest_min_progress_m),
                         forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),

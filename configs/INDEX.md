@@ -7,7 +7,8 @@
 | 类别 | 文件 | 用途 | 状态 |
 |---|---|---|---|
 | 稳定主线 | `configs/v7p1.json` | 当前训练/推理默认主线 | 推荐 |
-| V8 迭代入口 | `configs/v8p5.json` | replace-ranking 消融（argmax 不可行时的替换动作排序：Q vs progress/clearance tie-break） | 回归通过（fixed pairs）；infer-only：tie-break short 有 collision |
+| V8 迭代入口 | `configs/v8p6.json` | replace-topq（替换候选 Top-Q 约束：把 tie-break 限制在高 Q 小集合内） | 待评测 |
+| V8 迭代（上版） | `configs/v8p5.json` | replace-ranking 消融（argmax 不可行时的替换动作排序：Q vs progress/clearance tie-break） | 回归通过（fixed pairs）；infer-only：tie-break short 有 collision |
 | V8 迭代（上版） | `configs/v8p4.json` | short-rollout fallback 的 1-step collision-free 降阶兜底（避免“最后兜底选到立即碰撞动作”） | 回归 FAIL（collision+timeout）；暂不 smoke |
 | V8 迭代（上上版） | `configs/v8p3.json` | collision-first fallback safety（避免 `min_od_m` 筛空导致落入碰撞兜底） | smoke 已跑（mid collision，long timeout） |
 | V8 迭代（上上上版） | `configs/v8p2.json` | costmap Dijkstra progress distance（`forest_progress_dist_mode=dijkstra8_nocorner`） | smoke 已跑（short 有 collision） |
