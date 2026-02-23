@@ -7,8 +7,9 @@
 | 类别 | 文件 | 用途 | 状态 |
 |---|---|---|---|
 | 稳定主线 | `configs/v7p1.json` | 当前训练/推理默认主线 | 推荐 |
-| V8 迭代入口 | `configs/v8p3.json` | collision-first fallback safety（避免 short 可复现 collision 回潮） | smoke 已跑（mid collision，long timeout） |
-| V8 迭代（上版） | `configs/v8p2.json` | costmap Dijkstra progress distance（`forest_progress_dist_mode=dijkstra8_nocorner`） | smoke 已跑（short 有 collision） |
+| V8 迭代入口 | `configs/v8p4.json` | short-rollout fallback 的 1-step collision-free 降阶兜底（避免“最后兜底选到立即碰撞动作”） | 回归 FAIL（collision+timeout）；暂不 smoke |
+| V8 迭代（上版） | `configs/v8p3.json` | collision-first fallback safety（避免 `min_od_m` 筛空导致落入碰撞兜底） | smoke 已跑（mid collision，long timeout） |
+| V8 迭代（上上版） | `configs/v8p2.json` | costmap Dijkstra progress distance（`forest_progress_dist_mode=dijkstra8_nocorner`） | smoke 已跑（short 有 collision） |
 | 失败分支归档 | `configs/v8p1.json` | `v8p1` navdist progress distance（`forest_progress_dist_mode=grid4`） | 仅复盘 |
 | 失败分支归档 | `configs/v7p3p4.json` | `v7p3p4` safe fallback 补丁（progress mask 为空时回退 safe 动作集，修复 `fallback_rate`） | 仅复盘 |
 | 失败分支归档 | `configs/v7p3p3.json` | `v7p3p3` 调参（`tp=0.3` + `min_prog=0.0`）尝试降低 timeout | 仅复盘 |
@@ -36,6 +37,7 @@
 - `configs/v8p1.json`
 - `configs/v8p2.json`
 - `configs/v8p3.json`
+- `configs/v8p4.json`
 
 > 规则：新增版本时，优先新增 `v*.json`，再在四件套中记录它与 `run_dir`（运行目录）的映射。
 

@@ -1894,12 +1894,27 @@ class AMRBicycleEnv(gym.Env):
 
         Chooses the collision-free action that yields the lowest goal distance after a short
         constant-action rollout. This is used only as a last resort to keep rollouts moving.
+
+        Safety note: if no action is safe under the requested multi-step horizon, we fall back to
+        a 1-step collision-free choice (even if it would collide later) before considering any
+        action that collides immediately.
         """
 
         h = max(1, int(horizon_steps))
         min_od_thr = float(min_od_m)
         delta_dot = self.action_table[:, 0]
         accel = self.action_table[:, 1]
+
+        def _pick_best(*, ok_mask: np.ndarray, dist: np.ndarray, min_od: np.ndarray, reached: np.ndarray) -> int:
+            ok_reached = ok_mask & reached
+            idx = np.nonzero(ok_reached if bool(ok_reached.any()) else ok_mask)[0]
+            dists = dist[idx]
+            best_dist = float(np.min(dists))
+            cand = idx[dists <= float(best_dist) + 1e-9]
+            if cand.size == 0:
+                return int(idx[int(np.argmin(dists))])
+            return int(cand[int(np.argmax(min_od[cand]))])
+
         x, y, psi, _v, min_od, coll, reached = self._rollout_constant_actions_end_state(
             delta_dot_rad_s=delta_dot,
             a_m_s2=accel,
@@ -1909,18 +1924,22 @@ class AMRBicycleEnv(gym.Env):
 
         ok = (~coll) & (min_od >= float(min_od_thr)) & np.isfinite(dist1)
         if bool(ok.any()):
-            ok_reached = ok & reached
-            idx = np.nonzero(ok_reached if bool(ok_reached.any()) else ok)[0]
-            dists = dist1[idx]
-            best_dist = float(np.min(dists))
-            cand = idx[dists <= float(best_dist) + 1e-9]
-            if cand.size == 0:
-                cand = idx[int(np.argmin(dists))]
-                return int(cand)
-            best = int(cand[int(np.argmax(min_od[cand]))])
-            return int(best)
+            return _pick_best(ok_mask=ok, dist=dist1, min_od=min_od, reached=reached)
 
-        # Last resort: pick the one-step action with maximum clearance (even if it still collides).
+        # If all constant-action rollouts collide within the requested horizon, try to pick a
+        # 1-step collision-free action instead of falling through to a potentially-colliding
+        # clearance-only selection.
+        x1, y1, psi1, _v1, min_od1, coll1, reached1 = self._rollout_constant_actions_end_state(
+            delta_dot_rad_s=delta_dot,
+            a_m_s2=accel,
+            horizon_steps=1,
+        )
+        dist1_step = self._progress_dist_pose_m_vec(x1, y1, psi1)
+        ok1 = (~coll1) & np.isfinite(dist1_step)
+        if bool(ok1.any()):
+            return _pick_best(ok_mask=ok1, dist=dist1_step, min_od=min_od1, reached=reached1)
+
+        # Last resort: pick the one-step action with maximum clearance (may still collide).
         x0 = float(self._x_m)
         y0 = float(self._y_m)
         psi0 = float(self._psi_rad)

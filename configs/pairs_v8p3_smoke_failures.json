@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "title": "v8p3 smoke failure pairs (forest_a: mid collision + long timeout)",
+    "date": "2026-02-23",
+    "source": "runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153/table2_kpis_raw.csv (mid run_idx=0 collision; long run_idx=2 timeout)",
+    "notes": [
+      "Used by infer.py via --rand-pairs-json to replay known failing pairs.",
+      "Format: {pairs:[{env,run_idx,start_xy,goal_xy}]}."
+    ]
+  },
+  "pairs": [
+    {
+      "env": "forest_a",
+      "run_idx": 0,
+      "start_xy": [
+        103,
+        260
+      ],
+      "goal_xy": [
+        318,
+        124
+      ]
+    },
+    {
+      "env": "forest_a",
+      "run_idx": 2,
+      "start_xy": [
+        30,
+        32
+      ],
+      "goal_xy": [
+        329,
+        327
+      ]
+    }
+  ]
+}
+
