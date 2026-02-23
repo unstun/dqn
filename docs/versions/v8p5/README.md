@@ -4,7 +4,7 @@
 - 上一版本：`v8p4`
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**回归通过（fixed-pairs PASS；暂未进入 smoke）**
+- 状态：**回归通过（fixed-pairs PASS；infer-only smoke：tie-break short 有 collision；train+infer smoke 未跑）**
 
 ## 本版目标
 
@@ -42,7 +42,15 @@ conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ran
 conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_regression --forest-replace-ranking q
 ```
 
-### 3) smoke（episodes=150, runs=3）——回归通过后再跑
+### 3) infer-only smoke（固定 `v7p1` checkpoint，runs=3）——用于筛查泛化风险
+
+```bash
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke --forest-replace-ranking progress_clearance_q
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke --forest-replace-ranking clearance_progress_q
+```
+
+### 4) smoke（episodes=150, runs=3）——infer-only 通过后再跑
 
 ```bash
 conda run -n ros2py310 python train.py --profile v8p5
@@ -56,7 +64,11 @@ conda run -n ros2py310 python infer.py --profile v8p5
   - `progress_clearance_q` + baseline：`runs/v8p5_replace_ranking_regression/20260222_224400`
   - `clearance_progress_q`：`runs/v8p5_replace_ranking_regression/20260222_223308`
   - `q`（基线对照）：`runs/v8p5_replace_ranking_regression/20260222_223339`
-- smoke：`N/A`
+- infer-only smoke（固定 `v7p1` checkpoint）：
+  - `q`：`runs/v8p5_replace_ranking_infer_smoke/20260223_172217`
+  - `progress_clearance_q`：`runs/v8p5_replace_ranking_infer_smoke/20260223_172252`
+  - `clearance_progress_q`：`runs/v8p5_replace_ranking_infer_smoke/20260223_172327`
+- train+infer smoke：`N/A`
 
 ## 结论（待回填）
 
@@ -64,4 +76,7 @@ conda run -n ros2py310 python infer.py --profile v8p5
   - `q`：FAIL（collision=1/2 + timeout=1/2）
   - `progress_clearance_q`：PASS（`reached=4/4`）
   - `clearance_progress_q`：PASS（`reached=4/4`，但 path/time 更大）
-- 下一步：用 `progress_clearance_q` 进入 smoke gate（episodes=150, runs=3），再决定是否进入 full（runs=20）。
+- infer-only smoke（固定 `v7p1` checkpoint，short/mid/long 各 runs=3）筛查结果：
+  - `q`：PASS（short/mid/long 均 `SR=1.0`）
+  - `progress_clearance_q` / `clearance_progress_q`：FAIL（short 出现 `collision=1/3`，不满足 `SR≈1.0` 的硬约束，但 long 的 L/T 有明显下降趋势）
+- 下一步：若继续追求 “`SR≈1.0` 前提下压 L/T”，需要先把 tie-break 策略的 short 安全回潮压住（例如增加额外安全约束/引入更保守的触发条件），再决定是否进入 train+infer smoke gate。

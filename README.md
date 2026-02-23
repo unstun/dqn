@@ -36,11 +36,11 @@ REPORT_ARTIFACTS:
 - Run artifact map: `docs/runs/README.md`
 - Candidate cleanup list: `docs/runs/CANDIDATES_TO_ARCHIVE_20260221.md`
 
-## Research objective and current status (2026-02-22)
+## Research objective and current status (2026-02-23)
 
 - This repo is under active `vibe coding` iteration: small deltas, quick validation loops, and strict rollback/archive discipline.
 - Current stable mainline is `v7p1` (`configs/v7p1.json`).
-- Active V8 iteration is `v8p4` (`configs/v8p4.json`) (regression FAIL on fixed v8p3 smoke-failure pairs: still collision+timeout; next: v8p5).
+- Active V8 iteration is `v8p5` (`configs/v8p5.json`) (regression PASS; infer-only: tie-break short collision=1/3; next: v8p6 replace-topq).
 - `v8p1` is archived as NO-GO (navdist progress distance; smoke SR regressed).
 - `v7p2` to `v7p3p7` are archived failed/iterative attempts on the non-mainline branch, and `v7p1` remains the stable claim baseline.
 - Final objective: make RL planning (`CNN-DDQN`) outperform classical planning (`Hybrid A*-MPC`) under fair and reproducible evaluation.
@@ -133,6 +133,11 @@ Active V8 smoke profiles (experimental):
 ```bash
 # v8p5: regression (replace-ranking ablation on v8p3 smoke failure pairs; runs=2)
 conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_regression
+
+# v8p5: infer-only smoke (fixed v7p1 checkpoint; replace-ranking ablation; runs=3)
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke --forest-replace-ranking progress_clearance_q
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke --forest-replace-ranking clearance_progress_q
 
 # v8p5: train+infer smoke (episodes=150, runs=3) [pending: run regression first]
 conda run -n ros2py310 python train.py --profile v8p5
@@ -275,7 +280,7 @@ Notes:
 
 ## 版本总索引（v1 → v8p5）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p5` 为当前 V8 迭代入口（待回归：replace-ranking 消融），`v8p4` 为上一版（回归 FAIL：collision+timeout；暂不 smoke），`v8p3` 为更上一版（smoke 失败：mid collision + long timeout），`v8p2` 为更更上一版（short 有 collision）。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p5` 为当前 V8 迭代入口（回归 PASS；infer-only：`q` PASS、tie-break short `collision=1/3`；train+infer smoke 未跑），`v8p4` 为上一版（回归 FAIL：collision+timeout；暂不 smoke），`v8p3` 为更上一版（smoke 失败：mid collision + long timeout），`v8p2` 为更更上一版（short 有 collision）。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -321,7 +326,7 @@ Notes:
 | `v8p2` | `docs/versions/v8p2/` | `configs/v8p2.json` | `runs/v8p2_costmap_smoke/train_20260223_104408/infer/20260223_110027` | `0.667 / 1.000` | `1.00 / 1.00` | smoke 已跑（mid/long=1.0；short=2/3 collision；暂不 full） |
 | `v8p3` | `docs/versions/v8p3/` | `configs/v8p3.json` | `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153` | `1.000 / 0.667` | `1.00 / 1.00` | 失败归档（smoke：mid collision=1/3；long timeout=1/3） |
 | `v8p4` | `docs/versions/v8p4/` | `configs/v8p4.json` | `runs/v8p4_smoke_failures_regression/20260223_142739` | `N/A / N/A` | `N/A / N/A` | 失败归档（回归 FAIL：collision+timeout；暂不 smoke） |
-| `v8p5` | `docs/versions/v8p5/` | `configs/v8p5.json` | `runs/v8p5_replace_ranking_regression/20260222_222704` | `N/A / N/A` | `N/A / N/A` | 回归通过（fixed pairs：mid/long runs=2；无 collision/timeout） |
+| `v8p5` | `docs/versions/v8p5/` | `configs/v8p5.json` | `runs/v8p5_replace_ranking_infer_smoke/20260223_172217` | `1.000 / 1.000` | `1.00 / 1.00` | infer-only：`q` PASS；tie-break short `collision=1/3`（NO-GO）；train+infer smoke 未跑 |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。

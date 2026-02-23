@@ -27,6 +27,22 @@
   - train_run：`N/A`
   - infer_run：`N/A`
   - kpi：`N/A`
+- infer-only smoke（固定 `v7p1` checkpoint，replace-ranking 消融，runs=3）：
+  - `q`：
+    - run_dir：`runs/v8p5_replace_ranking_infer_smoke/20260223_172217`
+    - run_json：`runs/v8p5_replace_ranking_infer_smoke/20260223_172217/run.json`
+    - kpi_mean_raw：`runs/v8p5_replace_ranking_infer_smoke/20260223_172217/table2_kpis_mean_raw.csv`
+    - kpi_raw：`runs/v8p5_replace_ranking_infer_smoke/20260223_172217/table2_kpis_raw.csv`
+  - `progress_clearance_q`：
+    - run_dir：`runs/v8p5_replace_ranking_infer_smoke/20260223_172252`
+    - run_json：`runs/v8p5_replace_ranking_infer_smoke/20260223_172252/run.json`
+    - kpi_mean_raw：`runs/v8p5_replace_ranking_infer_smoke/20260223_172252/table2_kpis_mean_raw.csv`
+    - kpi_raw：`runs/v8p5_replace_ranking_infer_smoke/20260223_172252/table2_kpis_raw.csv`
+  - `clearance_progress_q`：
+    - run_dir：`runs/v8p5_replace_ranking_infer_smoke/20260223_172327`
+    - run_json：`runs/v8p5_replace_ranking_infer_smoke/20260223_172327/run.json`
+    - kpi_mean_raw：`runs/v8p5_replace_ranking_infer_smoke/20260223_172327/table2_kpis_mean_raw.csv`
+    - kpi_raw：`runs/v8p5_replace_ranking_infer_smoke/20260223_172327/table2_kpis_raw.csv`
 
 ## 2) 备注
 

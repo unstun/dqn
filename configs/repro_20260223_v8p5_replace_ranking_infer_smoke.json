@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "title": "v8p5 infer-only smoke (replace-ranking ablation, fixed v7p1 checkpoint)",
+    "date": "2026-02-23",
+    "summary": "Infer-only smoke for v8p5: keep the stable v7p1 CNN-DDQN checkpoint fixed and ablate `--forest-replace-ranking` (how to rank admissible replacement actions when argmax(Q) is inadmissible) under shielded/hybrid inference. This isolates inference-only policy effects on short/mid/long KPIs without retraining.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke",
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke --forest-replace-ranking progress_clearance_q",
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke --forest-replace-ranking clearance_progress_q"
+    ],
+    "notes": [
+      "Models are fixed to v7p1 checkpoint: runs/v7p1_train300_esbest/train_20260221_010743",
+      "Progress distance mode: forest_progress_dist_mode=dijkstra8_nocorner (costmap Dijkstra).",
+      "Default forest_replace_ranking=q for backward-compatible behavior; override on the CLI to compare."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::short",
+      "forest_a::mid",
+      "forest_a::long"
+    ],
+    "models": "runs/v7p1_train300_esbest/train_20260221_010743",
+    "out": "v8p5_replace_ranking_infer_smoke",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "runs": 3,
+    "progress": true,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_topk": 10,
+    "forest_topk_turn_penalty": 0.0,
+    "forest_replace_ranking": "q",
+    "forest_min_progress_m": 0.01,
+    "forest_progress_dist_mode": "dijkstra8_nocorner",
+    "forest_progress_cost_w_clearance": 2.0,
+    "forest_progress_cost_sigma_m": 0.5,
+    "forest_min_od_m": 0.02,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "rand_min_dist_m": 14.0,
+    "rand_max_dist_m": 42.0,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
+    "rand_edge_margin_m": 3.0,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "none",
+    "rand_tries": 400,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 33
+  }
+}

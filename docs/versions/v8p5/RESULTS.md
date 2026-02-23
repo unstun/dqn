@@ -43,6 +43,41 @@
 - `table2_kpis_mean_raw.csv`：`N/A`
 - `failure_reason` 分布（来自 `table2_kpis_raw.csv`）：`N/A`
 
+## 3.1) short/mid/long KPI（infer-only smoke，固定 `v7p1` checkpoint）
+
+- profile：`configs/repro_20260223_v8p5_replace_ranking_infer_smoke.json`
+- models：`runs/v7p1_train300_esbest/train_20260221_010743`
+- runs（replace-ranking 消融）：
+  - `q`：`runs/v8p5_replace_ranking_infer_smoke/20260223_172217`
+  - `progress_clearance_q`：`runs/v8p5_replace_ranking_infer_smoke/20260223_172252`
+  - `clearance_progress_q`：`runs/v8p5_replace_ranking_infer_smoke/20260223_172327`
+
+### CNN-DDQN（runs=3，mean）
+
+| ranking | run_dir | short SR | short L | short T | mid SR | mid L | mid T | long SR | long L | long T | long inad | long fb | failures |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `q` | `runs/v8p5_replace_ranking_infer_smoke/20260223_172217` | 1.000 | 15.9569 | 9.9667 | 1.000 | 25.0974 | 15.9500 | 1.000 | 52.5492 | 31.7333 | 0.257 | 0.257 | reached=9/9 |
+| `progress_clearance_q` | `runs/v8p5_replace_ranking_infer_smoke/20260223_172252` | 0.667 | 14.7217 | 9.7500 | 1.000 | 24.7806 | 15.3500 | 1.000 | 46.6938 | 26.5000 | 0.143 | 0.143 | short collision=1/3 |
+| `clearance_progress_q` | `runs/v8p5_replace_ranking_infer_smoke/20260223_172327` | 0.667 | 14.8694 | 9.9250 | 1.000 | 25.0159 | 16.7833 | 1.000 | 49.1143 | 29.4333 | 0.183 | 0.183 | short collision=1/3 |
+
+注：
+- `L` = `avg_path_length`（越小越好）
+- `T` = `path_time_s`（越小越好）
+- `inad` = `argmax_inadmissible_rate`
+- `fb` = `fallback_rate`
+
+### Hybrid A*-MPC（同一随机对；runs=3，mean）
+
+读取：任一 run_dir 下 `table2_kpis_mean_raw.csv` 的 Hybrid 行（本轮三次 baseline 一致）。
+
+| suite | success_rate | avg_path_length | path_time_s |
+|---|---:|---:|---:|
+| short | 1.000 | 17.0342 | 10.2667 |
+| mid | 1.000 | 24.0814 | 13.3333 |
+| long | 1.000 | 43.0107 | 22.8167 |
+
+当前结论（infer-only）：`progress_clearance_q` / `clearance_progress_q` 能明显压 long 的 L/T（相对 `q`），但 short 出现碰撞回潮（`collision=1/3`），不满足 `SR≈1.0` 的硬约束；因此暂不建议在随机分布上启用 tie-break 作为默认策略。
+
 ## 4) 门槛检查（最终门槛仅供格式，未评测）
 
 - short（runs=20）：`N/A`

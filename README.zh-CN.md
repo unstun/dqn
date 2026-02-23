@@ -35,11 +35,11 @@ REPORT_ARTIFACTS:
 - 运行产物总览：`docs/runs/README.md`
 - 归档候选清单：`docs/runs/CANDIDATES_TO_ARCHIVE_20260221.md`
 
-## 研究目标与当前状态（2026-02-22）
+## 研究目标与当前状态（2026-02-23）
 
 - 本仓库正在采用 `vibe coding` 持续迭代：小步改动、快速验证、严格回退与归档。
 - 当前稳定主线版本为 `v7p1`（`configs/v7p1.json`）。
-- 当前 V8 迭代入口为 `v8p4`（`configs/v8p4.json`）（回归 FAIL：fixed pairs 仍 collision+timeout；暂不进入 smoke；下一步 v8p5）。
+- 当前 V8 迭代入口为 `v8p5`（`configs/v8p5.json`）（回归 PASS；infer-only：tie-break short `collision=1/3`；下一步 v8p6 replace-topq）。
 - `v8p1` 已归档为 NO-GO（navdist progress distance；smoke SR 退化）。
 - `v7p2` 到 `v7p3p7` 属于非主线迭代分支的失败/探索版本，稳定结论口径仍为 `v7p1`。
 - 最终目标：在公平、可复现的评测条件下，使 RL 规划器（`CNN-DDQN`）整体超过传统方法（`Hybrid A*-MPC`）。
@@ -132,6 +132,11 @@ conda run -n ros2py310 python infer.py --profile v7p1
 ```bash
 # v8p5：回归（replace-ranking 消融；复现 v8p3 smoke failures；runs=2）
 conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_regression
+
+# v8p5：infer-only smoke（固定 v7p1 checkpoint；replace-ranking 消融；runs=3）
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke --forest-replace-ranking progress_clearance_q
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p5_replace_ranking_infer_smoke --forest-replace-ranking clearance_progress_q
 
 # v8p5：train+infer smoke（episodes=150, runs=3）[建议先跑回归]
 conda run -n ros2py310 python train.py --profile v8p5
@@ -274,7 +279,7 @@ runs/<out>/
 
 ## 版本总索引（v1 → v8p5）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p5` 为当前 V8 迭代入口（待回归：replace-ranking 消融），`v8p4` 为上一版（回归 FAIL：collision+timeout；暂不 smoke），`v8p3` 为更上一版（smoke 失败：mid collision + long timeout），`v8p2` 为更更上一版（short 有 collision）。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p5` 为当前 V8 迭代入口（回归 PASS；infer-only：`q` PASS、tie-break short `collision=1/3`；train+infer smoke 未跑），`v8p4` 为上一版（回归 FAIL：collision+timeout；暂不 smoke），`v8p3` 为更上一版（smoke 失败：mid collision + long timeout），`v8p2` 为更更上一版（short 有 collision）。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -320,7 +325,7 @@ runs/<out>/
 | `v8p2` | `docs/versions/v8p2/` | `configs/v8p2.json` | `runs/v8p2_costmap_smoke/train_20260223_104408/infer/20260223_110027` | `0.667 / 1.000` | `1.00 / 1.00` | smoke 已跑（mid/long=1.0；short=2/3 collision；暂不 full） |
 | `v8p3` | `docs/versions/v8p3/` | `configs/v8p3.json` | `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153` | `1.000 / 0.667` | `1.00 / 1.00` | 失败归档（smoke：mid collision=1/3；long timeout=1/3） |
 | `v8p4` | `docs/versions/v8p4/` | `configs/v8p4.json` | `runs/v8p4_smoke_failures_regression/20260223_142739` | `N/A / N/A` | `N/A / N/A` | 失败归档（回归 FAIL：collision+timeout；暂不 smoke） |
-| `v8p5` | `docs/versions/v8p5/` | `configs/v8p5.json` | `runs/v8p5_replace_ranking_regression/20260222_222704` | `N/A / N/A` | `N/A / N/A` | 回归通过（fixed pairs：mid/long runs=2；无 collision/timeout） |
+| `v8p5` | `docs/versions/v8p5/` | `configs/v8p5.json` | `runs/v8p5_replace_ranking_infer_smoke/20260223_172217` | `1.000 / 1.000` | `1.00 / 1.00` | infer-only：`q` PASS；tie-break short `collision=1/3`（NO-GO）；train+infer smoke 未跑 |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。

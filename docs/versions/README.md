@@ -51,7 +51,7 @@
 | `v8p2` | `v8p2` | `docs/versions/v8p2/` | `configs/v8p2.json` | `runs/v8p2_costmap_smoke/train_20260223_104408/infer/20260223_110027` | `0.667` / `1.000` | `1.00` / `1.00` | smoke 已跑（mid/long=1.0；short=2/3 collision；暂不 full） |
 | `v8p3` | `v8p3` | `docs/versions/v8p3/` | `configs/v8p3.json` | `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153` | `1.000` / `0.667` | `1.00` / `1.00` | 失败归档（smoke：mid collision=1/3；long timeout=1/3） |
 | `v8p4` | `v8p4` | `docs/versions/v8p4/` | `configs/v8p4.json` | `runs/v8p4_smoke_failures_regression/20260223_142739` | `N/A` / `N/A` | `N/A` / `N/A` | 失败归档（回归：mid/long 各 collision=1/2、timeout=1/2；暂不 smoke） |
-| `v8p5` | `v8p5` | `docs/versions/v8p5/` | `configs/v8p5.json` | `runs/v8p5_replace_ranking_regression/20260222_222704` | `N/A` / `N/A` | `N/A` / `N/A` | 回归通过（fixed pairs：mid/long runs=2；无 collision/timeout） |
+| `v8p5` | `v8p5` | `docs/versions/v8p5/` | `configs/v8p5.json` | `runs/v8p5_replace_ranking_infer_smoke/20260223_172217` | `1.00` / `1.00` | `1.00` / `1.00` | infer-only smoke：`q` PASS；tie-break short `collision=1/3`（NO-GO）；train+infer smoke 未跑 |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。

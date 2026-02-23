@@ -17,9 +17,9 @@
 - 新增：
   - `configs/v8p5.json`
   - `configs/repro_20260223_v8p5_replace_ranking_regression.json`
+  - `configs/repro_20260223_v8p5_replace_ranking_infer_smoke.json`
   - `docs/plans/2026-02-23-v8p5-replace-ranking-design.md`
   - `docs/versions/v8p5/`（四件套）
 - 更新：
   - `configs/INDEX.md`（V8 迭代入口切换到 `v8p5`）
   - `README.md`、`README.zh-CN.md`、`docs/versions/README.md`（索引与命令同步到 `v8p5`）
-
