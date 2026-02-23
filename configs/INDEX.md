@@ -7,7 +7,8 @@
 | 类别 | 文件 | 用途 | 状态 |
 |---|---|---|---|
 | 稳定主线 | `configs/v7p1.json` | 当前训练/推理默认主线 | 推荐 |
-| V8 迭代入口 | `configs/v8p2.json` | costmap Dijkstra progress distance（`forest_progress_dist_mode=dijkstra8_nocorner`） | smoke 已跑（short 有 collision） |
+| V8 迭代入口 | `configs/v8p3.json` | collision-first fallback safety（避免 short 可复现 collision 回潮） | 待 smoke |
+| V8 迭代（上版） | `configs/v8p2.json` | costmap Dijkstra progress distance（`forest_progress_dist_mode=dijkstra8_nocorner`） | smoke 已跑（short 有 collision） |
 | 失败分支归档 | `configs/v8p1.json` | `v8p1` navdist progress distance（`forest_progress_dist_mode=grid4`） | 仅复盘 |
 | 失败分支归档 | `configs/v7p3p4.json` | `v7p3p4` safe fallback 补丁（progress mask 为空时回退 safe 动作集，修复 `fallback_rate`） | 仅复盘 |
 | 失败分支归档 | `configs/v7p3p3.json` | `v7p3p3` 调参（`tp=0.3` + `min_prog=0.0`）尝试降低 timeout | 仅复盘 |
@@ -34,6 +35,7 @@
 - `configs/v7p3p4.json`
 - `configs/v8p1.json`
 - `configs/v8p2.json`
+- `configs/v8p3.json`
 
 > 规则：新增版本时，优先新增 `v*.json`，再在四件套中记录它与 `run_dir`（运行目录）的映射。
 

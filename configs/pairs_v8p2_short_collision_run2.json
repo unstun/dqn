@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "title": "v8p2 short collision pair (forest_a)",
+    "date": "2026-02-23",
+    "source": "runs/v8p2_costmap_smoke/train_20260223_104408/infer/20260223_110027/table2_kpis_raw.csv (run_idx=2, failure_reason=collision)",
+    "notes": [
+      "Used by infer.py via --rand-pairs-json to replay a known failing short pair.",
+      "Format: {pairs:[{env,run_idx,start_xy,goal_xy}]}."
+    ]
+  },
+  "pairs": [
+    {
+      "env": "forest_a",
+      "run_idx": 0,
+      "start_xy": [
+        30,
+        241
+      ],
+      "goal_xy": [
+        119,
+        82
+      ]
+    }
+  ]
+}
+
