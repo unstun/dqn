@@ -2435,8 +2435,18 @@ class AMRBicycleEnv(gym.Env):
                 out = out | reverse
 
         # Fallback: if everything is filtered out, keep the collision-safe actions.
+        #
+        # In narrow passages, `min_od_m` can filter out all otherwise collision-free actions,
+        # which can trigger the last-resort rollout fallback (and potentially return a colliding
+        # action). When fallback is enabled, prefer collision-free actions over enforcing the
+        # clearance threshold.
         if bool(fallback_to_safe) and not bool(out.any()):
-            out = (~coll) & (min_od >= float(min_od_thr))
+            if bool(safe.any()):
+                out = safe
+            else:
+                no_coll = (~coll) & np.isfinite(dist1)
+                if bool(no_coll.any()):
+                    out = no_coll
         return out.astype(np.bool_, copy=False)
 
     def _observe(self) -> np.ndarray:
