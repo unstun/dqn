@@ -4,7 +4,7 @@
 - 上一版本：`v8p2`
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**回归失败（fixed pair collision 仍复现），smoke 待跑**
+- 状态：**smoke 失败（mid collision=1/3；long timeout=1/3）**
 
 ## 本版目标（smoke 口径）
 
@@ -42,10 +42,10 @@
 - `conda run -n ros2py310 python infer.py --profile repro_20260223_v8p3_short_collision_pair_regression`
 
 ## 代表 run（待回填）
-- smoke：N/A
+- smoke：`runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153`
 - 回归：
   - shielded/hybrid：`runs/v8p3_short_collision_pair_regression/20260223_124513`
   - strict-argmax（诊断）：`runs/v8p3_short_collision_pair_regression_strict/20260223_124959`
 
 ## 结论（待回填）
-- 当前结论：fixed pair collision 未消除（见 `RESULTS.md`）；待跑 smoke 后决定是否进入 `v8p4`（更强 safety 兜底/屏蔽）。
+- 结论：`NO-GO`（mid collision + long timeout），不进入 full；按工作流进入 `v8p4` 继续迭代（更强 safety 兜底/屏蔽）。

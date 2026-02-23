@@ -18,12 +18,12 @@
 
 ### train
 - 命令：`conda run -n ros2py310 python train.py --profile repro_20260223_v8p3_fallback_safety_smoke`
-- `run_dir`: N/A
-- `run_json`: N/A
+- `run_dir`: `runs/v8p3_fallback_safety_smoke/train_20260223_125609`
+- `run_json`: `runs/v8p3_fallback_safety_smoke/train_20260223_125609/configs/run.json`
 
 ### infer
 - 命令：`conda run -n ros2py310 python infer.py --profile repro_20260223_v8p3_fallback_safety_smoke`
-- `run_dir`: N/A
-- `run_json`: N/A
-- `kpi_mean_raw`: N/A
-- `kpi_raw`: N/A
+- `run_dir`: `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153`
+- `run_json`: `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153/configs/run.json`
+- `kpi_mean_raw`: `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153/table2_kpis_mean_raw.csv`
+- `kpi_raw`: `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153/table2_kpis_raw.csv`

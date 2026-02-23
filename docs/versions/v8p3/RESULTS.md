@@ -2,7 +2,8 @@
 
 ## 1. 数据来源（待回填）
 
-- smoke（episodes=150, runs=3）：N/A
+- smoke（episodes=150, runs=3）：
+  - `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153/table2_kpis_mean_raw.csv`
 - 回归（固定 short collision pair，runs=1）：
   - shielded/hybrid：`runs/v8p3_short_collision_pair_regression/20260223_124513/table2_kpis_mean_raw.csv`
   - strict-argmax（诊断）：`runs/v8p3_short_collision_pair_regression_strict/20260223_124959/table2_kpis_mean_raw.csv`
@@ -36,16 +37,29 @@
 - `fb` = `fallback_rate`（诊断；strict 下应为 0）
 
 ### short/mid/long（runs=3，mean）
-- N/A（待 smoke）
+（来源：`runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153/table2_kpis_mean_raw.csv`）
+
+| suite | algo | SR | L | T | inad | fb |
+|---|---|---:|---:|---:|---:|---:|
+| short | CNN-DDQN | 1.000 | 17.1597 | 12.6833 | 0.203 | 0.203 |
+| short | Hybrid A*-MPC | 1.000 | 17.0342 | 10.2667 | N/A | N/A |
+| mid | CNN-DDQN | 0.667 | 24.9649 | 16.9000 | 0.237 | 0.237 |
+| mid | Hybrid A*-MPC | 1.000 | 24.0814 | 13.3333 | N/A | N/A |
+| long | CNN-DDQN | 0.667 | 51.7159 | 34.5750 | 0.439 | 0.439 |
+| long | Hybrid A*-MPC | 1.000 | 43.0107 | 22.8167 | N/A | N/A |
 
 ### `failure_reason` 分布
+- smoke（runs=3）：
+  - short：`reached=3`
+  - mid：`reached=2, collision=1`
+  - long：`reached=2, timeout=1`
 - 回归（fixed pair，runs=1）：
   - shielded/hybrid：`collision=1`
   - strict-argmax（诊断）：`collision=1`
 
 ## 4. 门槛检查（smoke，待回填）
 - 回归：`FAIL`（collision 仍可复现）
-- smoke：N/A
+- smoke：`FAIL`（mid `collision=1/3`；long `timeout=1/3`；未满足 `SR≈1.0` 前提）
 
 ## 5. 结论（go/no-go，待回填）
-- 当前结论：`NO-GO`（v8p3 仅修复了“min_od_m 筛空时的 collision-first fallback”，但 fixed pair 的 collision 未消除；需要更强的 safety 兜底/屏蔽策略或训练侧修复后再进入 smoke/full。）
+- 当前结论：`NO-GO`（smoke 未过门：mid 仍出现 collision，long 仍出现 timeout；下一轮进入 `v8p4`，优先做“最后兜底永不返回碰撞动作/分级降阶 horizon”的 safety 修复，再跑 smoke。）

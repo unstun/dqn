@@ -40,7 +40,7 @@ REPORT_ARTIFACTS:
 
 - This repo is under active `vibe coding` iteration: small deltas, quick validation loops, and strict rollback/archive discipline.
 - Current stable mainline is `v7p1` (`configs/v7p1.json`).
-- Active V8 iteration is `v8p3` (`configs/v8p3.json`) (collision-first fallback safety fix; pending smoke).
+- Active V8 iteration is `v8p3` (`configs/v8p3.json`) (smoke failed: mid collision + long timeout; next: v8p4).
 - `v8p1` is archived as NO-GO (navdist progress distance; smoke SR regressed).
 - `v7p2` to `v7p3p7` are archived failed/iterative attempts on the non-mainline branch, and `v7p1` remains the stable claim baseline.
 - Final objective: make RL planning (`CNN-DDQN`) outperform classical planning (`Hybrid A*-MPC`) under fair and reproducible evaluation.
@@ -312,7 +312,7 @@ Notes:
 | `v7p3p7` | `docs/versions/v7p3p7/` | `configs/repro_20260222_v7p3p7_obsmap128_timeoutcut_smoke.json` | `runs/v7p3p7_obsmap128_timeoutcut_smoke/train_20260222_230248/infer/20260222_235329` | `1.000 / 0.333` | `1.00 / 1.00` | 失败归档（short/mid SR 升至 1.0 且 CNN 总 timeout 从 5 降到 2；但 long 仍 2/3 timeout，short/long path-time 仍落后 baseline） |
 | `v8p1` | `docs/versions/v8p1/` | `configs/v8p1.json` | `runs/v8p1_navdist_smoke/train_20260223_021339/infer/20260223_023932` | `0.667 / 0.333` | `1.00 / 1.00` | 失败归档（navdist progress distance；smoke SR 退化） |
 | `v8p2` | `docs/versions/v8p2/` | `configs/v8p2.json` | `runs/v8p2_costmap_smoke/train_20260223_104408/infer/20260223_110027` | `0.667 / 1.000` | `1.00 / 1.00` | smoke 已跑（mid/long=1.0；short=2/3 collision；暂不 full） |
-| `v8p3` | `docs/versions/v8p3/` | `configs/v8p3.json` | `N/A` | `N/A / N/A` | `N/A / N/A` | 待 smoke（collision-first fallback safety 修复） |
+| `v8p3` | `docs/versions/v8p3/` | `configs/v8p3.json` | `runs/v8p3_fallback_safety_smoke/train_20260223_125609/infer/20260223_131153` | `1.000 / 0.667` | `1.00 / 1.00` | 失败归档（smoke：mid collision=1/3；long timeout=1/3） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
