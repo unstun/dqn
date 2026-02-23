@@ -307,6 +307,9 @@ def rollout_agent(
     forest_replace_topq: int = 0,
     forest_min_od_m: float = 0.0,
     forest_min_progress_m: float = 1e-4,
+    forest_goal_approach_override: bool = False,
+    forest_goal_approach_dist_m: float = 0.0,
+    forest_goal_approach_speed_factor: float = 0.8,
     forest_no_fallback: bool = False,
     collect_controls: bool = False,
     trace_path: Path | None = None,
@@ -382,6 +385,7 @@ def rollout_agent(
     replacement_mask_steps = 0
     fallback_steps = 0
     stop_override_steps = 0
+    goal_approach_override_steps = 0
     adm_h = max(1, int(forest_adm_horizon))
     topk_k = max(1, int(forest_topk))
     topk_turn_penalty = max(0.0, float(forest_topk_turn_penalty))
@@ -401,13 +405,24 @@ def rollout_agent(
             sync_cuda()
             t0 = time.perf_counter()
         if isinstance(env, AMRBicycleEnv):
+            d_goal_m = float(env._distance_to_goal_m())
             reached_pose = bool(
                 env._goal_pose_reached(
-                    d_goal_m=float(env._distance_to_goal_m()),
+                    d_goal_m=float(d_goal_m),
                     alpha_rad=float(env._goal_relative_angle_rad()),
                 )
             )
             reached_stop = bool(env._goal_stop_reached(v_m_s=float(env._v_m_s), delta_rad=float(env._delta_rad)))
+            approach_dist_m = float(forest_goal_approach_dist_m)
+            if bool(forest_goal_approach_override) and not (approach_dist_m > 0.0):
+                approach_dist_m = 2.5 * float(getattr(env, "goal_tolerance_m", 1.0))
+            approach_dist_m = max(approach_dist_m, float(getattr(env, "goal_tolerance_m", 1.0)))
+            use_goal_approach = bool(forest_goal_approach_override) and (float(d_goal_m) <= float(approach_dist_m))
+            approach_speed_factor = float(forest_goal_approach_speed_factor)
+            if bool(forest_goal_approach_override) and not (approach_speed_factor > 0.0):
+                approach_speed_factor = 0.8
+            approach_speed_factor = max(1e-6, float(approach_speed_factor))
+
             if (not bool(strict_no_fallback)) and reached_pose and not reached_stop:
                 a = int(forest_stop_action(env))
                 stop_override_steps += 1
@@ -493,6 +508,59 @@ def rollout_agent(
                         a = int(chosen)
                         if int(a) != int(a0):
                             fallback_steps += 1
+
+                # Goal-approach speed shaping (inference-only hybrid override).
+                #
+                # When enabled, clamp the policy's speed near the goal by selecting an action that:
+                # - preserves the current steering-rate (delta_dot) choice, and
+                # - is admissible under the same safety/progress gating, and
+                # - keeps |v_next| close to a conservative goal-approach speed envelope.
+                if (
+                    (not bool(strict_no_fallback))
+                    and bool(use_goal_approach)
+                    and (not bool(reached_stop))
+                    and isinstance(env, AMRBicycleEnv)
+                ):
+                    v0 = float(env._v_m_s)
+                    v_max = max(1e-9, float(env.model.v_max_m_s))
+                    a_max = max(1e-9, float(getattr(env.model, "a_max_m_s2", 0.0)))
+                    dt = max(1e-9, float(env.model.dt))
+                    tol_m = max(1e-9, float(getattr(env, "goal_tolerance_m", 1.0)))
+                    v_stop = max(0.0, float(getattr(env, "goal_stop_speed_m_s", 0.05)))
+
+                    rem = max(0.0, float(d_goal_m) - float(tol_m))
+                    # Safety margin factor (<1 => earlier braking than the pure stopping-distance envelope).
+                    v_target = float(approach_speed_factor) * float(
+                        math.sqrt(float(v_stop) * float(v_stop) + 2.0 * float(a_max) * float(rem))
+                    )
+                    v_target = float(np.clip(v_target, float(v_stop), float(v_max)))
+
+                    if abs(float(v0)) > float(v_target) + 1e-6:
+                        dd0 = float(env.action_table[int(a), 0])
+                        cand = np.nonzero(np.isclose(env.action_table[:, 0], float(dd0), atol=1e-9))[0].astype(np.int64)
+                        best_a = int(a)
+                        best_key: tuple[float, float] | None = None
+                        for c in cand.tolist():
+                            c_i = int(c)
+                            if not bool(
+                                env.is_action_admissible(
+                                    c_i,
+                                    horizon_steps=adm_h,
+                                    min_od_m=float(min_od),
+                                    min_progress_m=float(min_prog),
+                                )
+                            ):
+                                continue
+                            accel = float(env.action_table[c_i, 1])
+                            v1 = float(np.clip(float(v0) + float(accel) * float(dt), -float(v_max), float(v_max)))
+                            v1_mag = abs(float(v1))
+                            key = (max(0.0, float(v1_mag) - float(v_target)), abs(float(v1_mag) - float(v_target)))
+                            if best_key is None or key < best_key:
+                                best_key = key
+                                best_a = int(c_i)
+                        if int(best_a) != int(a):
+                            a = int(best_a)
+                            goal_approach_override_steps += 1
         else:
             a = agent.act(obs, episode=0, explore=False)
         if time_mode == "policy":
@@ -565,6 +633,7 @@ def rollout_agent(
         "replacement_mask_steps": int(replacement_mask_steps),
         "fallback_steps": int(fallback_steps),
         "stop_override_steps": int(stop_override_steps),
+        "goal_approach_override_steps": int(goal_approach_override_steps),
         "argmax_inadmissible_rate": float(argmax_inadmissible_steps) / float(steps_safe),
         "fallback_rate": float(fallback_steps) / float(steps_safe),
         "failure_reason": str(failure_reason),
@@ -933,6 +1002,35 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=1.0,
         help="Forest-only: max |delta| (degrees) required to count as 'wheels straight' at the goal.",
+    )
+    ap.add_argument(
+        "--forest-goal-approach-override",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Forest-only: when within --forest-goal-approach-dist-m of the goal (and not yet stopped), "
+            "apply a speed-shaping override to the RL policy near the goal (keeps steering-rate, adjusts accel). "
+            "Ignored when --forest-no-fallback is enabled."
+        ),
+    )
+    ap.add_argument(
+        "--forest-goal-approach-dist-m",
+        type=float,
+        default=0.0,
+        help=(
+            "Forest-only: distance threshold (meters) to activate --forest-goal-approach-override. "
+            "<=0 uses 2.5*goal_tolerance_m."
+        ),
+    )
+    ap.add_argument(
+        "--forest-goal-approach-speed-factor",
+        type=float,
+        default=0.8,
+        help=(
+            "Forest-only: speed envelope factor for --forest-goal-approach-override. "
+            "v_target = factor*sqrt(v_stop^2 + 2*a_max*(d_goal-goal_tol)); smaller => earlier braking. "
+            "<=0 uses 0.8."
+        ),
     )
     ap.add_argument(
         "--forest-action-delta-dot-bins",
@@ -2035,6 +2133,9 @@ def main(argv: list[str] | None = None) -> int:
                         forest_replace_topq=int(getattr(args, "forest_replace_topq", 0)),
                         forest_min_od_m=float(args.forest_min_od_m),
                         forest_min_progress_m=float(args.forest_min_progress_m),
+                        forest_goal_approach_override=bool(getattr(args, "forest_goal_approach_override", False)),
+                        forest_goal_approach_dist_m=float(getattr(args, "forest_goal_approach_dist_m", 0.0)),
+                        forest_goal_approach_speed_factor=float(getattr(args, "forest_goal_approach_speed_factor", 0.8)),
                         forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
                         collect_controls=False,
                     )
@@ -2241,6 +2342,9 @@ def main(argv: list[str] | None = None) -> int:
                         forest_replace_topq=int(getattr(args, "forest_replace_topq", 0)),
                         forest_min_od_m=float(args.forest_min_od_m),
                         forest_min_progress_m=float(args.forest_min_progress_m),
+                        forest_goal_approach_override=bool(getattr(args, "forest_goal_approach_override", False)),
+                        forest_goal_approach_dist_m=float(getattr(args, "forest_goal_approach_dist_m", 0.0)),
+                        forest_goal_approach_speed_factor=float(getattr(args, "forest_goal_approach_speed_factor", 0.8)),
                         forest_no_fallback=bool(getattr(args, "forest_no_fallback", False)),
                         collect_controls=bool(int(i) in control_run_indices),
                         trace_path=trace_path,
