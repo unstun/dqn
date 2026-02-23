@@ -1,0 +1,69 @@
+{
+  "_meta": {
+    "title": "v8p6 short collision ablation (fixed pair + traces; CNN-DDQN vs Hybrid A*-MPC)",
+    "date": "2026-02-23",
+    "summary": "Replay the short collision pair observed in v8p6 train+infer smoke using the v8p6 training artifact checkpoint. Intended for fast local/remote ablations over inference-only knobs (replace_topq/min_od/turn_penalty) while keeping the (start,goal) fixed and saving per-step traces.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p6_short_collision_ablation",
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p6_short_collision_ablation --forest-replace-topq 0",
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p6_short_collision_ablation --forest-min-od-m 0.05",
+      "conda run -n ros2py310 python infer.py --profile repro_20260223_v8p6_short_collision_ablation --forest-topk-turn-penalty 0.2"
+    ],
+    "notes": [
+      "This profile attaches outputs to the training run under runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/<timestamp>/",
+      "Pairs source: configs/pairs_v8p6_train_smoke_short_collision.json"
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::short"
+    ],
+    "models": "runs/v8p6_replace_topq_smoke/train_20260223_191450/models",
+    "out": "runs/v8p6_replace_topq_smoke/train_20260223_191450",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "rand_pairs_json": "configs/pairs_v8p6_train_smoke_short_collision.json",
+    "runs": 1,
+    "progress": true,
+    "forest_policy_save_traces": true,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_topk": 10,
+    "forest_topk_turn_penalty": 0.0,
+    "forest_replace_ranking": "progress_clearance_q",
+    "forest_replace_topq": 3,
+    "forest_min_progress_m": 0.01,
+    "forest_progress_dist_mode": "dijkstra8_nocorner",
+    "forest_progress_cost_w_clearance": 2.0,
+    "forest_progress_cost_sigma_m": 0.5,
+    "forest_min_od_m": 0.02,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "rand_min_dist_m": 14.0,
+    "rand_max_dist_m": 42.0,
+    "rand_short_min_dist_m": 6.0,
+    "rand_short_max_dist_m": 14.0,
+    "rand_long_min_dist_m": 42.0,
+    "rand_long_max_dist_m": 0.0,
+    "rand_edge_margin_m": 3.0,
+    "rand_reject_unreachable": true,
+    "rand_reject_policy": "none",
+    "rand_tries": 400,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 33
+  }
+}

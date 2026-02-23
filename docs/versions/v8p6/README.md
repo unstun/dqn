@@ -50,6 +50,21 @@ conda run -n ros2py310 python train.py --profile v8p6 --forest-replace-topq 3
 conda run -n ros2py310 python infer.py --profile v8p6 --forest-replace-topq 3
 ```
 
+### 4) 固定碰撞对回放 + 消融（诊断；runs=1；保存 traces）
+
+用于定位 train+infer smoke 中 short/mid `collision` 的触发态，并快速尝试推理侧开关组合是否能消除碰撞：
+
+```bash
+# 回归：固定 pair + traces（默认参数：topq=3, min_od=0.02, turn_penalty=0.0）
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p6_short_collision_ablation
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p6_mid_collision_ablation
+
+# sweep：每点 runs=1；输出目录名编码参数；避免覆盖加 --no-timestamp-runs
+conda run -n ros2py310 python infer.py --profile repro_20260223_v8p6_short_collision_ablation \\
+  --forest-replace-topq 1 --forest-min-od-m 0.05 --forest-topk-turn-penalty 0.2 \\
+  --out v8p6_ablate_short_topq1_od0p05_tp0p2 --no-timestamp-runs
+```
+
 ## 代表 run
 
 - infer-only smoke（固定 `v7p1` checkpoint；同一随机对；runs=3）：
@@ -64,4 +79,5 @@ conda run -n ros2py310 python infer.py --profile v8p6 --forest-replace-topq 3
 
 - `--forest-replace-topq` 在该随机分布样本上**修复了 v8p5 tie-break 的 short collision 回潮**（short/mid/long 均 `SR=1.0`）。
 - 相对 topq=1（≈纯 Q replacement），topq=2/3 能明显压 long 的 `avg_path_length/path_time_s`；其中 topq=3 的三套件均值更优（见 `RESULTS.md`）。
-- 但在 train+infer smoke（episodes=150）中，训练产物出现 short/mid `collision=1/3`（NO-GO），且 mid/long L/T 仍落后 baseline；下一步应优先定位 collision 回潮触发态（从 `table2_kpis_raw.csv` 抽失败样本做回归），再决定是否继续训练侧迭代或仅保留推理侧策略。
+- 但在 train+infer smoke（episodes=150）中，训练产物出现 short/mid `collision=1/3`（NO-GO），且 mid/long L/T 仍落后 baseline。
+- 固定碰撞对诊断（见 `RESULTS.md`）显示：碰撞多发生在进入 goal 区附近的最后一步（更像“停稳/摆正阶段”触发，而非早期撞树）；当前能同时让 short+mid 固定碰撞对都 `reached` 的交集候选为 `replace_topq=1 + min_od=0.05 + turn_penalty=0.2`（仅诊断候选，需回到随机分布 smoke/full 门验证收益/代价）。

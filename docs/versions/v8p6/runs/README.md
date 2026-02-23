@@ -28,6 +28,63 @@
   - run_json（infer）：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545/configs/run.json`
   - kpi_mean_raw：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545/table2_kpis_mean_raw.csv`
   - kpi_raw：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545/table2_kpis_raw.csv`
+- 固定碰撞对回归（v8p6 训练产物；runs=1；保存 traces；用于定位 collision 触发态）
+  - short 回归（默认参数：topq=3, min_od=0.02, turn_penalty=0.0）：
+    - profile：`configs/repro_20260223_v8p6_short_collision_ablation.json`
+    - run_dir：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211314`
+    - run_json：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211314/configs/run.json`
+    - kpi_mean_raw：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211314/table2_kpis_mean_raw.csv`
+    - kpi_raw：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211314/table2_kpis_raw.csv`
+    - traces：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211314/traces/forest_a_short__CNN-DDQN__run0.csv`
+  - mid 回归（默认参数：topq=3, min_od=0.02, turn_penalty=0.0）：
+    - profile：`configs/repro_20260223_v8p6_mid_collision_ablation.json`
+    - run_dir：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211419`
+    - run_json：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211419/configs/run.json`
+    - kpi_mean_raw：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211419/table2_kpis_mean_raw.csv`
+    - kpi_raw：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211419/table2_kpis_raw.csv`
+    - traces：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_211419/traces/forest_a_mid__CNN-DDQN__run0.csv`
+- 固定碰撞对消融 sweep（推理侧 knobs；每点 runs=1；`--no-timestamp-runs`；输出目录名编码参数）
+  - 统一命令（short 示例；mid 将 profile 替换为对应文件即可）：
+    - `conda run -n ros2py310 python infer.py --profile repro_20260223_v8p6_short_collision_ablation --forest-replace-topq <0|1|3> --forest-min-od-m <0.02|0.05> --forest-topk-turn-penalty <0|0.2> --out <out_name> --no-timestamp-runs`
+  - 说明：以下每个 `run_dir` 内均包含：
+    - `configs/run.json`
+    - `table2_kpis_mean_raw.csv`
+    - `table2_kpis_raw.csv`
+    - `traces/*.csv`
+  - short（固定 pair：`configs/pairs_v8p6_train_smoke_short_collision.json`）
+    - `runs/v8p6_ablate_short_topq0_od0p02_tp0`
+    - `runs/v8p6_ablate_short_topq0_od0p02_tp0p2`
+    - `runs/v8p6_ablate_short_topq0_od0p05_tp0`
+    - `runs/v8p6_ablate_short_topq0_od0p05_tp0p2`
+    - `runs/v8p6_ablate_short_topq1_od0p02_tp0`
+    - `runs/v8p6_ablate_short_topq1_od0p02_tp0p2`
+    - `runs/v8p6_ablate_short_topq1_od0p05_tp0`
+    - `runs/v8p6_ablate_short_topq1_od0p05_tp0p2`
+    - `runs/v8p6_ablate_short_topq3_od0p02_tp0`
+    - `runs/v8p6_ablate_short_topq3_od0p02_tp0p2`
+    - `runs/v8p6_ablate_short_topq3_od0p05_tp0`
+    - `runs/v8p6_ablate_short_topq3_od0p05_tp0p2`
+  - mid（固定 pair：`configs/pairs_v8p6_train_smoke_mid_collision.json`）
+    - `runs/v8p6_ablate_mid_topq0_od0p02_tp0`
+    - `runs/v8p6_ablate_mid_topq0_od0p02_tp0p2`
+    - `runs/v8p6_ablate_mid_topq0_od0p05_tp0`
+    - `runs/v8p6_ablate_mid_topq0_od0p05_tp0p2`
+    - `runs/v8p6_ablate_mid_topq1_od0p02_tp0`
+    - `runs/v8p6_ablate_mid_topq1_od0p02_tp0p2`
+    - `runs/v8p6_ablate_mid_topq1_od0p05_tp0`
+    - `runs/v8p6_ablate_mid_topq1_od0p05_tp0p2`
+    - `runs/v8p6_ablate_mid_topq3_od0p02_tp0`
+    - `runs/v8p6_ablate_mid_topq3_od0p02_tp0p2`
+    - `runs/v8p6_ablate_mid_topq3_od0p05_tp0`
+    - `runs/v8p6_ablate_mid_topq3_od0p05_tp0p2`
+
+- 随机分布 smoke 验证（验证 6.4“诊断候选”；runs=3；使用 v8p6 训练产物 checkpoint）
+  - 命令：
+    - `conda run -n ros2py310 python infer.py --profile v8p6 --models runs/v8p6_replace_topq_smoke/train_20260223_191450/models --out v8p6_candidate_infer_smoke_topq1_od0p05_tp0p2 --forest-replace-topq 1 --forest-min-od-m 0.05 --forest-topk-turn-penalty 0.2`
+  - run_dir：`runs/v8p6_candidate_infer_smoke_topq1_od0p05_tp0p2/20260223_215001`
+  - run_json：`runs/v8p6_candidate_infer_smoke_topq1_od0p05_tp0p2/20260223_215001/configs/run.json`
+  - kpi_mean_raw：`runs/v8p6_candidate_infer_smoke_topq1_od0p05_tp0p2/20260223_215001/table2_kpis_mean_raw.csv`
+  - kpi_raw：`runs/v8p6_candidate_infer_smoke_topq1_od0p05_tp0p2/20260223_215001/table2_kpis_raw.csv`
 
 ## 2) 备注
 
