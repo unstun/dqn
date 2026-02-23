@@ -1,4 +1,4 @@
-# v8p6 结果对比（infer-only smoke 已回填；train+infer smoke 待跑）
+# v8p6 结果对比（infer-only smoke 已回填；train+infer smoke 已跑：NO-GO）
 
 > 说明：本版新增 `--forest-replace-topq`（替换动作候选 Top-Q 约束），默认不启用（`0`）。回填结果时必须写清 `forest_replace_ranking` 与 `forest_replace_topq` 的取值。
 
@@ -12,8 +12,8 @@
   - topq=3（本轮更优候选）：`runs/v8p6_replace_topq_infer_smoke/20260223_185628`
 - train+infer smoke（episodes=150, runs=3）：
   - profile：`configs/v8p6.json`
-  - train_run：`N/A`
-  - infer_run：`N/A`
+  - train_run：`runs/v8p6_replace_topq_smoke/train_20260223_191450`
+  - infer_run：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545`
 
 ## 2) short/mid/long KPI（infer-only smoke；CNN-DDQN runs=3，mean）
 
@@ -51,15 +51,34 @@
 
 ## 3) short/mid/long KPI（train+infer smoke）
 
-- `table2_kpis_mean_raw.csv`：`N/A`
-- `failure_reason` 分布：`N/A`
+- `table2_kpis_mean_raw.csv`：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545/table2_kpis_mean_raw.csv`
+- `failure_reason` 分布（来自 `table2_kpis_raw.csv`）：
+  - short：collision=1/3
+  - mid：collision=1/3
+  - long：reached=3/3
+
+运行说明：
+- 命令：`conda run -n ros2py310 python train.py --profile v8p6 --forest-replace-topq 3` + `conda run -n ros2py310 python infer.py --profile v8p6 --forest-replace-topq 3`
+- 训练 run_dir：`runs/v8p6_replace_topq_smoke/train_20260223_191450`（episodes=140/150 early-stop）
+- 推理 run_dir：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545`
+
+### CNN-DDQN vs Hybrid A*-MPC（runs=3，mean）
+
+| suite | algo | success_rate | avg_path_length | path_time_s | avg_curvature_1_m |
+|---|---|---:|---:|---:|---:|
+| short | CNN-DDQN | 0.667 | 15.2801 | 9.6250 | 0.110721 |
+| short | Hybrid A*-MPC | 1.000 | 17.0342 | 10.2667 | 0.114272 |
+| mid | CNN-DDQN | 0.667 | 24.4429 | 14.2750 | 0.066587 |
+| mid | Hybrid A*-MPC | 1.000 | 24.0814 | 13.3333 | 0.058072 |
+| long | CNN-DDQN | 1.000 | 44.3106 | 25.6000 | 0.111461 |
+| long | Hybrid A*-MPC | 1.000 | 43.0107 | 22.8167 | 0.068718 |
 
 ## 4) 门槛检查（最终门槛仅供格式，未评测）
 
 - short（runs=20）：`N/A`
 - long（runs=20）：`N/A`
 
-## 5) 结论（当前仅含 infer-only smoke）
+## 5) 结论（infer-only + train+infer smoke）
 
 - infer-only smoke：topq=2/3 在该随机样本上均通过 smoke 门（short/mid/long `SR=1.0`），且相对 topq=1（≈纯 Q replacement）明显压低 long `avg_path_length/path_time_s`。
-- 当前仍未超过 baseline（Hybrid A*-MPC）的 mid/long `avg_path_length/path_time_s`；下一步应继续跑 `v8p6` 的 train+infer smoke（episodes=150, runs=3），验证训练期同开关是否带来稳定收益。
+- train+infer smoke（episodes=150）：在该次训练产物上 **short/mid 均出现 collision=1/3（SR=0.667）**，未通过 smoke 门（NO-GO）；同时 mid/long 的 `avg_path_length/path_time_s` 仍落后 baseline。

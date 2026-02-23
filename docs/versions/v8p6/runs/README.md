@@ -18,10 +18,16 @@
     - run_json：`runs/v8p6_replace_topq_infer_smoke/20260223_185628/configs/run.json`
     - kpi_mean_raw：`runs/v8p6_replace_topq_infer_smoke/20260223_185628/table2_kpis_mean_raw.csv`
     - kpi_raw：`runs/v8p6_replace_topq_infer_smoke/20260223_185628/table2_kpis_raw.csv`
-- train+infer smoke：`N/A`
-  - train_run：`N/A`
-  - infer_run：`N/A`
-  - kpi：`N/A`
+- train+infer smoke（topq=3；episodes=140/150 early-stop；runs=3；NO-GO：short/mid collision=1/3）
+  - 命令：
+    - `conda run -n ros2py310 python train.py --profile v8p6 --forest-replace-topq 3`
+    - `conda run -n ros2py310 python infer.py --profile v8p6 --forest-replace-topq 3`
+  - train_run：`runs/v8p6_replace_topq_smoke/train_20260223_191450`
+  - infer_run：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545`
+  - run_json（train）：`runs/v8p6_replace_topq_smoke/train_20260223_191450/configs/run.json`
+  - run_json（infer）：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545/configs/run.json`
+  - kpi_mean_raw：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545/table2_kpis_mean_raw.csv`
+  - kpi_raw：`runs/v8p6_replace_topq_smoke/train_20260223_191450/infer/20260223_192545/table2_kpis_raw.csv`
 
 ## 2) 备注
 
