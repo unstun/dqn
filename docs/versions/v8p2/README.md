@@ -4,7 +4,7 @@
 - 上一版本：`v8p1`
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**进行中（待 smoke）**
+- 状态：**已跑 smoke（mid/long SR=1.0；short 出现 collision）**
 
 ## 本版目标
 - 在 `success_rate≈1.0` 前提下（优先 long），压 `avg_path_length` / `path_time_s`。
@@ -32,16 +32,23 @@
 ### 1) infer-only smoke（固定 v7p1 checkpoint，对照）
 - `conda run -n ros2py310 python infer.py --profile repro_20260223_v8p2_costmap_infer_smoke`
 - `conda run -n ros2py310 python infer.py --profile repro_20260223_v8p2_costmap_infer_smoke --forest-progress-dist-mode euclid`
+- `conda run -n ros2py310 python infer.py --profile repro_20260223_v8p2_costmap_infer_smoke --forest-progress-cost-w-clearance 0`（消融：关闭 clearance 代价）
 
 ### 2) train+infer smoke（episodes=150, runs=3）
 - `conda run -n ros2py310 python train.py --profile repro_20260223_v8p2_costmap_smoke`
 - `conda run -n ros2py310 python infer.py --profile repro_20260223_v8p2_costmap_smoke`
+- `conda run -n ros2py310 python infer.py --profile repro_20260223_v8p2_costmap_smoke --seed 34`（复测）
 
-## 代表 run（待回填）
-- infer-only：`N/A`
-- train：`N/A`
-- infer：`N/A`
+## 代表 run（已回填）
+- infer-only（固定 v7p1 checkpoint）：
+  - `dijkstra8_nocorner`（w=2.0）：`runs/v8p2_costmap_infer_smoke/20260223_104100`
+  - `euclid`（对照）：`runs/v8p2_costmap_infer_smoke/20260223_104135`
+  - `dijkstra8_nocorner`（w=0.0 消融）：`runs/v8p2_costmap_infer_smoke/20260223_104209`
+- train：`runs/v8p2_costmap_smoke/train_20260223_104408`
+- infer：
+  - seed=33：`runs/v8p2_costmap_smoke/train_20260223_104408/infer/20260223_110027`
+  - seed=34：`runs/v8p2_costmap_smoke/train_20260223_104408/infer/20260223_110608`
 
-## 结论（待回填）
-- `N/A`
-
+## 结论（smoke）
+- infer-only：在固定 `v7p1` checkpoint 下，`dijkstra8_nocorner` 能在保持 `SR=1.0` 的前提下显著压 long 的 `avg_path_length/path_time_s`（相对 euclid 对照）。
+- train+infer：mid/long `SR=1.0` 且 long `path_time_s` 明显下降，但 short 复现 `collision=1/3`（两次 seed 复测一致）→ 暂不进入 full。

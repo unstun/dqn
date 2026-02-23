@@ -48,7 +48,7 @@
 | `v7p3p6` | `v7p3p6` | `docs/versions/v7p3p6/` | `configs/repro_20260222_v7p3p6_obsmap128_tune_smoke.json` | `runs/v7p3p6_obsmap128_tune_smoke/train_20260222_215007/infer/20260222_223831` | `0.667` / `0.333` | `1.00` / `1.00` | 失败归档（long 从 0.000 回升到 0.333，但 short/long 仍未过门） |
 | `v7p3p7` | `v7p3p7` | `docs/versions/v7p3p7/` | `configs/repro_20260222_v7p3p7_obsmap128_timeoutcut_smoke.json` | `runs/v7p3p7_obsmap128_timeoutcut_smoke/train_20260222_230248/infer/20260222_235329` | `1.000` / `0.333` | `1.00` / `1.00` | 失败归档（short/mid SR 升至 1.0 且 CNN 总 timeout 从 5 降到 2；但 long 仍 2/3 timeout，short/long path-time 仍落后 baseline） |
 | `v8p1` | `v8p1` | `docs/versions/v8p1/` | `configs/v8p1.json` | `runs/v8p1_navdist_smoke/train_20260223_021339/infer/20260223_023932` | `0.667` / `0.333` | `1.00` / `1.00` | 失败归档（navdist progress distance；smoke SR 退化） |
-| `v8p2` | `v8p2` | `docs/versions/v8p2/` | `configs/v8p2.json` | `N/A` | `N/A` / `N/A` | `1.00` / `1.00` | 进行中（costmap dijkstra progress distance；待 smoke） |
+| `v8p2` | `v8p2` | `docs/versions/v8p2/` | `configs/v8p2.json` | `runs/v8p2_costmap_smoke/train_20260223_104408/infer/20260223_110027` | `0.667` / `1.000` | `1.00` / `1.00` | smoke 已跑（mid/long=1.0；short=2/3 collision；暂不 full） |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。
