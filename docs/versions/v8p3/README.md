@@ -4,7 +4,7 @@
 - 上一版本：`v8p2`
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**实现完成，待跑 smoke（episodes=150, runs=3）**
+- 状态：**回归失败（fixed pair collision 仍复现），smoke 待跑**
 
 ## 本版目标（smoke 口径）
 
@@ -43,8 +43,9 @@
 
 ## 代表 run（待回填）
 - smoke：N/A
-- 回归：N/A
+- 回归：
+  - shielded/hybrid：`runs/v8p3_short_collision_pair_regression/20260223_124513`
+  - strict-argmax（诊断）：`runs/v8p3_short_collision_pair_regression_strict/20260223_124959`
 
 ## 结论（待回填）
-- N/A（需完成远端 smoke + 回归后更新 `RESULTS.md` 与 `runs/README.md`）
-
+- 当前结论：fixed pair collision 未消除（见 `RESULTS.md`）；待跑 smoke 后决定是否进入 `v8p4`（更强 safety 兜底/屏蔽）。
