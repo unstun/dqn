@@ -57,12 +57,10 @@ conda run -n ros2py310 python infer.py --profile repro_20260224_v8p16_infer_smok
 
 ## 4) 结果摘要（待补）
 
-- short（pairs3）：N/A
-- long（pairs3）：N/A
-- 结论：N/A（等待 smoke 结果；若无明确收益则 NO-GO，进入 C 线结构变种）
+- short（pairs3）：`SR=1.0`，但 `avg_path_length=18.6356`、`path_time_s=11.2667`（baseline：`16.3207`、`9.4667`）
+- long（pairs3）：`SR=1.0`，但 `avg_path_length=39.9377`、`path_time_s=25.4167`（baseline：`32.2801`、`17.4333`）
+- 结论：NO-GO（短/长均落后 baseline；不进入 full gate）
 
 ## 5) 下一步
 
-- 若 smoke 显示 long detour 明显回落且 SR 维持：进入 fixed pairs20 的 runs=20 gate。
-- 若无收益：进入 C 线（结构/算法变种，例如 Dueling/Distributional/Noisy 等 DQN 变种）。
-
+- 进入 C 线（结构/算法变种，例如 Distributional/Noisy 等 DQN 变种），以“本地 smoke → fixed pairs3 short/long + baseline 同跑”最快闭环。

@@ -62,7 +62,7 @@
 | `v8p13` | `v8p13` | `docs/versions/v8p13/` | `configs/v8p13.json` | `runs/v8p13_infer_smoke_long_pairs3/20260224_172037` | `1.000` / `1.000` | `1.00` / `1.00` | smoke 已跑：long path/time 显著退化（NO-GO；full 暂不建议） |
 | `v8p14` | `v8p14` | `docs/versions/v8p14/` | `configs/v8p14.json` | `runs/v8p14_sweep_long_pairs3_w1p5_mpneg005/20260224_174542` | `N/A` / `1.000` | `N/A` / `1.00` | infer-only sweep 已跑：SR 恢复但 long 仍落后 baseline（NO-GO；full 暂不建议） |
 | `v8p15` | `v8p15` | `docs/versions/v8p15/` | `configs/v8p15.json` | `runs/v8p15_sweep_long_pairs3_sigma0p3/20260224_180520` | `N/A` / `1.000` | `N/A` / `1.00` | infer-only sweep 已跑：sigma=0.3 最优但 long 仍落后 baseline（NO-GO；full 暂不建议） |
-| `v8p16` | `v8p16` | `docs/versions/v8p16/` | `configs/v8p16.json` | `N/A` | `N/A` / `N/A` | `N/A` / `N/A` | 待 smoke：训练侧加入 progress-dist map 观测通道（B 线） |
+| `v8p16` | `v8p16` | `docs/versions/v8p16/` | `configs/v8p16.json` | `runs/v8p16_infer_smoke_long_pairs3/20260224_023542` | `1.000` / `1.000` | `1.00` / `1.00` | smoke 已跑：SR=1.0，但 short/long 路径与时间均落后 baseline（NO-GO） |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。
