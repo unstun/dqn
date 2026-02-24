@@ -1,4 +1,4 @@
-# v8p13 runs 索引与执行记录（待回填）
+# v8p13 runs 索引与执行记录
 
 - 执行位置：`ubuntu-zt`（远端优先）
 - 远端环境：`conda run -n ros2py310`
@@ -25,7 +25,7 @@ ssh ubuntu-zt "cd /home/sun/phdproject/dqn/dqn && /home/sun/miniconda3/bin/conda
 ssh ubuntu-zt "cd /home/sun/phdproject/dqn/dqn && /home/sun/miniconda3/bin/conda run -n ros2py310 python train.py --profile repro_20260224_v8p13_train_smoke"
 ```
 
-- run_dir：`N/A`
+- run_dir：`runs/v8p13/train_20260224_170708`
 
 ## 3) infer smoke（fixed pairs3，runs=3，baseline 同跑）
 
@@ -37,8 +37,8 @@ ssh ubuntu-zt "cd /home/sun/phdproject/dqn/dqn && /home/sun/miniconda3/bin/conda
 ssh ubuntu-zt "cd /home/sun/phdproject/dqn/dqn && /home/sun/miniconda3/bin/conda run -n ros2py310 python infer.py --profile repro_20260224_v8p13_infer_smoke_long"
 ```
 
-- short run_dir：`N/A`
-- long run_dir：`N/A`
+- short run_dir：`runs/v8p13_infer_smoke_short_pairs3/20260224_172126`
+- long run_dir：`runs/v8p13_infer_smoke_long_pairs3/20260224_172037`
 
 ## 4) 结果回传（仅回传对应 out 目录）
 
@@ -47,4 +47,3 @@ rsync -avz ubuntu-zt:/home/sun/phdproject/dqn/dqn/runs/v8p13/ /home/sun/phdproje
 rsync -avz ubuntu-zt:/home/sun/phdproject/dqn/dqn/runs/v8p13_infer_smoke_short_pairs3/ /home/sun/phdproject/dqn/dqn/runs/v8p13_infer_smoke_short_pairs3/
 rsync -avz ubuntu-zt:/home/sun/phdproject/dqn/dqn/runs/v8p13_infer_smoke_long_pairs3/ /home/sun/phdproject/dqn/dqn/runs/v8p13_infer_smoke_long_pairs3/
 ```
-

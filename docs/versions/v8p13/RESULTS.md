@@ -1,20 +1,20 @@
-# v8p13 结果对比（待跑：train+infer smoke → 决定是否 full gate C）
+# v8p13 结果对比（smoke 已跑：NO-GO；不建议 full gate C）
 
 > 说明：本版目标是最终硬门槛 C（short/long 各 runs=20，fixed pairs20）。在 full gate 结果出来前，所有 smoke 仅用于筛查，不作为最终结论。
 
-## 1) 关键工件路径（计划）
+## 1) 关键工件路径
 
 - train smoke（episodes=150）：
   - train profile：`configs/repro_20260224_v8p13_train_smoke.json`
-  - train run_dir：`N/A`
+  - train run_dir：`runs/v8p13/train_20260224_170708`
 
 - infer smoke（fixed pairs3，runs=3）：
   - short profile：`configs/repro_20260224_v8p13_infer_smoke_short.json`
   - long profile：`configs/repro_20260224_v8p13_infer_smoke_long.json`
   - short pairs：`configs/pairs_v8p9_smoke_short3_from_pairs20_v1_20260224.json`
   - long pairs：`configs/pairs_v8p9_smoke_long3_from_pairs20_v1_20260224.json`
-  - short run_dir：`N/A`
-  - long run_dir：`N/A`
+  - short run_dir：`runs/v8p13_infer_smoke_short_pairs3/20260224_172126`
+  - long run_dir：`runs/v8p13_infer_smoke_long_pairs3/20260224_172037`
 
 - full gate（C：fixed pairs20；short/long 各 runs=20）：
   - short pairs：`configs/repro_20260210_forest_a_pairs_short20_v1.json`
@@ -28,20 +28,21 @@
 
 ### short（fixed pairs3，runs=3）
 
-- KPI：`N/A`
-- CNN-DDQN：`N/A`
-- Hybrid A*-MPC：`N/A`
-- Δ（RL - baseline）：`N/A`
+- KPI：`runs/v8p13_infer_smoke_short_pairs3/20260224_172126/table2_kpis_mean_raw.csv`
+- CNN-DDQN：`success_rate=1.0`，`avg_path_length=16.0911`，`path_time_s=9.8667`
+- Hybrid A*-MPC：`success_rate=1.0`，`avg_path_length=16.3207`，`path_time_s=9.4667`
+- Δ（RL - baseline）：`avg_path_length=-0.2296`，`path_time_s=+0.4000`
 
 ### long（fixed pairs3，runs=3）
 
-- KPI：`N/A`
-- CNN-DDQN：`N/A`
-- Hybrid A*-MPC：`N/A`
-- Δ（RL - baseline）：`N/A`
+- KPI：`runs/v8p13_infer_smoke_long_pairs3/20260224_172037/table2_kpis_mean_raw.csv`
+- CNN-DDQN：`success_rate=1.0`，`avg_path_length=38.1860`，`path_time_s=30.8167`
+- Hybrid A*-MPC：`success_rate=1.0`，`avg_path_length=32.2801`，`path_time_s=17.4333`
+- Δ（RL - baseline）：`avg_path_length=+5.9059`，`path_time_s=+13.3834`
 
 结论（smoke 口径）：
-- `N/A`
+- long 的 `path_time_s` 显著退化，且 `avg_path_length` 也明显落后 baseline；本版判定：**NO-GO（不建议 full gate C）**。
+- short 的 `avg_path_length` 小幅优于 baseline，但 `path_time_s` 仍略慢，且整体不如 v8p11 的 short 结果。
 
 ## 3) full gate（C）结果（runs=20，fixed pairs）
 
@@ -50,4 +51,3 @@
 
 门槛检查（C）：
 - `N/A`（等待填入 short/long 的 `table2_kpis_mean_raw.csv` 后判定）
-

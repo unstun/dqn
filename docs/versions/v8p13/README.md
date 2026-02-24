@@ -4,7 +4,7 @@
 - 上一版本：`v8p12`（smoke NO-GO）
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**进行中（待跑：train+infer smoke → 决定是否继续 sweep / 进入 full gate C）**
+- 状态：**smoke 已跑（NO-GO；不建议 full gate C）**
 
 ## 本版目标（硬门槛：C）
 
@@ -28,7 +28,11 @@ v8p11 smoke 显示：short 已可在 `SR=1.0` 下压过 baseline，但 long 仍�
 
 直觉假设：`k_o/k_v` 过强会诱导策略为了更大 clearance 而绕路；适度降低可在 shielded/hybrid 兜底下缩短 long 路径，同时不显著损害 SR。
 
-## 本轮关键命令（计划）
+本轮 smoke 结论（fixed pairs3，runs=3）：
+- long：`SR=1.0` 但 `avg_path_length/path_time_s` 相比 baseline **显著退化**（尤其 `path_time_s` 大幅变慢），判定 **NO-GO**。
+- short：`SR=1.0` 且 `avg_path_length` 小幅优于 baseline，但 `path_time_s` 仍略慢，且整体不如 v8p11 的 short 结果。
+
+## 本轮关键命令
 
 ### 1) 最小自检
 
@@ -66,4 +70,3 @@ conda run -n ros2py310 python infer.py --profile v8p13 \
   --rand-pairs-json configs/repro_20260210_forest_a_pairs_long20_v1.json \
   --envs forest_a::long --runs 20 --out v8p13_full_long_pairs20
 ```
-

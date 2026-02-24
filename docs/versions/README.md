@@ -59,7 +59,7 @@
 | `v8p10` | `v8p10` | `docs/versions/v8p10/` | `configs/v8p10.json` | `runs/v8p10_sweep_long_w2p0/20260224_135035` | `1.000` / `1.000` | `1.00` / `1.00` | infer-only sweep smoke 已跑（pairs3：SR=1.0 可达；w_clearance sweep 有回落但仍落后 baseline；full 暂不建议） |
 | `v8p11` | `v8p11` | `docs/versions/v8p11/` | `configs/v8p11.json` | `runs/v8p11_infer_smoke_long_pairs3/20260224_152917` | `1.000` / `1.000` | `1.00` / `1.00` | smoke 已跑：short 打败 baseline；long 仍落后（另有 long w_clearance sweep 归档）；full 暂不建议 |
 | `v8p12` | `v8p12` | `docs/versions/v8p12/` | `configs/v8p12.json` | `runs/v8p12_infer_smoke_long_pairs3/20260224_163613` | `1.000` / `1.000` | `1.00` / `1.00` | smoke 已跑：short 明显回退；long detour 仅小幅回落但仍落后 baseline（NO-GO；full 暂不建议） |
-| `v8p13` | `v8p13` | `docs/versions/v8p13/` | `configs/v8p13.json` | `N/A` | `N/A` / `N/A` | `N/A` / `N/A` | 进行中（训练侧 reward 塑形可调：k_p/k_o/k_v；待 train+infer smoke） |
+| `v8p13` | `v8p13` | `docs/versions/v8p13/` | `configs/v8p13.json` | `runs/v8p13_infer_smoke_long_pairs3/20260224_172037` | `1.000` / `1.000` | `1.00` / `1.00` | smoke 已跑：long path/time 显著退化（NO-GO；full 暂不建议） |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。
