@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "title": "v8p13 infer smoke (long, runs=3, fixed pairs3)",
+    "date": "2026-02-24",
+    "summary": "Inference smoke for v8p13 on forest_a::long using fixed pairs3 (subset from pairs20) to avoid sample drift. Baseline (Hybrid A*-MPC) is run together. This run screens whether v8p13 reward shaping changes can reduce long detours while keeping SR≈1.0.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260224_v8p13_infer_smoke_long"
+    ],
+    "notes": [
+      "Anti-cheating: do NOT change goal_tolerance_m.",
+      "This is screening only; final gate uses fixed pairs20 with runs=20."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::long"
+    ],
+    "models": "v8p13",
+    "out": "v8p13_infer_smoke_long_pairs3",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "rand_pairs_json": "configs/pairs_v8p9_smoke_long3_from_pairs20_v1_20260224.json",
+    "runs": 3,
+    "progress": true,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_goal_admissible_relax_factor": 2.5,
+    "forest_topk": 10,
+    "forest_topk_turn_penalty": 0.0,
+    "forest_replace_ranking": "progress_q",
+    "forest_replace_topq": 3,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.0,
+    "forest_progress_dist_mode": "dijkstra8_nocorner",
+    "forest_progress_cost_w_clearance": 2.0,
+    "forest_progress_cost_sigma_m": 0.5,
+    "forest_goal_approach_override": true,
+    "forest_goal_approach_dist_m": 0.0,
+    "forest_goal_approach_speed_factor": 1.0,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 123
+  }
+}
+

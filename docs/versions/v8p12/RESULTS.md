@@ -1,8 +1,8 @@
-# v8p12 结果对比（待跑：train+infer smoke → 决定是否 full gate C）
+# v8p12 结果对比（smoke 已跑：NO-GO；不建议 full gate C）
 
 > 说明：本版目标是最终硬门槛 C（short/long 各 runs=20，fixed pairs20）。在 full gate 结果出来前，所有 smoke 仅用于筛查，不作为最终结论。
 
-## 1) 关键工件路径（计划）
+## 1) 关键工件路径
 
 - train smoke（episodes=150）：
   - train profile：`configs/repro_20260224_v8p12_train_smoke.json`

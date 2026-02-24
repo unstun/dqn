@@ -3534,6 +3534,12 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     ap.add_argument(
+        "--forest-reward-k-p",
+        type=float,
+        default=12.0,
+        help="Forest-only: progress reward coefficient (reward k_p).",
+    )
+    ap.add_argument(
         "--forest-reward-k-t",
         type=float,
         default=0.1,
@@ -3562,6 +3568,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.08,
         help="Forest-only: speed threshold (m/s) used by no-progress penalty.",
+    )
+    ap.add_argument(
+        "--forest-reward-k-o",
+        type=float,
+        default=1.5,
+        help="Forest-only: near-obstacle penalty coefficient (reward k_o).",
+    )
+    ap.add_argument(
+        "--forest-reward-k-v",
+        type=float,
+        default=2.0,
+        help="Forest-only: near-obstacle speed-coupling penalty coefficient (reward k_v).",
     )
     ap.add_argument(
         "--forest-expert",
@@ -4194,8 +4212,11 @@ def main(argv: list[str] | None = None) -> int:
                 goal_angle_tolerance_deg=float(args.goal_angle_tolerance_deg),
                 goal_stop_speed_m_s=float(args.goal_stop_speed_m_s),
                 goal_stop_delta_deg=float(args.goal_stop_delta_deg),
+                reward_k_p=float(args.forest_reward_k_p),
                 reward_k_t=float(args.forest_reward_k_t),
                 reward_k_delta=float(args.forest_reward_k_delta),
+                reward_k_o=float(args.forest_reward_k_o),
+                reward_k_v=float(args.forest_reward_k_v),
                 reward_no_progress_penalty=float(args.forest_reward_no_progress_penalty),
                 reward_no_progress_eps_m=float(args.forest_reward_no_progress_eps_m),
                 reward_idle_speed_m_s=float(args.forest_reward_idle_speed_m_s),
