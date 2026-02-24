@@ -68,6 +68,14 @@ failure_reason（RL）：`reached=3/3`
 
 结论：本版默认仍保留 `replace_topq=3`。
 
+### 2.4 补充消融：`min_progress_m`
+
+在 w=2.0、`replace_topq=3` 下测试 `min_progress_m=0.02`：
+- long：`avg_path_length=41.2647`（略差于默认 0.01 的 41.0694）
+- short：`avg_path_length=18.7631`（与默认 0.01 的 18.7727 基本持平）
+
+结论：本版默认仍保留 `min_progress_m=0.01`。
+
 ## 3) full gate（C）结果（runs=20，fixed pairs）
 
 - short：`N/A`

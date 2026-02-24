@@ -22,6 +22,9 @@
 - `replace_topq=0`（短套件 SR 退化，NO-GO）：
   - short：`runs/v8p10_short_w2p0_topq0/20260224_135806`
   - long：`runs/v8p10_long_w2p0_topq0/20260224_135713`
+- `min_progress_m=0.02`（对比默认 0.01 无收益）：
+  - short：`runs/v8p10_short_w2p0_mp0p02_topq3/20260224_140119`
+  - long：`runs/v8p10_long_w2p0_mp0p02_topq3/20260224_140049`
 
 ## 2) full gate（C：fixed pairs20）
 
