@@ -73,7 +73,7 @@
     "forest_no_fallback": false,
     "forest_topk": 10,
     "forest_topk_turn_penalty": 0.0,
-    "forest_replace_ranking": "progress_clearance_q",
+    "forest_replace_ranking": "progress_q",
     "forest_replace_topq": 3,
     "forest_adm_horizon": 30,
     "forest_min_progress_m": 0.01,
@@ -135,7 +135,7 @@
     "forest_goal_admissible_relax_factor": 2.5,
     "forest_topk": 10,
     "forest_topk_turn_penalty": 0.0,
-    "forest_replace_ranking": "progress_clearance_q",
+    "forest_replace_ranking": "progress_q",
     "forest_replace_topq": 3,
     "forest_min_progress_m": 0.01,
     "forest_min_od_m": 0.0,
@@ -169,4 +169,3 @@
     "seed": 33
   }
 }
-

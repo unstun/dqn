@@ -421,6 +421,8 @@ def _forest_choose_replacement_candidate(
     ranking:
     - "q": maximize Q (optionally penalize aggressive turning)
     - "progress_clearance_q": minimize next-step progress_dist, then maximize clearance (OD), then Q
+    - "progress_q": minimize next-step progress_dist, then maximize Q
+    - "progress_q_clearance": minimize next-step progress_dist, then maximize Q, then maximize clearance (OD)
     - "clearance_progress_q": maximize clearance (OD), then minimize next-step progress_dist, then Q
     """
 
@@ -462,8 +464,15 @@ def _forest_choose_replacement_candidate(
             )
         )
 
-    if mode not in {"progress_clearance_q", "clearance_progress_q"}:
-        raise ValueError("forest_replace_ranking must be one of: q, progress_clearance_q, clearance_progress_q")
+    if mode not in {
+        "progress_clearance_q",
+        "progress_q",
+        "progress_q_clearance",
+        "clearance_progress_q",
+    }:
+        raise ValueError(
+            "forest_replace_ranking must be one of: q, progress_clearance_q, progress_q, progress_q_clearance, clearance_progress_q"
+        )
 
     x0 = float(env._x_m)
     y0 = float(env._y_m)
@@ -507,6 +516,10 @@ def _forest_choose_replacement_candidate(
 
         if mode == "progress_clearance_q":
             key = (float(dist1), -float(od1), -float(q_score))
+        elif mode == "progress_q":
+            key = (float(dist1), -float(q_score), 0.0)
+        elif mode == "progress_q_clearance":
+            key = (float(dist1), -float(q_score), -float(od1))
         else:
             key = (-float(od1), float(dist1), -float(q_score))
 
@@ -535,8 +548,16 @@ def _forest_policy_action_from_q(
     topk_k = max(1, int(forest_topk))
     topk_turn_penalty = max(0.0, float(forest_topk_turn_penalty))
     replace_ranking = str(forest_replace_ranking).lower().strip()
-    if replace_ranking not in {"q", "progress_clearance_q", "clearance_progress_q"}:
-        raise ValueError("forest_replace_ranking must be one of: q, progress_clearance_q, clearance_progress_q")
+    if replace_ranking not in {
+        "q",
+        "progress_clearance_q",
+        "progress_q",
+        "progress_q_clearance",
+        "clearance_progress_q",
+    }:
+        raise ValueError(
+            "forest_replace_ranking must be one of: q, progress_clearance_q, progress_q, progress_q_clearance, clearance_progress_q"
+        )
     replace_topq = max(0, int(forest_replace_topq))
     strict_no_fallback = bool(forest_no_fallback)
     min_od = float(forest_min_od_m)
@@ -3430,11 +3451,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--forest-replace-ranking",
-        choices=("q", "progress_clearance_q", "clearance_progress_q"),
+        choices=("q", "progress_clearance_q", "progress_q", "progress_q_clearance", "clearance_progress_q"),
         default="q",
         help=(
             "Forest-only: when argmax(Q) is inadmissible, how to rank admissible replacement candidates. "
-            "'q' keeps pure Q-based ranking; the other modes use next-step progress_dist/clearance as tie-breakers."
+            "'q' keeps pure Q-based ranking; the other modes use next-step progress_dist/clearance and Q as tie-breakers."
         ),
     )
     ap.add_argument(

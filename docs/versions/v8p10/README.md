@@ -23,7 +23,7 @@
 - 固定 `forest_progress_dist_mode=dijkstra8_nocorner`（障碍感知最短路 cost-to-go）
 - sweep `forest_progress_cost_w_clearance`（靠近障碍的代价权重）：
   - 预期：`w_clearance=0` 更接近几何最短路径；安全性由 `min_od_m` + rollout 兜底保证
-- 若仍明显落后 baseline，再进入“最小代码改动”的 replacement ranking（progress-first tie-break）
+- replacement ranking（推理侧替换动作排序）默认使用 `progress_q`（先最小化 next-step `progress_dist`，再最大化 Q），用于降低 clearance 优先导致的绕路；必要时可切到 `progress_q_clearance`（再用 clearance 作为最终 tie-break）。
 
 ## 本轮关键命令（计划）
 
@@ -69,4 +69,3 @@ conda run -n ros2py310 python infer.py --profile v8p10 \
 ## 结论（待回填）
 
 - `N/A`
-
