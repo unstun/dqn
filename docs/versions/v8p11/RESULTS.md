@@ -44,6 +44,23 @@
 - short：SR=1.0 且路径/时间均优于 baseline（达成）
 - long：SR=1.0，但路径/时间仍劣于 baseline（未达成；暂不建议直接上 full gate C）
 
+## 2.1) long 推理侧 sweep：`forest_progress_cost_w_clearance`（fixed pairs3 / runs=3）
+
+> 目的：在不改 `goal_tolerance_m`、且 baseline 同跑的前提下，尽可能压 long 的 detour，同时维持 SR≈1.0。
+
+KPI 对比（Δ = RL - baseline；越小越好；同一组 pairs 下 baseline 固定）：
+
+- `w=0.0`：`success_rate=0.667`，Δ`avg_path_length=+7.8389`，Δ`path_time_s=+4.2417`
+- `w=0.5`：`success_rate=1.0`，Δ`avg_path_length=+11.6641`，Δ`path_time_s=+6.7167`
+- `w=1.0`：`success_rate=1.0`，Δ`avg_path_length=+8.5156`，Δ`path_time_s=+4.8000`
+- `w=1.5`：`success_rate=0.667`，Δ`avg_path_length=+4.2575`，Δ`path_time_s=+2.7417`
+- `w=2.0`：`success_rate=1.0`，Δ`avg_path_length=+5.8329`，Δ`path_time_s=+3.0834`（**本轮 sweep：SR=1.0 下最优**）
+- `w=2.5`：`success_rate=0.667`，Δ`avg_path_length=+7.5205`，Δ`path_time_s=+3.9167`
+
+结论（sweep 口径）：
+- 仅靠调 `w_clearance` 无法让 long 在 SR=1.0 下打败 baseline；最优点仍落后约 `+5.83m / +3.08s`。
+- `w=1.5` 虽然更短，但会掉 SR（出现 timeout），不满足“SR≈1.0”约束。
+
 ## 3) full gate（C）结果（runs=20，fixed pairs）
 
 - short：`N/A`

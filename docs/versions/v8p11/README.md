@@ -80,3 +80,6 @@ conda run -n ros2py310 python infer.py --profile v8p11 \
   - short：SR=1.0，且 `avg_path_length/path_time_s` **均优于** baseline（Hybrid A*-MPC）
   - long：SR=1.0，但 `avg_path_length/path_time_s` **仍劣于** baseline（约 +5.83m / +3.08s）
 - 下一步优先级：继续主攻 long（不建议直接上 full gate C），优先做“训练侧/推理侧”针对 long 的消融与再扫参，目标是把 long 的 detour 压到 baseline 以内。
+
+补充（推理 sweep，fixed pairs3 / runs=3）：
+- long 的 `forest_progress_cost_w_clearance` sweep 显示：`w=2.0` 为 SR=1.0 下最优，但仍落后 baseline；`w=1.5` 虽更短但 SR 掉到 0.667（出现 timeout）。
