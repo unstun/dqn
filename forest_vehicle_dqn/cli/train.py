@@ -3258,6 +3258,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Downsampled global-map observation size (applies to both grid and forest envs).",
     )
     ap.add_argument(
+        "--forest-obs-include-progress-dist",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Forest-only: include a downsampled progress distance-field map as an extra global-map channel "
+            "(occ + progress-dist). Requires retraining because obs_dim changes."
+        ),
+    )
+    ap.add_argument(
         "--goal-tolerance-m",
         type=float,
         default=1.0,
@@ -4208,6 +4217,7 @@ def main(argv: list[str] | None = None) -> int:
                 sensor_range_m=float(args.sensor_range),
                 n_sectors=args.n_sectors,
                 obs_map_size=int(args.obs_map_size),
+                obs_include_progress_dist=bool(getattr(args, "forest_obs_include_progress_dist", False)),
                 goal_tolerance_m=float(args.goal_tolerance_m),
                 goal_angle_tolerance_deg=float(args.goal_angle_tolerance_deg),
                 goal_stop_speed_m_s=float(args.goal_stop_speed_m_s),

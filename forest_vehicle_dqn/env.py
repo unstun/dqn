@@ -744,6 +744,7 @@ class AMRBicycleEnv(gym.Env):
         sensor_range_m: float = 6.0,
         n_sectors: int = 36,
         obs_map_size: int = 12,
+        obs_include_progress_dist: bool = False,
         od_cap_m: float = 2.0,
         safe_distance_m: float = 0.20,
         safe_speed_distance_m: float = 0.20,
@@ -824,6 +825,7 @@ class AMRBicycleEnv(gym.Env):
         self.obs_map_size = int(obs_map_size)
         if self.obs_map_size < 4:
             raise ValueError("obs_map_size must be >= 4")
+        self.obs_include_progress_dist = bool(obs_include_progress_dist)
         self.od_cap_m = float(od_cap_m)
         if not (self.od_cap_m > 0):
             raise ValueError("od_cap_m must be > 0")
@@ -1008,8 +1010,11 @@ class AMRBicycleEnv(gym.Env):
             interpolation=cv2.INTER_NEAREST,
         ).astype(np.float32, copy=False)
         self._obs_occ_flat = (2.0 * occ_ds.reshape(-1) - 1.0).astype(np.float32, copy=False)
+        self._obs_progress_flat = np.zeros((0,), dtype=np.float32)
+        self._update_obs_progress_flat()
 
-        obs_dim = 10 + int(self.obs_map_size) * int(self.obs_map_size)
+        n = int(self.obs_map_size) * int(self.obs_map_size)
+        obs_dim = 10 + (1 + int(bool(self.obs_include_progress_dist))) * int(n)
         self.observation_space = gym.spaces.Box(
             low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32
         )
@@ -1036,6 +1041,32 @@ class AMRBicycleEnv(gym.Env):
         self._ha_start_xy: tuple[int, int] = self.start_xy
         self._astar_progress_idx: int = 0
         self._astar_start_xy: tuple[int, int] = self.start_xy
+
+    def _update_obs_progress_flat(self) -> None:
+        if not bool(self.obs_include_progress_dist):
+            self._obs_progress_flat = np.zeros((0,), dtype=np.float32)
+            return
+
+        self._ensure_progress_dist_field()
+        dist = np.asarray(self._progress_dist_m, dtype=np.float32)
+        fill = float(self._progress_dist_fill_m)
+        if not (math.isfinite(fill) and float(fill) > 0.0):
+            fill = float(self._diag_m) + float(self.cell_size_m)
+
+        finite = np.isfinite(dist)
+        if bool(finite.any()):
+            max_finite = float(dist[finite].max())
+            if math.isfinite(max_finite) and float(max_finite) > float(fill):
+                fill = float(max_finite) + float(self.cell_size_m)
+
+        dist = np.where(finite, dist, float(fill)).astype(np.float32, copy=False)
+        dist01 = (np.clip(dist, 0.0, float(fill)) / float(fill)).astype(np.float32, copy=False)
+        dist01_ds = cv2.resize(
+            dist01,
+            dsize=(int(self.obs_map_size), int(self.obs_map_size)),
+            interpolation=cv2.INTER_AREA,
+        ).astype(np.float32, copy=False)
+        self._obs_progress_flat = (2.0 * dist01_ds.reshape(-1) - 1.0).astype(np.float32, copy=False)
 
     def _goal_pose_reached(self, *, d_goal_m: float, alpha_rad: float) -> bool:
         return (float(d_goal_m) <= float(self.goal_tolerance_m)) and (
@@ -1352,6 +1383,7 @@ class AMRBicycleEnv(gym.Env):
         self.start_xy = (int(start_xy[0]), int(start_xy[1]))
         self.goal_xy = (int(goal_xy[0]), int(goal_xy[1]))
         self._ensure_progress_dist_field()
+        self._update_obs_progress_flat()
 
         ha_start_xy = (int(self.start_xy[0]), int(self.start_xy[1]))
         ha_progress_idx = 0
@@ -2505,6 +2537,7 @@ class AMRBicycleEnv(gym.Env):
                     dtype=np.float32,
                 ),
                 self._obs_occ_flat,
+                self._obs_progress_flat,
             ]
         )
         return obs.astype(np.float32, copy=False)

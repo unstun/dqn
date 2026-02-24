@@ -7,6 +7,7 @@
 | 类别 | 文件 | 用途 | 状态 |
 |---|---|---|---|
 | 稳定主线 | `configs/v7p1.json` | 当前训练/推理默认主线 | 推荐 |
+| V8 迭代入口（候选） | `configs/v8p16.json` | 训练侧：观测加入 progress distance-field map（occ + dist），目标：long detour 明显回落并压过 baseline（目标：C 门槛） | 待 smoke（episodes=150 + fixed pairs3 short/long） |
 | V8 迭代入口（候选） | `configs/v8p12.json` | 口径对齐 shortest-path progress-dist（`w_clearance=0`），主攻 long detour（目标：C 门槛） | smoke 已跑（fixed pairs3，runs=3）：short 明显回退；long detour 仅小幅回落但仍落后 baseline → NO-GO（full 暂不建议） |
 | V8 迭代（上一候选） | `configs/v8p11.json` | 训练侧强化（expert+D QfD 更强，继承 v8p10 推理口径；目标：C 门槛） | smoke 已跑（short 打败 baseline；long 仍落后）→ full gate 暂不建议 |
 | V8 迭代（上一候选） | `configs/v8p10.json` | progress-dist clearance 消融（`dijkstra8_nocorner` + `progress_cost_w_clearance` sweep；目标：C 门槛） | infer-only sweep smoke 已跑（fixed pairs3，runs=3；当前 best：w=2.0；baseline gap）→ full gate 暂不建议 |
@@ -57,6 +58,7 @@
 - `configs/v8p13.json`
 - `configs/v8p14.json`
 - `configs/v8p15.json`
+- `configs/v8p16.json`
 
 > 规则：新增版本时，优先新增 `v*.json`，再在四件套中记录它与 `run_dir`（运行目录）的映射。
 

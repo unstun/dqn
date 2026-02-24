@@ -302,9 +302,9 @@ Notes:
 - `fallback_rate`: fraction of steps where inference-time fallback/override triggered (diagnostic; should be `0` in `strict-argmax` by definition).
 - `failure_reason`: failure type label (only in `table2_kpis_raw.csv`).
 
-## 版本总索引（v1 → v8p15）
+## 版本总索引（v1 → v8p16）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`；`v8p11` smoke 显示 short 已可在 SR=1.0 下压过 baseline，但 long 仍落后；`v8p12/v8p13` 为 NO-GO；`v8p14/v8p15` infer-only sweep 虽可维持 long 的 SR=1.0，但仍无法压过 baseline（详见 `docs/versions/README.md`）。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`；`v8p11` smoke 显示 short 已可在 SR=1.0 下压过 baseline，但 long 仍落后；`v8p12/v8p13` 为 NO-GO；`v8p14/v8p15` infer-only sweep 虽可维持 long 的 SR=1.0，但仍无法压过 baseline；`v8p16` 进入 B 线（训练侧补观测）待 smoke（详见 `docs/versions/README.md`）。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -312,7 +312,7 @@ Notes:
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v8p15）
+### 增量版本（v3p1 → v8p16）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -361,6 +361,7 @@ Notes:
 | `v8p13` | `docs/versions/v8p13/` | `configs/v8p13.json` | `runs/v8p13_infer_smoke_long_pairs3/20260224_172037` | `1.000 / 1.000` | `1.00 / 1.00` | smoke 已跑：long path/time 显著退化（NO-GO；full 暂不建议） |
 | `v8p14` | `docs/versions/v8p14/` | `configs/v8p14.json` | `runs/v8p14_sweep_long_pairs3_w1p5_mpneg005/20260224_174542` | `N/A / 1.000` | `N/A / 1.00` | infer-only sweep 已跑：SR 恢复但 long 仍落后 baseline（NO-GO；full 暂不建议） |
 | `v8p15` | `docs/versions/v8p15/` | `configs/v8p15.json` | `runs/v8p15_sweep_long_pairs3_sigma0p3/20260224_180520` | `N/A / 1.000` | `N/A / 1.00` | infer-only sweep 已跑：sigma=0.3 最优但 long 仍落后 baseline（NO-GO；full 暂不建议） |
+| `v8p16` | `docs/versions/v8p16/` | `configs/v8p16.json` | `N/A` | `N/A / N/A` | `N/A / N/A` | 待 smoke：训练侧加入 progress-dist map 观测通道（B 线） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
