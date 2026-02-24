@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "title": "v8p15 infer sweep (long, pairs3, w1.5, mp=-0.05, sigma=0.3)",
+    "date": "2026-02-24",
+    "summary": "Sweep forest_progress_cost_sigma_m=0.3 at w_clearance=1.5 and min_progress=-0.05 to reduce long detours under SR≈1.0. Fixed pairs3; baseline is run together. Infer-only; loads v8p11 weights.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260224_v8p15_infer_sweep_long_pairs3_sigma0p3"
+    ],
+    "notes": [
+      "Infer-only: loads models from v8p11; do not change goal_tolerance_m.",
+      "Screening only; final gate uses fixed pairs20 with runs=20."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::long"
+    ],
+    "models": "v8p11",
+    "out": "v8p15_sweep_long_pairs3_sigma0p3",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "rand_pairs_json": "configs/pairs_v8p9_smoke_long3_from_pairs20_v1_20260224.json",
+    "runs": 3,
+    "progress": true,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_goal_admissible_relax_factor": 2.5,
+    "forest_topk": 10,
+    "forest_topk_turn_penalty": 0.0,
+    "forest_replace_ranking": "progress_q",
+    "forest_replace_topq": 3,
+    "forest_min_progress_m": -0.05,
+    "forest_min_od_m": 0.0,
+    "forest_progress_dist_mode": "dijkstra8_nocorner",
+    "forest_progress_cost_w_clearance": 1.5,
+    "forest_progress_cost_sigma_m": 0.3,
+    "forest_goal_approach_override": true,
+    "forest_goal_approach_dist_m": 0.0,
+    "forest_goal_approach_speed_factor": 1.0,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 123
+  }
+}
+

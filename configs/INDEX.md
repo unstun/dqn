@@ -56,6 +56,7 @@
 - `configs/v8p12.json`
 - `configs/v8p13.json`
 - `configs/v8p14.json`
+- `configs/v8p15.json`
 
 > 规则：新增版本时，优先新增 `v*.json`，再在四件套中记录它与 `run_dir`（运行目录）的映射。
 
