@@ -56,7 +56,7 @@
 | `v8p7` | `v8p7` | `docs/versions/v8p7/` | `configs/v8p7.json` | `runs/v8p7_goal_approach_infer_smoke/20260223_230524` | `1.00` / `1.00` | `1.00` / `1.00` | infer-only smoke 通过（goal-approach speed shaping；SR=1.0）；train+infer smoke 待跑 |
 | `v8p8` | `v8p8` | `docs/versions/v8p8/` | `configs/v8p8.json` | `runs/v8p8_dueling_globalcnn_aux_smoke/train_20260224_105059/infer/20260224_110556` | `0.667` / `1.000` | `1.00` / `1.00` | smoke 已跑（NO-GO；short SR 低于 baseline；mid/long path/time 劣于 baseline） |
 | `v8p9` | `v8p9` | `docs/versions/v8p9/` | `configs/v8p9.json` | `runs/v8p9_infer_sweep_short_pairs3_smoke/20260224_114743` | `1.000` / `1.000` | `1.00` / `1.00` | infer-only sweep smoke 已跑（pairs3：SR=1.0 可达；但 path/time 仍落后 baseline；full 暂不建议） |
-| `v8p10` | `v8p10` | `docs/versions/v8p10/` | `configs/v8p10.json` | `runs/v8p10_infer_sweep_long_pairs3_smoke/20260224_134539` | `1.000` / `1.000` | `1.00` / `1.00` | infer-only sweep smoke 已跑（pairs3：SR=1.0 可达；但 path/time 仍落后 baseline；full 暂不建议） |
+| `v8p10` | `v8p10` | `docs/versions/v8p10/` | `configs/v8p10.json` | `runs/v8p10_sweep_long_w2p0/20260224_135035` | `1.000` / `1.000` | `1.00` / `1.00` | infer-only sweep smoke 已跑（pairs3：SR=1.0 可达；w_clearance sweep 有回落但仍落后 baseline；full 暂不建议） |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。

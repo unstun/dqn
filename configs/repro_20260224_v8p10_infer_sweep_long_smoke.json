@@ -42,7 +42,7 @@
     "forest_min_progress_m": 0.01,
     "forest_min_od_m": 0.0,
     "forest_progress_dist_mode": "dijkstra8_nocorner",
-    "forest_progress_cost_w_clearance": 0.0,
+    "forest_progress_cost_w_clearance": 2.0,
     "forest_progress_cost_sigma_m": 0.5,
     "forest_goal_approach_override": true,
     "forest_goal_approach_dist_m": 0.0,

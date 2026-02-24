@@ -7,7 +7,7 @@
 
 ## 2) 配置与文档
 
-- 新增 `configs/v8p10.json`（版本入口：默认 `dijkstra8_nocorner` + `progress_cost_w_clearance=0.0`）
+- 新增 `configs/v8p10.json`（版本入口：默认 `dijkstra8_nocorner` + `progress_cost_w_clearance=2.0`；来自 pairs3 sweep 的当前 best）
 - 新增 `configs/repro_20260224_v8p10_infer_sweep_{short,long}_smoke.json`（推理侧 sweep smoke，可复现）
 - 新增 `docs/versions/v8p10/` 四件套（本文件为变更明细）
 
