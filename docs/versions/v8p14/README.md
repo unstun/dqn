@@ -4,7 +4,7 @@
 - 上一版本：`v8p13`（smoke NO-GO）
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**进行中（infer-only sweep，待结果）**
+- 状态：**infer-only sweep 已跑（NO-GO；不建议 full gate C）**
 
 ## 本版目标（硬门槛：C）
 
@@ -26,6 +26,10 @@ v8p14 的做法（infer-only，最快闭环）：
 - 固定 `w_clearance=1.5`，并将 `forest_min_progress_m`（可行动作的进度阈值，允许短视回退）设为小负数（如 `-0.02/-0.05`），目标是在不改 goal 判定阈值的前提下恢复 `SR≈1.0`，并尽量保持更短路径倾向。
 - 本版 **不训练新模型**：推理加载 `v8p11` 的权重（`models=v8p11`），只改推理侧 gate/距离场参数，便于快速定位瓶颈。
 
+本轮 sweep 结论（fixed pairs3，runs=3）：
+- `SR` 确实恢复到 `1.0`（不再 timeout）。
+- 但 long 的 `avg_path_length/path_time_s` 相比 baseline 仍明显落后（约 +5.9m / +3.3s 量级），判定 **NO-GO**。
+
 ## 本轮关键命令
 
 ### 1) 最小自检
@@ -40,4 +44,3 @@ conda run -n ros2py310 python infer.py --self-check
 conda run -n ros2py310 python infer.py --profile repro_20260224_v8p14_infer_sweep_long_pairs3_w1p5_mpneg002
 conda run -n ros2py310 python infer.py --profile repro_20260224_v8p14_infer_sweep_long_pairs3_w1p5_mpneg005
 ```
-
