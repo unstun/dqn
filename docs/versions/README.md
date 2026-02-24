@@ -1,9 +1,9 @@
-# 版本留档索引（v1 → v8p14，含 v7p1 补档）
+# 版本留档索引（v1 → v8p15，含 v7p1 补档）
 
-- 归档入口：仓库根目录 `README.md` 的“版本总索引（v1 → v8p14）”。
+- 归档入口：仓库根目录 `README.md` 的“版本总索引（v1 → v8p15）”。
 - 本文件保留为 `docs/versions/` 内部快速导航，与根 README 保持同一口径。
 - 历史目录 `v3p1`~`v3p11` 保留原始记录，未纳入本轮重编号。
-- 早期误混入版本链已于 2026-02-09 清理，当前主线编号延续至 `v8p14`。
+- 早期误混入版本链已于 2026-02-09 清理，当前主线编号延续至 `v8p15`。
 - 当前主线对外口径（`v6p2p3` 及后续）统一为 `CNN-DDQN (shielded/hybrid inference)`；`strict-argmax` 仅用于诊断/消融，不作为主结论口径。
 - `v7p1` 已按版本四件套补档，作为当前稳定主线归档入口。
 
@@ -61,6 +61,7 @@
 | `v8p12` | `v8p12` | `docs/versions/v8p12/` | `configs/v8p12.json` | `runs/v8p12_infer_smoke_long_pairs3/20260224_163613` | `1.000` / `1.000` | `1.00` / `1.00` | smoke 已跑：short 明显回退；long detour 仅小幅回落但仍落后 baseline（NO-GO；full 暂不建议） |
 | `v8p13` | `v8p13` | `docs/versions/v8p13/` | `configs/v8p13.json` | `runs/v8p13_infer_smoke_long_pairs3/20260224_172037` | `1.000` / `1.000` | `1.00` / `1.00` | smoke 已跑：long path/time 显著退化（NO-GO；full 暂不建议） |
 | `v8p14` | `v8p14` | `docs/versions/v8p14/` | `configs/v8p14.json` | `runs/v8p14_sweep_long_pairs3_w1p5_mpneg005/20260224_174542` | `N/A` / `1.000` | `N/A` / `1.00` | infer-only sweep 已跑：SR 恢复但 long 仍落后 baseline（NO-GO；full 暂不建议） |
+| `v8p15` | `v8p15` | `docs/versions/v8p15/` | `configs/v8p15.json` | `runs/v8p15_sweep_long_pairs3_sigma0p3/20260224_180520` | `N/A` / `1.000` | `N/A` / `1.00` | infer-only sweep 已跑：sigma=0.3 最优但 long 仍落后 baseline（NO-GO；full 暂不建议） |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。

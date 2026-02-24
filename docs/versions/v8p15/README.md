@@ -4,7 +4,7 @@
 - 上一版本：`v8p14`（infer-only sweep NO-GO）
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**进行中（infer-only sweep，待结果）**
+- 状态：**infer-only sweep 已跑（NO-GO；不建议 full gate C）**
 
 ## 本版目标（硬门槛：C）
 
@@ -29,6 +29,10 @@ v8p15 固定：
 
 本版仍为 infer-only：推理加载 `v8p11` 权重（`models=v8p11`），只改推理侧距离场参数以最快闭环定位瓶颈。
 
+本轮 sweep 结论（fixed pairs3，runs=3）：
+- `sigma=0.2` 出现明显绕路（path 爆炸），直接淘汰。
+- `sigma=0.3` 为本轮最优（在 SR=1.0 下进一步缩短 long 路径/时间），但相比 baseline 仍明显落后（未达目标），判定 **NO-GO**。
+
 ## 本轮关键命令
 
 ```bash
@@ -36,4 +40,3 @@ conda run -n ros2py310 python infer.py --profile repro_20260224_v8p15_infer_swee
 conda run -n ros2py310 python infer.py --profile repro_20260224_v8p15_infer_sweep_long_pairs3_sigma0p3
 conda run -n ros2py310 python infer.py --profile repro_20260224_v8p15_infer_sweep_long_pairs3_sigma0p5
 ```
-

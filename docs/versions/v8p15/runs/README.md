@@ -1,4 +1,4 @@
-# v8p15 runs 索引与执行记录（待回填）
+# v8p15 runs 索引与执行记录
 
 - 执行位置：`ubuntu-zt`（远端优先）
 - 远端环境：`conda run -n ros2py310`
@@ -20,9 +20,9 @@ ssh ubuntu-zt "cd /home/sun/phdproject/dqn/dqn && /home/sun/miniconda3/bin/conda
 ssh ubuntu-zt "cd /home/sun/phdproject/dqn/dqn && /home/sun/miniconda3/bin/conda run -n ros2py310 python infer.py --profile repro_20260224_v8p15_infer_sweep_long_pairs3_sigma0p5"
 ```
 
-- run_dir（sigma=0.2）：`N/A`
-- run_dir（sigma=0.3）：`N/A`
-- run_dir（sigma=0.5）：`N/A`
+- run_dir（sigma=0.2）：`runs/v8p15_sweep_long_pairs3_sigma0p2/20260224_180451`
+- run_dir（sigma=0.3）：`runs/v8p15_sweep_long_pairs3_sigma0p3/20260224_180520`
+- run_dir（sigma=0.5）：`runs/v8p15_sweep_long_pairs3_sigma0p5/20260224_180550`
 
 ## 2) 结果回传（仅回传对应 out 目录）
 
@@ -31,4 +31,3 @@ rsync -avz ubuntu-zt:/home/sun/phdproject/dqn/dqn/runs/v8p15_sweep_long_pairs3_s
 rsync -avz ubuntu-zt:/home/sun/phdproject/dqn/dqn/runs/v8p15_sweep_long_pairs3_sigma0p3/ /home/sun/phdproject/dqn/dqn/runs/v8p15_sweep_long_pairs3_sigma0p3/
 rsync -avz ubuntu-zt:/home/sun/phdproject/dqn/dqn/runs/v8p15_sweep_long_pairs3_sigma0p5/ /home/sun/phdproject/dqn/dqn/runs/v8p15_sweep_long_pairs3_sigma0p5/
 ```
-
