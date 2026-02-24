@@ -12,6 +12,7 @@
 
 - 新增 `configs/v8p8.json`（版本入口）
 - 新增 `configs/repro_20260224_v8p8_smoke.json`（smoke 可复现快照）
+- 新增 `configs/pairs_v8p8_smoke_short3_20260224_110556.json` / `configs/pairs_v8p8_smoke_long3_20260224_110556.json`（推理侧消融用固定 pairs3，避免 sample drift）
 - 新增 `docs/versions/v8p8/` 四件套（本文件为变更明细）
 - 更新索引与 README，把 `v8p8` 登记为“待 smoke / 待 full gate”的候选版本
 
@@ -28,4 +29,3 @@
 - `docs/versions/README.md`
 - `README.md`
 - `README.zh-CN.md`
-

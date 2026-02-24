@@ -4,7 +4,7 @@
 - 上一版本：`v8p7`
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**计划中（待 smoke：episodes=150；runs=3；随后 full gate：short/long runs=20 fixed pairs）**
+- 状态：**已运行 smoke（episodes=150；runs=3）：NO-GO；full gate（C）待跑**
 
 ## 本版目标（硬门槛：C）
 
@@ -59,10 +59,16 @@ conda run -n ros2py310 python infer.py --profile v8p8 \
 
 ## 代表 run
 
-- smoke：`N/A`
+- smoke：
+  - train_run：`runs/v8p8_dueling_globalcnn_aux_smoke/train_20260224_105059`
+  - infer_run：`runs/v8p8_dueling_globalcnn_aux_smoke/train_20260224_105059/infer/20260224_110556`
+  - kpi_mean_raw：`runs/v8p8_dueling_globalcnn_aux_smoke/train_20260224_105059/infer/20260224_110556/table2_kpis_mean_raw.csv`
+- 推理侧消融（固定 pairs3）：
+  - short：`runs/v8p8_ablate_pairs3_short_r15_sf0p9/20260224_111755/table2_kpis_mean_raw.csv`
+  - long：`runs/v8p8_ablate_pairs3_long_r15_sf0p9/20260224_111905/table2_kpis_mean_raw.csv`
 - full20（pairs20）：`N/A`
 
 ## 结论（待回填）
 
-- `N/A`
-
+- smoke 结论：**NO-GO**（short `success_rate` 低于 Hybrid A*-MPC；mid/long 的 `avg_path_length/path_time_s` 显著劣于 Hybrid A*-MPC）。
+- 推理侧消融：`forest_goal_admissible_relax_factor` 在当前固定 pairs3 上未见明显改善；后续优先考虑训练侧（reward/目标优化）或推理侧更强的“提速/缩路”策略，但必须以 full gate C（pairs20 + runs=20）验证为准。

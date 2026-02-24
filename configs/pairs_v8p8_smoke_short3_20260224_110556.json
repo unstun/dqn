@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "date": "2026-02-24",
+  "env": "forest_a",
+  "suite": "short",
+  "runs": 3,
+  "seed": 33,
+  "source_run": "runs/v8p8_dueling_globalcnn_aux_smoke/train_20260224_105059/infer/20260224_110556",
+  "source_kpi_raw": "runs/v8p8_dueling_globalcnn_aux_smoke/train_20260224_105059/infer/20260224_110556/table2_kpis_raw.csv",
+  "notes": [
+    "Fixed (start,goal) pairs for v8p8 inference ablation (short, runs=3).",
+    "Extracted from an existing smoke run so we can compare inference-side knobs without sample drift."
+  ],
+  "pairs": [
+    {"env": "forest_a", "run_idx": 0, "start_xy": [248, 233], "goal_xy": [318, 124]},
+    {"env": "forest_a", "run_idx": 1, "start_xy": [178, 50], "goal_xy": [273, 176]},
+    {"env": "forest_a", "run_idx": 2, "start_xy": [30, 241], "goal_xy": [119, 82]}
+  ]
+}
