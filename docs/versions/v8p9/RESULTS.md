@@ -1,0 +1,33 @@
+# v8p9 结果对比（待跑：推理侧 sweep smoke → full gate C）
+
+> 说明：本版目标是最终硬门槛 C（short/long 各 runs=20，fixed pairs20）。在 full gate 结果出来前，所有 smoke 仅用于筛查，不作为最终结论。
+
+## 1) 关键工件路径（计划）
+
+- 推理侧 sweep smoke（fixed pairs3，runs=3）：
+  - short profile：`configs/repro_20260224_v8p9_infer_sweep_short_smoke.json`
+  - long profile：`configs/repro_20260224_v8p9_infer_sweep_long_smoke.json`
+  - short pairs：`configs/pairs_v8p9_smoke_short3_from_pairs20_v1_20260224.json`
+  - long pairs：`configs/pairs_v8p9_smoke_long3_from_pairs20_v1_20260224.json`
+  - short run_dir：`N/A`
+  - long run_dir：`N/A`
+
+- full gate（C：fixed pairs20；short/long 各 runs=20）：
+  - short pairs：`configs/repro_20260210_forest_a_pairs_short20_v1.json`
+  - long pairs：`configs/repro_20260210_forest_a_pairs_long20_v1.json`
+  - short run_dir：`N/A`
+  - long run_dir：`N/A`
+
+## 2) sweep smoke 结果（runs=3，mean）
+
+- short：`N/A`
+- long：`N/A`
+
+## 3) full gate（C）结果（runs=20，fixed pairs）
+
+- short：`N/A`
+- long：`N/A`
+
+门槛检查（C）：
+- `N/A`（等待填入 short/long 的 `table2_kpis_mean_raw.csv` 后判定）
+

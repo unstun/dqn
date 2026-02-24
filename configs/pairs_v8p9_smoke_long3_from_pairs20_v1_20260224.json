@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "date": "2026-02-24",
+  "env": "forest_a",
+  "suite": "long",
+  "runs": 3,
+  "seed": 123,
+  "source_pairs_json": "configs/repro_20260210_forest_a_pairs_long20_v1.json",
+  "notes": [
+    "Fixed (start,goal) pairs for v8p9 inference sweep smoke (long, runs=3).",
+    "Subset of pairs20 to avoid sample drift before running full gate (runs=20)."
+  ],
+  "pairs": [
+    {"env": "forest_a", "run_idx": 0, "start_xy": [324, 317], "goal_xy": [91, 112]},
+    {"env": "forest_a", "run_idx": 1, "start_xy": [338, 58], "goal_xy": [32, 89]},
+    {"env": "forest_a", "run_idx": 2, "start_xy": [93, 266], "goal_xy": [330, 37]}
+  ]
+}
+
