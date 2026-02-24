@@ -58,7 +58,7 @@
 | `v8p9` | `v8p9` | `docs/versions/v8p9/` | `configs/v8p9.json` | `runs/v8p9_infer_sweep_short_pairs3_smoke/20260224_114743` | `1.000` / `1.000` | `1.00` / `1.00` | infer-only sweep smoke 已跑（pairs3：SR=1.0 可达；但 path/time 仍落后 baseline；full 暂不建议） |
 | `v8p10` | `v8p10` | `docs/versions/v8p10/` | `configs/v8p10.json` | `runs/v8p10_sweep_long_w2p0/20260224_135035` | `1.000` / `1.000` | `1.00` / `1.00` | infer-only sweep smoke 已跑（pairs3：SR=1.0 可达；w_clearance sweep 有回落但仍落后 baseline；full 暂不建议） |
 | `v8p11` | `v8p11` | `docs/versions/v8p11/` | `configs/v8p11.json` | `runs/v8p11_infer_smoke_long_pairs3/20260224_152917` | `1.000` / `1.000` | `1.00` / `1.00` | smoke 已跑：short 打败 baseline；long 仍落后（另有 long w_clearance sweep 归档）；full 暂不建议 |
-| `v8p12` | `v8p12` | `docs/versions/v8p12/` | `configs/v8p12.json` | `N/A` | `N/A` / `N/A` | `N/A` / `N/A` | 进行中（口径对齐 shortest-path progress-dist：待 train+infer smoke；再决定 full gate C） |
+| `v8p12` | `v8p12` | `docs/versions/v8p12/` | `configs/v8p12.json` | `runs/v8p12_infer_smoke_long_pairs3/20260224_163613` | `1.000` / `1.000` | `1.00` / `1.00` | smoke 已跑：short 明显回退；long detour 仅小幅回落但仍落后 baseline（NO-GO；full 暂不建议） |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。

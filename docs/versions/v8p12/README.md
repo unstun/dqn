@@ -4,7 +4,7 @@
 - 上一版本：`v8p11`
 - 上一稳定对照：`v7p1`
 - 本版口径：`shielded/hybrid`（`forest_no_fallback=false`）
-- 状态：**进行中（train+infer smoke → 决定是否 full gate C）**
+- 状态：**smoke 已跑（NO-GO；不建议 full gate C）**
 
 ## 本版目标（硬门槛：C）
 
@@ -71,11 +71,15 @@ conda run -n ros2py310 python infer.py --profile v8p12 \
 
 ## 代表 run
 
-- train smoke：`N/A`
-- infer smoke：`N/A`
+- train smoke：`runs/v8p12/train_20260224_162127`
+- infer smoke：
+  - short（fixed pairs3）：`runs/v8p12_infer_smoke_short_pairs3/20260224_163604`
+  - long（fixed pairs3）：`runs/v8p12_infer_smoke_long_pairs3/20260224_163613`
 - full20（pairs20）：`N/A`
 
 ## 结论（待回填）
 
-- `N/A`
-
+- smoke（fixed pairs3 / runs=3）结论：
+  - short：SR=1.0，但 `avg_path_length/path_time_s` **显著劣于** baseline（NO-GO）
+  - long：SR=1.0，detour 有小幅回落，但 `avg_path_length/path_time_s` **仍劣于** baseline（NO-GO）
+- 本版结论：仅靠将 `w_clearance` 设为 0.0（shortest-path 对齐）不足以达成硬门槛 C；下一版需要引入更强的“短路径偏好”学习信号（可能需要 reward/训练口径联动，而不仅是进度距离场改法）。
