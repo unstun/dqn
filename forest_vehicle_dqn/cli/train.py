@@ -1307,8 +1307,16 @@ def train_one(
     topk_k = max(1, int(forest_topk))
     topk_turn_penalty = max(0.0, float(forest_topk_turn_penalty))
     replace_ranking = str(forest_replace_ranking).lower().strip()
-    if replace_ranking not in {"q", "progress_clearance_q", "clearance_progress_q"}:
-        raise ValueError("forest_replace_ranking must be one of: q, progress_clearance_q, clearance_progress_q")
+    if replace_ranking not in {
+        "q",
+        "progress_clearance_q",
+        "progress_q",
+        "progress_q_clearance",
+        "clearance_progress_q",
+    }:
+        raise ValueError(
+            "forest_replace_ranking must be one of: q, progress_clearance_q, progress_q, progress_q_clearance, clearance_progress_q"
+        )
     replace_topq = max(0, int(forest_replace_topq))
     min_od_m = float(forest_min_od_m)
     min_prog_m = float(forest_min_progress_m)

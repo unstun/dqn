@@ -15,8 +15,13 @@
 - 新增 `configs/repro_20260224_v8p11_infer_smoke_{short,long}.json`（推理 smoke，可复现）
 - 新增 `docs/versions/v8p11/` 四件套（本文件为变更明细）
 
+## 2.1) 工程修复（保证 train/infer 口径一致）
+
+- 修复训练侧对 `forest_replace_ranking`（replacement 的候选动作排序模式）校验遗漏：允许 `progress_q` / `progress_q_clearance`，与推理侧/CLI choices 保持一致，避免训练在 `Algo start` 后报错退出。
+
 ## 3) 受影响文件清单
 
+- `forest_vehicle_dqn/cli/train.py`
 - `configs/v8p11.json`
 - `configs/repro_20260224_v8p11_train_smoke.json`
 - `configs/repro_20260224_v8p11_infer_smoke_short.json`
@@ -26,4 +31,3 @@
 - `docs/versions/v8p11/CHANGES.md`
 - `docs/versions/v8p11/RESULTS.md`
 - `docs/versions/v8p11/runs/README.md`
-

@@ -68,11 +68,15 @@ conda run -n ros2py310 python infer.py --profile v8p11 \
 
 ## 代表 run
 
-- train smoke：`N/A`
-- infer smoke：`N/A`
+- train smoke：`runs/v8p11/train_20260224_151042`
+- infer smoke：
+  - short（fixed pairs3）：`runs/v8p11_infer_smoke_short_pairs3/20260224_152858`
+  - long（fixed pairs3）：`runs/v8p11_infer_smoke_long_pairs3/20260224_152917`
 - full20（pairs20）：`N/A`
 
 ## 结论（待回填）
 
-- `N/A`
-
+- smoke（runs=3，fixed pairs3）结论：
+  - short：SR=1.0，且 `avg_path_length/path_time_s` **均优于** baseline（Hybrid A*-MPC）
+  - long：SR=1.0，但 `avg_path_length/path_time_s` **仍劣于** baseline（约 +5.83m / +3.08s）
+- 下一步优先级：继续主攻 long（不建议直接上 full gate C），优先做“训练侧/推理侧”针对 long 的消融与再扫参，目标是把 long 的 detour 压到 baseline 以内。
