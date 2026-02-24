@@ -60,6 +60,14 @@ failure_reason（RL）：`reached=3/3`
 - v8p10（`dijkstra8_nocorner` + `progress_q`）可在 fixed pairs3 上保持 SR=1.0（short/long）。
 - `w_clearance` 在该 pairs3 子集上确实能显著压缩 RL 的路径与时间（当前 best 为 w=2.0），但仍明显落后 baseline（尤其 long），因此不建议直接上 full gate C；下一步需要继续做 ranking/阈值联动搜索，或进一步进入训练侧改动。
 
+### 2.3 补充消融：`replace_topq`
+
+在 w=2.0 下测试 `replace_topq=0`（不做 top-Q 限制）：
+- long：`avg_path_length=41.1538`（略差于 topq=3 的 41.0694），`success_rate=1.0`
+- short：`success_rate=0.667`（出现 `timeout=1/3`），NO-GO
+
+结论：本版默认仍保留 `replace_topq=3`。
+
 ## 3) full gate（C）结果（runs=20，fixed pairs）
 
 - short：`N/A`

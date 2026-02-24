@@ -18,6 +18,11 @@
   - w=1.0：`runs/v8p10_sweep_long_w1p0/20260224_135010`
   - w=2.0：`runs/v8p10_sweep_long_w2p0/20260224_135035`（当前 best）
 
+额外消融（同 fixed pairs3；w=2.0）：
+- `replace_topq=0`（短套件 SR 退化，NO-GO）：
+  - short：`runs/v8p10_short_w2p0_topq0/20260224_135806`
+  - long：`runs/v8p10_long_w2p0_topq0/20260224_135713`
+
 ## 2) full gate（C：fixed pairs20）
 
 - short run_dir：`N/A`
