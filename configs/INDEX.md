@@ -7,7 +7,7 @@
 | 类别 | 文件 | 用途 | 状态 |
 |---|---|---|---|
 | 稳定主线 | `configs/v7p1.json` | 当前训练/推理默认主线 | 推荐 |
-| V8 迭代入口（候选） | `configs/v8p10.json` | progress-dist clearance 消融（`dijkstra8_nocorner` + `progress_cost_w_clearance` sweep；目标：C 门槛） | 待 sweep smoke（fixed pairs3，runs=3）→ 待 full gate（short/long fixed pairs20，runs=20） |
+| V8 迭代入口（候选） | `configs/v8p10.json` | progress-dist clearance 消融（`dijkstra8_nocorner` + `progress_cost_w_clearance` sweep；目标：C 门槛） | infer-only sweep smoke 已跑（fixed pairs3，runs=3；baseline gap）→ full gate 暂不建议 |
 | V8 迭代（上一候选） | `configs/v8p9.json` | infer-sweep（SR≈1.0 前提下压 `avg_path_length/path_time_s`；目标：C 门槛） | sweep smoke 已跑（fixed pairs3，runs=3）；full gate C 暂不建议（baseline gap） |
 | V8 迭代（上一候选） | `configs/v8p8.json` | dueling + globalcnn_fusion + aux admissibility（更强表征 + 可行性辅助监督，目标：C 门槛） | smoke 已跑（NO-GO；mid/long 路径与时间劣于 baseline）→ full gate 待跑 |
 | V8 迭代（上版） | `configs/v8p7.json` | goal-approach speed shaping（接近目标阶段速度整形：推理侧更早减速，避免末段“必撞态”） | infer-only smoke 通过（fixed v8p6 checkpoint；SR=1.0）；train+infer smoke 待跑 |

@@ -63,9 +63,11 @@ conda run -n ros2py310 python infer.py --profile v8p10 \
 
 ## 代表 run
 
-- sweep smoke：`N/A`
+- sweep smoke：
+  - short：`runs/v8p10_infer_sweep_short_pairs3_smoke/20260224_134521`
+  - long：`runs/v8p10_infer_sweep_long_pairs3_smoke/20260224_134539`
 - full20（pairs20）：`N/A`
 
 ## 结论（待回填）
 
-- `N/A`
+- smoke（fixed pairs3）：SR=1.0 可达，但 `avg_path_length/path_time_s` 仍明显落后 baseline（尤其 long）；暂不建议上 full gate C。
