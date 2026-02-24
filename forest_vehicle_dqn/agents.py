@@ -49,6 +49,10 @@ class AgentConfig:
     globalcnn_fusion_layernorm: bool = False
     globalcnn_fusion_layernorm_eps: float = 1e-5
 
+    dueling: bool = False
+    # <=0 means "use hidden_dim".
+    dueling_hidden_dim: int = 0
+
     # Expert margin loss (DQfD-style) for forest stabilization.
     demo_margin: float = 0.8
     demo_lambda: float = 1.0
@@ -154,10 +158,15 @@ class DQNFamilyAgent:
                 "globalcnn_prior_sigma": float(getattr(config, "globalcnn_prior_sigma", 0.20)),
                 "globalcnn_fusion_layernorm": bool(getattr(config, "globalcnn_fusion_layernorm", False)),
                 "globalcnn_fusion_layernorm_eps": float(getattr(config, "globalcnn_fusion_layernorm_eps", 1e-5)),
+                "dueling": bool(getattr(config, "dueling", False)),
+                "dueling_hidden_dim": int(getattr(config, "dueling_hidden_dim", 0)),
             }
         else:
             self._net_cls = MLPQNetwork
-            self._net_kwargs = {}
+            self._net_kwargs = {
+                "dueling": bool(getattr(config, "dueling", False)),
+                "dueling_hidden_dim": int(getattr(config, "dueling_hidden_dim", 0)),
+            }
 
         self.q = self._net_cls(obs_dim, n_actions, hidden_dim=config.hidden_dim, hidden_layers=config.hidden_layers, **self._net_kwargs).to(self.device)
         self.q_target = self._net_cls(obs_dim, n_actions, hidden_dim=config.hidden_dim, hidden_layers=config.hidden_layers, **self._net_kwargs).to(self.device)
@@ -838,7 +847,15 @@ class DQNFamilyAgent:
         network = str(payload.get("network", self.arch)).lower().strip()
         if network in {"plain", "qnetwork", "mlp"}:
             net_cls: type[nn.Module] = MLPQNetwork
-            net_kwargs: dict[str, object] = {}
+            net_kwargs_raw = payload.get("network_kwargs") or {}
+            if not isinstance(net_kwargs_raw, dict):
+                net_kwargs_raw = {}
+            net_kwargs = {str(k): v for k, v in net_kwargs_raw.items()}
+            net_kwargs.setdefault("dueling", bool(cfg.get("dueling", getattr(self.config, "dueling", False))))
+            net_kwargs.setdefault(
+                "dueling_hidden_dim",
+                int(cfg.get("dueling_hidden_dim", getattr(self.config, "dueling_hidden_dim", 0))),
+            )
             self.arch = "mlp"
         elif network == "cnn":
             net_cls = CNNQNetwork
@@ -888,6 +905,11 @@ class DQNFamilyAgent:
                         getattr(self.config, "globalcnn_fusion_layernorm_eps", 1e-5),
                     )
                 ),
+            )
+            net_kwargs.setdefault("dueling", bool(cfg.get("dueling", getattr(self.config, "dueling", False))))
+            net_kwargs.setdefault(
+                "dueling_hidden_dim",
+                int(cfg.get("dueling_hidden_dim", getattr(self.config, "dueling_hidden_dim", 0))),
             )
             self.arch = "cnn"
         else:

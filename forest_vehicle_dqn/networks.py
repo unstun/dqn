@@ -9,11 +9,23 @@ from torch.nn import functional as F
 
 
 class MLPQNetwork(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, *, hidden_dim: int = 128, hidden_layers: int = 2):
+    def __init__(
+        self,
+        input_dim: int,
+        output_dim: int,
+        *,
+        hidden_dim: int = 128,
+        hidden_layers: int = 2,
+        dueling: bool = False,
+        dueling_hidden_dim: int = 0,
+    ):
         super().__init__()
 
         if hidden_layers < 1:
             raise ValueError("hidden_layers must be >= 1")
+
+        self.dueling = bool(dueling)
+        self.dueling_hidden_dim = int(dueling_hidden_dim)
 
         layers: list[nn.Module] = []
         layers.append(nn.Linear(input_dim, hidden_dim))
@@ -24,8 +36,34 @@ class MLPQNetwork(nn.Module):
         layers.append(nn.Linear(hidden_dim, output_dim))
         self.net = nn.Sequential(*layers)
 
+        self.value_head: nn.Module | None = None
+        self.adv_head: nn.Module | None = None
+        if bool(self.dueling):
+            hd = int(hidden_dim)
+            dh = int(self.dueling_hidden_dim) if int(self.dueling_hidden_dim) > 0 else int(hidden_dim)
+            self.value_head = nn.Sequential(
+                nn.Linear(hd, dh),
+                nn.ReLU(),
+                nn.Linear(dh, 1),
+            )
+            self.adv_head = nn.Sequential(
+                nn.Linear(hd, dh),
+                nn.ReLU(),
+                nn.Linear(dh, int(output_dim)),
+            )
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
+        if not bool(self.dueling):
+            return self.net(x)
+
+        if self.value_head is None or self.adv_head is None:
+            raise RuntimeError("dueling heads are not initialized")
+
+        trunk = self.net[:-1](x)
+        v = self.value_head(trunk)
+        a = self.adv_head(trunk)
+        a = a - a.mean(dim=1, keepdim=True)
+        return v + a
 
 
 # Backwards-compatible name (historically this repo only had an MLP Q-network).
@@ -90,6 +128,8 @@ class CNNQNetwork(nn.Module):
         globalcnn_prior_sigma: float = 0.20,
         globalcnn_fusion_layernorm: bool = False,
         globalcnn_fusion_layernorm_eps: float = 1e-5,
+        dueling: bool = False,
+        dueling_hidden_dim: int = 0,
     ) -> None:
         super().__init__()
 
@@ -105,6 +145,8 @@ class CNNQNetwork(nn.Module):
         self.globalcnn_prior_sigma = float(globalcnn_prior_sigma)
         self.globalcnn_fusion_layernorm = bool(globalcnn_fusion_layernorm)
         self.globalcnn_fusion_layernorm_eps = float(globalcnn_fusion_layernorm_eps)
+        self.dueling = bool(dueling)
+        self.dueling_hidden_dim = int(dueling_hidden_dim)
 
         if self.scalar_dim < 0:
             raise ValueError("scalar_dim must be >= 0")
@@ -244,6 +286,22 @@ class CNNQNetwork(nn.Module):
         layers.append(nn.Linear(int(hidden_dim), int(output_dim)))
         self.head = nn.Sequential(*layers)
 
+        self.value_head: nn.Module | None = None
+        self.adv_head: nn.Module | None = None
+        if bool(self.dueling):
+            hd = int(hidden_dim)
+            dh = int(self.dueling_hidden_dim) if int(self.dueling_hidden_dim) > 0 else int(hidden_dim)
+            self.value_head = nn.Sequential(
+                nn.Linear(hd, dh),
+                nn.ReLU(),
+                nn.Linear(dh, 1),
+            )
+            self.adv_head = nn.Sequential(
+                nn.Linear(hd, dh),
+                nn.ReLU(),
+                nn.Linear(dh, int(output_dim)),
+            )
+
     def _encode_globalcnn_features(self, maps: torch.Tensor) -> torch.Tensor:
         if self._global_blocks is None:
             raise RuntimeError("globalcnn backbone blocks are not initialized")
@@ -337,4 +395,14 @@ class CNNQNetwork(nn.Module):
         else:
             map_feat = self._forward_globalcnn_fusion(self._prepare_backbone_maps(maps, scalars))
         feats = torch.cat([scalars, map_feat], dim=1)
-        return self.head(feats)
+        if not bool(self.dueling):
+            return self.head(feats)
+
+        if self.value_head is None or self.adv_head is None:
+            raise RuntimeError("dueling heads are not initialized")
+
+        trunk = self.head[:-1](feats)
+        v = self.value_head(trunk)
+        a = self.adv_head(trunk)
+        a = a - a.mean(dim=1, keepdim=True)
+        return v + a
