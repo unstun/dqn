@@ -1,9 +1,9 @@
-# 版本留档索引（v1 → v8p7，含 v7p1 补档）
+# 版本留档索引（v1 → v8p8，含 v7p1 补档）
 
-- 归档入口：仓库根目录 `README.md` 的“版本总索引（v1 → v8p7）”。
+- 归档入口：仓库根目录 `README.md` 的“版本总索引（v1 → v8p8）”。
 - 本文件保留为 `docs/versions/` 内部快速导航，与根 README 保持同一口径。
 - 历史目录 `v3p1`~`v3p11` 保留原始记录，未纳入本轮重编号。
-- 早期误混入版本链已于 2026-02-09 清理，当前主线编号延续至 `v8p7`。
+- 早期误混入版本链已于 2026-02-09 清理，当前主线编号延续至 `v8p8`。
 - 当前主线对外口径（`v6p2p3` 及后续）统一为 `CNN-DDQN (shielded/hybrid inference)`；`strict-argmax` 仅用于诊断/消融，不作为主结论口径。
 - `v7p1` 已按版本四件套补档，作为当前稳定主线归档入口。
 
@@ -13,7 +13,7 @@
 | `v2` | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0` / `0.0` | `1.0` / `1.0` | 未通过 |
 | `v3` | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5` / `0.1` | `0.9` / `1.0` | 未通过 |
 
-## 增量版本（v3p1 → v8p7）
+## 增量版本（v3p1 → v8p8）
 
 | 版本 | 历史来源 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|---|
@@ -54,6 +54,7 @@
 | `v8p5` | `v8p5` | `docs/versions/v8p5/` | `configs/v8p5.json` | `runs/v8p5_replace_ranking_infer_smoke/20260223_172217` | `1.00` / `1.00` | `1.00` / `1.00` | infer-only smoke：`q` PASS；tie-break short `collision=1/3`（NO-GO）；train+infer smoke 未跑 |
 | `v8p6` | `v8p6` | `docs/versions/v8p6/` | `configs/v8p6.json` | `runs/v8p6_replace_topq_infer_smoke/20260223_185628` | `1.00` / `1.00` | `1.00` / `1.00` | infer-only smoke 通过（topq=1/2/3；推荐 topq=3）；train+infer smoke NO-GO（short/mid collision=1/3） |
 | `v8p7` | `v8p7` | `docs/versions/v8p7/` | `configs/v8p7.json` | `runs/v8p7_goal_approach_infer_smoke/20260223_230524` | `1.00` / `1.00` | `1.00` / `1.00` | infer-only smoke 通过（goal-approach speed shaping；SR=1.0）；train+infer smoke 待跑 |
+| `v8p8` | `v8p8` | `docs/versions/v8p8/` | `configs/v8p8.json` | `N/A` | `N/A` / `N/A` | `N/A` / `N/A` | 待 smoke → 待 full gate（C：short/long fixed pairs20，runs=20） |
 
 ## baseline-only 排除口径
 - 上表“关键 run”仅统计 RL 运行（`skip_rl=false`）。

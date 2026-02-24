@@ -2893,6 +2893,18 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--hidden-layers", type=int, default=3, help="Q-network hidden layer count.")
     ap.add_argument("--hidden-dim", type=int, default=256, help="Q-network hidden width.")
     ap.add_argument(
+        "--dueling",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use a dueling Q head (Dueling DQN): Q(s,a)=V(s)+(A(s,a)-mean_a A(s,a)).",
+    )
+    ap.add_argument(
+        "--dueling-hidden-dim",
+        type=int,
+        default=0,
+        help="Hidden width for dueling V/A streams (<=0 uses --hidden-dim).",
+    )
+    ap.add_argument(
         "--cnn-backbone",
         type=str,
         choices=("legacy", "globalcnn", "globalcnn_fusion"),
@@ -4041,6 +4053,8 @@ def main(argv: list[str] | None = None) -> int:
         eps_decay=int(getattr(args, "eps_decay", agent_cfg.eps_decay)),
         hidden_layers=int(getattr(args, "hidden_layers", agent_cfg.hidden_layers)),
         hidden_dim=int(getattr(args, "hidden_dim", agent_cfg.hidden_dim)),
+        dueling=bool(getattr(args, "dueling", agent_cfg.dueling)),
+        dueling_hidden_dim=int(getattr(args, "dueling_hidden_dim", agent_cfg.dueling_hidden_dim)),
         cnn_backbone=str(getattr(args, "cnn_backbone", agent_cfg.cnn_backbone)),
         globalcnn_width=int(getattr(args, "cnn_global_width", agent_cfg.globalcnn_width)),
         globalcnn_dropout=float(getattr(args, "cnn_global_dropout", agent_cfg.globalcnn_dropout)),
