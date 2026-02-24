@@ -36,11 +36,12 @@ REPORT_ARTIFACTS:
 - Run artifact map: `docs/runs/README.md`
 - Candidate cleanup list: `docs/runs/CANDIDATES_TO_ARCHIVE_20260221.md`
 
-## Research objective and current status (2026-02-23)
+## Research objective and current status (2026-02-24)
 
 - This repo is under active `vibe coding` iteration: small deltas, quick validation loops, and strict rollback/archive discipline.
 - Current stable mainline is `v7p1` (`configs/v7p1.json`).
-- Active V8 iteration candidate is `v8p8` (`configs/v8p8.json`) (dueling + globalcnn_fusion + aux admissibility; pending smoke/full gate C; do not claim until fixed-pairs full20 passes).
+- Active V8 iteration candidate is `v8p9` (`configs/v8p9.json`) (inference-first sweep to keep SR≈1.0 while reducing path length/time; pending sweep smoke/full gate C; do not claim until fixed-pairs full20 passes).
+- `v8p8` is the previous V8 candidate (dueling + globalcnn_fusion + aux admissibility; smoke NO-GO; full gate not yet run).
 - `v8p5` is the previous V8 iteration (regression PASS; infer-only: tie-break short collision=1/3).
 - `v8p1` is archived as NO-GO (navdist progress distance; smoke SR regressed).
 - `v7p2` to `v7p3p7` are archived failed/iterative attempts on the non-mainline branch, and `v7p1` remains the stable claim baseline.
@@ -121,7 +122,7 @@ python infer.py --profile forest_a_all6_300_cuda
 
 ### Latest train/infer commands (keep updated)
 
-Last updated: 2026-02-23  
+Last updated: 2026-02-24  
 Current recommended train profile: `v7p1`
 
 ```bash
@@ -132,7 +133,13 @@ conda run -n ros2py310 python infer.py --profile v7p1
 Active V8 smoke profiles (experimental):
 
 ```bash
-# v8p8: smoke (episodes=150, runs=3) [pending]
+# v8p9: infer sweep smoke (fixed pairs3 subset from pairs20; runs=3)
+conda run -n ros2py310 python infer.py --profile repro_20260224_v8p9_infer_sweep_short_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260224_v8p9_infer_sweep_long_smoke
+```
+
+```bash
+# v8p8: smoke (episodes=150, runs=3) [DONE: NO-GO]
 conda run -n ros2py310 python train.py --profile repro_20260224_v8p8_smoke
 conda run -n ros2py310 python infer.py --profile repro_20260224_v8p8_smoke
 

@@ -35,11 +35,12 @@ REPORT_ARTIFACTS:
 - 运行产物总览：`docs/runs/README.md`
 - 归档候选清单：`docs/runs/CANDIDATES_TO_ARCHIVE_20260221.md`
 
-## 研究目标与当前状态（2026-02-23）
+## 研究目标与当前状态（2026-02-24）
 
 - 本仓库正在采用 `vibe coding` 持续迭代：小步改动、快速验证、严格回退与归档。
 - 当前稳定主线版本为 `v7p1`（`configs/v7p1.json`）。
-- 当前 V8 迭代候选入口为 `v8p8`（`configs/v8p8.json`）（dueling + globalcnn_fusion + 可行性辅助监督；待 smoke/待 full gate C；仅 fixed pairs full20 通过后才允许对外宣称收益）。
+- 当前 V8 迭代候选入口为 `v8p9`（`configs/v8p9.json`）（推理侧 sweep 优先：在 SR≈1.0 前提下压 `avg_path_length/path_time_s`；待 sweep smoke/待 full gate C；仅 fixed pairs full20 通过后才允许对外宣称收益）。
+- `v8p8` 为上一候选（dueling + globalcnn_fusion + 可行性辅助监督；smoke 已跑 NO-GO；full gate 尚未跑）。
 - `v8p5` 为上一版（回归 PASS；infer-only：tie-break short `collision=1/3`）。
 - `v8p1` 已归档为 NO-GO（navdist progress distance；smoke SR 退化）。
 - `v7p2` 到 `v7p3p7` 属于非主线迭代分支的失败/探索版本，稳定结论口径仍为 `v7p1`。
@@ -120,7 +121,7 @@ python infer.py --profile forest_a_all6_300_cuda
 
 ### 最新训练/推理命令（请持续维护）
 
-最后更新：2026-02-23  
+最后更新：2026-02-24  
 当前推荐训练 profile：`v7p1`
 
 ```bash
@@ -131,7 +132,11 @@ conda run -n ros2py310 python infer.py --profile v7p1
 当前 V8 smoke profiles（实验性）：
 
 ```bash
-# v8p8：smoke（episodes=150, runs=3）[待跑]
+# v8p9：infer sweep smoke（fixed pairs3 子集来自 pairs20；runs=3）
+conda run -n ros2py310 python infer.py --profile repro_20260224_v8p9_infer_sweep_short_smoke
+conda run -n ros2py310 python infer.py --profile repro_20260224_v8p9_infer_sweep_long_smoke
+
+# v8p8：smoke（episodes=150, runs=3）[已跑：NO-GO]
 conda run -n ros2py310 python train.py --profile repro_20260224_v8p8_smoke
 conda run -n ros2py310 python infer.py --profile repro_20260224_v8p8_smoke
 

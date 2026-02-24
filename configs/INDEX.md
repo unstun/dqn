@@ -1,4 +1,4 @@
-# `configs/` 索引（2026-02-23）
+# `configs/` 索引（2026-02-24）
 
 > 目标：把“该用哪个 profile（配置名）”先讲清楚，避免从 100+ 文件里猜。
 
@@ -7,7 +7,8 @@
 | 类别 | 文件 | 用途 | 状态 |
 |---|---|---|---|
 | 稳定主线 | `configs/v7p1.json` | 当前训练/推理默认主线 | 推荐 |
-| V8 迭代入口（候选） | `configs/v8p8.json` | dueling + globalcnn_fusion + aux admissibility（更强表征 + 可行性辅助监督，目标：C 门槛） | 待 smoke（episodes=150, runs=3）→ 待 full gate（short/long fixed pairs20，runs=20） |
+| V8 迭代入口（候选） | `configs/v8p9.json` | infer-sweep 优先（SR≈1.0 前提下压 `avg_path_length/path_time_s`；目标：C 门槛） | 待 sweep smoke（fixed pairs3，runs=3）→ 待 full gate（short/long fixed pairs20，runs=20） |
+| V8 迭代（上一候选） | `configs/v8p8.json` | dueling + globalcnn_fusion + aux admissibility（更强表征 + 可行性辅助监督，目标：C 门槛） | smoke 已跑（NO-GO；mid/long 路径与时间劣于 baseline）→ full gate 待跑 |
 | V8 迭代（上版） | `configs/v8p7.json` | goal-approach speed shaping（接近目标阶段速度整形：推理侧更早减速，避免末段“必撞态”） | infer-only smoke 通过（fixed v8p6 checkpoint；SR=1.0）；train+infer smoke 待跑 |
 | V8 迭代（上版） | `configs/v8p6.json` | replace-topq（替换候选 Top-Q 约束：把 tie-break 限制在高 Q 小集合内） | infer-only smoke 通过（topq=1/2/3）；train+infer smoke NO-GO（short/mid collision=1/3） |
 | V8 迭代（上版） | `configs/v8p5.json` | replace-ranking 消融（argmax 不可行时的替换动作排序：Q vs progress/clearance tie-break） | 回归通过（fixed pairs）；infer-only：tie-break short 有 collision |
@@ -46,6 +47,7 @@
 - `configs/v8p6.json`
 - `configs/v8p7.json`
 - `configs/v8p8.json`
+- `configs/v8p9.json`
 
 > 规则：新增版本时，优先新增 `v*.json`，再在四件套中记录它与 `run_dir`（运行目录）的映射。
 
