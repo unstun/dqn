@@ -1,0 +1,64 @@
+{
+  "_meta": {
+    "title": "v8p10 infer sweep smoke (long, runs=3, fixed pairs3, progress-dist clearance ablation)",
+    "date": "2026-02-24",
+    "summary": "Inference-first ablation to locate the main cause of detours: switch progress distance to dijkstra8_nocorner and sweep progress clearance cost weight. Models are pinned to an existing run to isolate inference-side effects.",
+    "commands": [
+      "conda run -n ros2py310 python infer.py --profile repro_20260224_v8p10_infer_sweep_long_smoke",
+      "conda run -n ros2py310 python infer.py --profile repro_20260224_v8p10_infer_sweep_long_smoke --forest-progress-cost-w-clearance 0.0",
+      "conda run -n ros2py310 python infer.py --profile repro_20260224_v8p10_infer_sweep_long_smoke --forest-progress-cost-w-clearance 0.5",
+      "conda run -n ros2py310 python infer.py --profile repro_20260224_v8p10_infer_sweep_long_smoke --forest-progress-cost-w-clearance 1.0",
+      "conda run -n ros2py310 python infer.py --profile repro_20260224_v8p10_infer_sweep_long_smoke --forest-progress-cost-w-clearance 2.0"
+    ],
+    "notes": [
+      "Anti-cheating: do NOT change goal_tolerance_m (and do not loosen stop thresholds) for evaluation.",
+      "This is screening only; final gate uses fixed pairs20 with runs=20."
+    ]
+  },
+  "infer": {
+    "envs": [
+      "forest_a::long"
+    ],
+    "models": "runs/v8p8_dueling_globalcnn_aux_smoke/train_20260224_105059",
+    "out": "v8p10_infer_sweep_long_pairs3_smoke",
+    "rl_algos": [
+      "cnn-ddqn"
+    ],
+    "baselines": [
+      "hybrid_astar_mpc"
+    ],
+    "baseline_timeout": 60.0,
+    "random_start_goal": true,
+    "rand_pairs_json": "configs/pairs_v8p9_smoke_long3_from_pairs20_v1_20260224.json",
+    "runs": 3,
+    "progress": true,
+    "forest_no_fallback": false,
+    "forest_adm_horizon": 30,
+    "forest_goal_admissible_relax_factor": 2.5,
+    "forest_topk": 10,
+    "forest_topk_turn_penalty": 0.0,
+    "forest_replace_ranking": "progress_clearance_q",
+    "forest_replace_topq": 3,
+    "forest_min_progress_m": 0.01,
+    "forest_min_od_m": 0.0,
+    "forest_progress_dist_mode": "dijkstra8_nocorner",
+    "forest_progress_cost_w_clearance": 0.0,
+    "forest_progress_cost_sigma_m": 0.5,
+    "forest_goal_approach_override": true,
+    "forest_goal_approach_dist_m": 0.0,
+    "forest_goal_approach_speed_factor": 1.0,
+    "forest_action_delta_dot_bins": 15,
+    "forest_action_accel_bins": 15,
+    "max_steps": 1200,
+    "no_terminate_on_stuck": true,
+    "goal_tolerance_m": 1.0,
+    "goal_angle_tolerance_deg": 180.0,
+    "goal_stop_speed_m_s": 0.1,
+    "goal_stop_delta_deg": 3.0,
+    "kpi_time_mode": "policy",
+    "device": "auto",
+    "cuda_device": 0,
+    "seed": 123
+  }
+}
+
