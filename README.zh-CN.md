@@ -39,7 +39,7 @@ REPORT_ARTIFACTS:
 
 - 本仓库正在采用 `vibe coding` 持续迭代：小步改动、快速验证、严格回退与归档。
 - 当前稳定主线版本为 `v7p1`（`configs/v7p1.json`）。
-- 当前 V8 迭代候选入口为 `v8p10`（`configs/v8p10.json`）（推理侧可解释消融优先：progress-dist clearance；infer-only sweep smoke（fixed pairs3）已跑但仍落后 baseline；仅 fixed pairs full20 通过后才允许对外宣称收益）。
+- 当前 V8 迭代候选入口为 `v8p11`（`configs/v8p11.json`）（训练优先：强化 expert+D QfD；待 train+infer smoke → 待 full gate C；仅 fixed pairs full20 通过后才允许对外宣称收益）。
 - `v8p8` 为上一候选（dueling + globalcnn_fusion + 可行性辅助监督；smoke 已跑 NO-GO；full gate 尚未跑）。
 - `v8p5` 为上一版（回归 PASS；infer-only：tie-break short `collision=1/3`）。
 - `v8p1` 已归档为 NO-GO（navdist progress distance；smoke SR 退化）。
@@ -299,9 +299,9 @@ runs/<out>/
 - `fallback_rate`：推理期 fallback/override 触发比例（诊断指标；在 `strict-argmax` 口径下理论应为 `0`）。
 - `failure_reason`：失败原因标签（仅在 `table2_kpis_raw.csv` 中提供）。
 
-## 版本总索引（v1 → v8p10）
+## 版本总索引（v1 → v8p11）
 
-> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p10` 为当前 V8 迭代候选入口（progress-dist clearance 消融：infer-only sweep smoke 已跑；path/time 仍落后 baseline；full 暂不建议），`v8p9` 为上一候选（infer-only sweep smoke 已跑；path/time 仍落后 baseline；full 暂不建议），`v8p8` 为更上一候选（smoke 已跑 NO-GO），`v8p7` 为更上一版（infer-only smoke PASS；train+infer smoke 待跑）。
+> 说明：本索引用于统一 `docs/versions/` 的重编号口径；历史目录 `v3p1`~`v3p11` 保留原记录，未纳入本轮重编号；早期误混入版本链已于 2026-02-09 清理。当前稳定主线为 `v7p1`，`v7p2/v7p2p1/v7p2p2/v7p2p3/v7p2p4/v7p2p5/v7p2p6/v7p2p7/v7p2p8/v7p2p9/v7p2p10/v7p3/v7p3p1/v7p3p2/v7p3p3/v7p3p4/v7p3p6/v7p3p7` 为已归档迭代分支；`v8p11` 为当前 V8 迭代候选入口（训练侧强化：待 train+infer smoke → 待 full gate C），`v8p10` 为上一候选（infer-only sweep smoke 已跑；baseline gap；full 暂不建议）。
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -309,7 +309,7 @@ runs/<out>/
 | `v2` | `docs/versions/v2/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v2_smoke/train_20260209_083246` | `0.0 / 0.0` | `1.0 / 1.0` | 未通过 |
 | `v3` | `docs/versions/v3/` | `configs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke.json` | `runs/repro_20260209_forest_a_cnn_ddqn_strict_no_fallback_v3_smoke_fast4pre_h20mp0_ms1200/20260209_123403` | `0.5 / 0.1` | `0.9 / 1.0` | 未通过 |
 
-### 增量版本（v3p1 → v8p10）
+### 增量版本（v3p1 → v8p11）
 
 | 版本 | 目录 | 主 config | 关键 run | 最佳 SR（CNN short/long） | 基线 SR（Hybrid short/long） | 状态 |
 |---|---|---|---|---|---|---|
@@ -353,6 +353,7 @@ runs/<out>/
 | `v8p8` | `docs/versions/v8p8/` | `configs/v8p8.json` | `runs/v8p8_dueling_globalcnn_aux_smoke/train_20260224_105059/infer/20260224_110556` | `0.667 / 1.000` | `1.00 / 1.00` | smoke 已跑（NO-GO；short SR 低于 baseline；mid/long path/time 劣于 baseline） |
 | `v8p9` | `docs/versions/v8p9/` | `configs/v8p9.json` | `runs/v8p9_infer_sweep_short_pairs3_smoke/20260224_114743` | `1.000 / 1.000` | `1.00 / 1.00` | infer-only sweep smoke 已跑（pairs3：SR=1.0 可达；但 path/time 仍落后 baseline；full 暂不建议） |
 | `v8p10` | `docs/versions/v8p10/` | `configs/v8p10.json` | `runs/v8p10_sweep_long_w2p0/20260224_135035` | `1.000 / 1.000` | `1.00 / 1.00` | infer-only sweep smoke 已跑（pairs3：SR=1.0 可达；w_clearance sweep 有回落但仍落后 baseline；full 暂不建议） |
+| `v8p11` | `docs/versions/v8p11/` | `configs/v8p11.json` | `N/A` | `N/A / N/A` | `N/A / N/A` | 进行中（训练侧强化：待 train+infer smoke → 待 full gate C） |
 
 - baseline-only（`--skip-rl`）输出不计入上表；请单独查看 `runs/outputs_forest_baselines/*`、`runs/repro_20260207_*` 等目录。
 - 详细四件套请见 `docs/versions/README.md` 与各版本目录。
